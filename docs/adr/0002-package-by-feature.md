@@ -13,7 +13,7 @@ Organize top-level packages **by feature**, each with `domain` / `service` / `ui
 sub-packages, plus shared and security packages:
 
 ```
-com.example.expenses
+com.vaadin.expensemanager
 ├── base/        shared domain + ui (MainLayout, common types, error handling)
 ├── security/    Spring Security + Google OAuth config, CurrentUser
 ├── user/        user records, roles, admin user management
@@ -27,5 +27,8 @@ Package boundaries are provisional and confirmed as the domain model settles.
 ## Consequences
 - Cross-feature reuse goes through `base`; features do not depend on each other's
   internals.
-- The base Maven `groupId` is `com.example`; final root package to be confirmed
-  at implementation (kept `com.example.expenses` here for illustration).
+- Root package and Maven coordinates are **`com.vaadin.expensemanager`**
+  (`groupId=com.vaadin.expensemanager`, `artifactId=expense-manager`). This is a
+  real vaadin.com project, not a demo/example, so the `com.example:app`
+  placeholders from the skeleton are replaced wholesale. Resolves plan
+  open-item #4.

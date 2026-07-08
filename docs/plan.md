@@ -143,7 +143,9 @@ Goal: two Docker environments, safe updates, documented.
 - Allowance edge-case depth (Phase 4) — postpone exceptions if they threaten the
   finishable loop.
 - Export format for finance (Phase 7).
-- Final root Java package name (currently `com.example`).
+- ~~Final root Java package name~~ — **resolved: `com.vaadin.expensemanager`**
+  (`groupId=com.vaadin.expensemanager`, `artifactId=expense-manager`); see
+  ADR-0002.
 
 ## Use-case → phase map
 UC-001 submit report → P2/P3/P4 · UC-002 view my reports → P2/P5 ·

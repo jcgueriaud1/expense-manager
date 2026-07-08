@@ -25,3 +25,16 @@ secrets handling, health checks, and structured logging.
   (auto-updates to latest build) and **staging/prod-like** (stable).
 - **Open item:** the actual hosting target (Docker host / PaaS / k8s) is decided
   in the plan's deployment phase — it depends on available infra.
+
+## Observability mechanics (Phase 0.8) — start simple
+- **JSON logging** uses **Spring Boot 4's built-in structured logging**
+  (`logging.structured.format.console/file=ecs`), enabled in `staging`/`prod`;
+  `local` stays human-readable. No `logstash-logback-encoder` dependency and no
+  custom `logback-spring.xml`.
+- **Correlation id** is a **lightweight `OncePerRequestFilter`** that accepts or
+  generates an `X-Request-Id`, stores it in MDC, and is emitted by both the
+  console pattern and the structured output. **No Micrometer/OTel tracing in
+  V1** — it's propagation we don't need for a single service, and the filter
+  upgrades cleanly to Micrometer Tracing later if a second service appears.
+- Known edge: the servlet filter covers Vaadin HTTP/UIDL requests, but `@Push`
+  over websocket won't carry the MDC id automatically — accepted for V1.
