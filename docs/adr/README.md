@@ -1,0 +1,25 @@
+# Architecture Decision Records
+
+Each ADR records one load-bearing decision for the Expense Management app (V1), the context that forced it, and its consequences. ADRs are immutable once accepted — to change a decision, add a new ADR that supersedes the old one.
+
+Status values: `Accepted`, `Superseded by ADR-XXXX`, `Deprecated`.
+
+| ADR | Decision | Status |
+|-----|----------|--------|
+| [0001](0001-flow-only-no-react.md) | Flow only (server-side Java), no React/Hilla | Accepted |
+| [0002](0002-package-by-feature.md) | Package-by-feature code organization | Accepted |
+| [0003](0003-persistence-jpa-dto-boundary.md) | Spring Data JPA + DTO/record UI boundary | Accepted |
+| [0004](0004-postgres-everywhere.md) | PostgreSQL everywhere (Compose + Testcontainers) | Accepted |
+| [0005](0005-flyway-migrations.md) | Flyway SQL migrations | Accepted |
+| [0006](0006-rich-domain-aggregate.md) | Rich domain, ExpenseReport aggregate root | Accepted |
+| [0007](0007-google-oauth-provisioning.md) | Google OAuth2 + domain-gated auto-provisioning | Accepted |
+| [0008](0008-route-and-method-security.md) | Route + method security; invariants in domain | Accepted |
+| [0009](0009-receipts-as-blobs.md) | Receipts stored as Postgres bytea | Accepted |
+| [0010](0010-money-eur-bigdecimal.md) | EUR-only, BigDecimal scale 2, no Money VO | Accepted |
+| [0011](0011-optimistic-locking.md) | Optimistic locking (@Version) on the report | Accepted |
+| [0012](0012-testing-strategy.md) | Test pyramid layers 1–3, OAuth form-stub | Accepted |
+| [0013](0013-config-secrets-observability.md) | 4 profiles, env-var secrets, Actuator + JSON logs | Accepted |
+| [0014](0014-java-25.md) | Java 25 in pom and Dockerfile | Accepted |
+| [0015](0015-binder-and-signals.md) | Binder for form validation; Signals for dynamic state | Accepted |
+
+See also: [../glossary.md](../glossary.md) · [../plan.md](../plan.md) · [../findings.md](../findings.md)

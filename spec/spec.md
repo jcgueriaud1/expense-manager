@@ -1,1 +1,0 @@
-An expense-reporting app for Vaadin Oy, built as if it were real: authenticated, role-based, backed by a real database, deployed and updated like a credible internal tool. The point isn't the feature set — it's that a realistic app exposes gaps a toy demo would hide, and those gaps feed Vaadin product work.
