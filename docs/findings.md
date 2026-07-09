@@ -77,6 +77,51 @@ Deployment/Observability · UX-spec
 - Owner / next step: verify exact seed values against the Verohallinto decision
   for the target year before the V__ migration ships.
 
+### F-005 — Testcontainers 2.x renamed the Maven modules (`testcontainers-*` prefix)
+- Date: 2026-07-09
+- Area: Tooling/Template
+- Severity: Low
+- Task being attempted: Adding the Testcontainers Postgres deps for the
+  integration test layer (Phase 0.2, ADR-0004).
+- Expected vs actual: The issue and virtually all docs/examples use the 1.x
+  coordinates `org.testcontainers:postgresql` and `org.testcontainers:junit-jupiter`.
+  Spring Boot 4.1.0 manages **Testcontainers 2.0.5**, which renamed the modules
+  to `testcontainers-postgresql` and `testcontainers-junit-jupiter` (same
+  `org.testcontainers` groupId). The 1.x artifactIds resolve to no managed
+  version → `'dependencies.dependency.version' ... is missing` at POM read time.
+- Workaround used: Use the `testcontainers-*`-prefixed artifactIds; versions come
+  from the `testcontainers-bom` already imported by `spring-boot-dependencies`
+  (no explicit BOM import needed).
+- Evidence: `pom.xml` test deps; `testcontainers-bom-2.0.5.pom`.
+- Impact: AI agents and copied snippets will reach for the 1.x names and hit a
+  confusing build-model error rather than a normal dependency-resolution failure.
+- Suggested Vaadin/product improvement: n/a (Testcontainers/Spring Boot ecosystem).
+- Owner / next step: wire the actual Testcontainers harness in Phase 0.9.
+
+### F-006 — Security starter added early activates default Spring Security
+- Date: 2026-07-09
+- Area: Tooling/Template
+- Severity: Low
+- Task being attempted: Adding `spring-boot-starter-security` +
+  `-oauth2-client` in Phase 0.2 so later phases have their deps ready, before
+  the security config exists (Phase 1.4).
+- Expected vs actual: Expected the foundation app to boot open. Actual: the mere
+  presence of the security starter (plus a Google `ClientRegistration` from the
+  `local` env-var defaults) activates Spring Security's default filter chain, so
+  every endpoint — including `/actuator/health` — returns `302` to a login page
+  until the Phase 1.4 config lands.
+- Workaround used: Accepted for this slice — Phase 0.2's acceptance is "boots and
+  connects to Postgres", which holds (verified: Hikari connected to the Compose
+  Postgres, Tomcat up, no errors). No `SecurityConfig` written here; that is
+  Phase 1.4's job, and Actuator health is opened/wired in Phase 0.8.
+- Evidence: boot log (`HikariPool-1 ... PgConnection`, `Started Application in
+  35.9s`); `curl /actuator/health` → 302.
+- Impact: Anyone probing the foundation app before Phase 1 sees a login wall;
+  health checks won't pass until 0.8/1.4. Ordering artifact, not a defect.
+- Suggested Vaadin/product improvement: n/a.
+- Owner / next step: open `/actuator/health` (0.8) and wire
+  `VaadinSecurityConfigurer` + route/method security (1.4).
+
 ### F-004 — Inline Grid row editor + ComboBox + Binder + Signals (provisional)
 - Date: 2026-07-09
 - Area: Vaadin
