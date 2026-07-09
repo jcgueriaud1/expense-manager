@@ -2,8 +2,8 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <!-- Project from https://start.vaadin.com/88efa916-02c8-41ab-8b02-0470fb9ac493 -->
-    <groupId>com.example</groupId>
-    <artifactId>app</artifactId>
+    <groupId>com.vaadin.expensemanager</groupId>
+    <artifactId>expense-manager</artifactId>
     <version>1.0-SNAPSHOT</version>
     <packaging>jar</packaging>
     

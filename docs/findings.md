@@ -40,7 +40,9 @@ Deployment/Observability · UX-spec
   a Java 25 feature is used.
 - Suggested Vaadin/product improvement: start.vaadin.com should keep the
   Dockerfile base image in sync with the pom's `java.version`.
-- Owner / next step: JC — fix in the foundation phase.
+- Owner / next step: Resolved in Phase 0.1 (#4) — Dockerfile build/runtime stages
+  bumped to `eclipse-temurin:25-jdk` / `eclipse-temurin:25-jre-alpine` to match the
+  pom's Java 25 target.
 
 ### F-002 — StreamResource deprecated in Vaadin 25 (streaming API for receipts)
 - Date: 2026-07-08

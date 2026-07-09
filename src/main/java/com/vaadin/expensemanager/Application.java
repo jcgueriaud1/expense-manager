@@ -1,4 +1,4 @@
-package com.example;
+package com.vaadin.expensemanager;
 
 import com.vaadin.flow.theme.aura.Aura;
 import org.springframework.boot.SpringApplication;
