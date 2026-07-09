@@ -1,0 +1,23 @@
+# Local development Postgres, auto-started by Spring Boot's docker-compose
+# support on `./mvnw` in the `local` profile (ADR-0004). Spring Boot detects
+# this service and wires the datasource automatically — no manual DB setup.
+# Credentials match the safe defaults in application-local.properties.
+services:
+  postgres:
+    image: 'postgres:17-alpine'
+    environment:
+      POSTGRES_DB: 'expense_manager'
+      POSTGRES_USER: 'expense'
+      POSTGRES_PASSWORD: 'expense'
+    ports:
+      - '5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U expense -d expense_manager']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - 'expense-postgres-data:/var/lib/postgresql/data'
+
+volumes:
+  expense-postgres-data:
