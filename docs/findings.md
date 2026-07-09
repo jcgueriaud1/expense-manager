@@ -57,3 +57,42 @@ Deployment/Observability · UX-spec
 - Suggested Vaadin/product improvement: ensure MCP/docs surface the replacement
   prominently on any `StreamResource` reference.
 - Owner / next step: confirm exact API usage when implementing receipts.
+
+### F-003 — Finnish VAT rates are statutory and change most years
+- Date: 2026-07-09
+- Area: Spec
+- Severity: Medium
+- Task being attempted: Deciding how expense lines capture VAT (Phase 2, ADR-0018).
+- Expected vs actual: Assumed a stable reduced rate of 14%; actual 2026 reduced
+  rate is **13.5%** (14% → 13.5% on 1 Jan 2026; general 24% → 25.5% on 1 Sept
+  2024; several 10% supplies → 14% on 1 Jan 2025). Rates move roughly yearly.
+- Workaround used: Model `VatRate`/`ExpenseType` as admin-editable config with an
+  `active` flag rather than enums; lines store an FK to the rate they were filed
+  under, so past reports never re-compute when the law changes (ADR-0018).
+- Evidence: user (authoritative); Verohallinto VAT-rate change history.
+- Impact: Hard-coded rates would be a money bug (ADR-0010) and a redeploy-per-law-
+  change maintenance burden; per-year versioning would be over-engineering given
+  the FK-preserves-history approach.
+- Suggested Vaadin/product improvement: n/a (domain/spec finding).
+- Owner / next step: verify exact seed values against the Verohallinto decision
+  for the target year before the V__ migration ships.
+
+### F-004 — Inline Grid row editor + ComboBox + Binder + Signals (provisional)
+- Date: 2026-07-09
+- Area: Vaadin
+- Severity: Low (provisional — confirm on implementation)
+- Task being attempted: Designing the line editor for the report detail view
+  (Phase 2.6, ADR-0015/0019).
+- Expected vs actual: Chose an inline Grid row editor (edit in place) with
+  `ComboBox` columns for expense type / VAT rate, Binder validation, and Signals
+  for live net/VAT/gross totals. This is the fiddliest Vaadin 25 combination
+  (Grid editor + editor-component binding + per-row validation + reactive totals)
+  and is expected to surface friction.
+- Expected vs actual: TBD — to be filled from real implementation experience.
+- Workaround used: TBD.
+- Evidence: design decision; ADR-0019.
+- Impact: TBD; may motivate falling back to a dialog/master-detail editor if the
+  inline approach proves too costly.
+- Suggested Vaadin/product improvement: TBD from findings during build.
+- Owner / next step: capture concrete friction (prompts, code, docs gaps) while
+  implementing 2.6.

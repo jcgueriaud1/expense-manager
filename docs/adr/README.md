@@ -21,5 +21,9 @@ Status values: `Accepted`, `Superseded by ADR-XXXX`, `Deprecated`.
 | [0013](0013-config-secrets-observability.md) | 4 profiles, env-var secrets, Actuator + JSON logs | Accepted |
 | [0014](0014-java-25.md) | Java 25 in pom and Dockerfile | Accepted |
 | [0015](0015-binder-and-signals.md) | Binder for form validation; Signals for dynamic state | Accepted |
+| [0016](0016-persistence-baseline-pk-audit.md) | Bigint PKs, app-side audit timestamps, minimal V1 baseline | Accepted |
+| [0017](0017-base-ui-shell-and-ux-states.md) | Base UI shell: auto-menu nav + shared UX-state primitives | Accepted |
+| [0018](0018-expense-type-and-vat-config.md) | Expense Type & VAT Rate as editable reference config | Accepted |
+| [0019](0019-report-save-model.md) | Report edit/save: whole-aggregate, in-memory until first save | Accepted |
 
 See also: [../glossary.md](../glossary.md) · [../plan.md](../plan.md) · [../findings.md](../findings.md)

@@ -57,20 +57,46 @@ Goal: log in and see a role-appropriate dashboard.
 - Tests: method-security slice (USER vs ADMIN); provisioning logic.
 
 ## Phase 2 — Expense report core (UC-001 create/submit; UC-002 list; UC-005 detail)
-Goal: create a report, add/edit/remove lines, see totals, submit.
+Goal: create a report, add/edit/remove lines, see totals, submit. Decisions
+grilled into ADR-0018 (expense type & VAT config) and ADR-0019 (save model);
+domain terms in [glossary.md](glossary.md).
 
-- **2.1 Report aggregate** — `ExpenseReport` (state machine, `@Version`) owning
-  `ExpenseLine`; domain guards (ADR-0006, ADR-0011).
-- **2.2 Categories** — Travel, Meal, Accommodation, Office/supplies, Other.
-- **2.3 Persistence + migration** — report/line tables (`numeric(19,2)`
-  amounts, ADR-0010).
-- **2.4 Services + DTOs** — create/list/get/edit-lines/submit; manual mapping;
-  transactions.
-- **2.5 My Reports view** (UC-002) — own reports + statuses; empty state.
-- **2.6 Report detail view** (UC-005/UC-001) — create/edit, add/edit/remove
-  lines, live totals (Signals), submit; Binder-validated line editor
-  (ADR-0015).
-- **2.7 Domain unit tests** — state machine + guards.
+- **2.1 Report aggregate** — `ExpenseReport` (state machine, `@Version`, audited)
+  owning `ExpenseLine`s **and** an ordered `StatusChange` log (ADR-0006,
+  ADR-0011). Report-level fields: required user-entered `reportDate` (default
+  today), optional `additionalInformation`; no title. Lines carry expense type,
+  gross `amount` (required, **non-zero**; negatives allowed), VAT rate (required,
+  defaults from type, overridable), optional comment — **no business date, no
+  description**. Guards: submit requires ≥1 line (no total-sign guard); lines
+  editable only in `DRAFT`/`REJECTED`; delete only in `DRAFT`; no withdraw.
+  `submit()` appends the first `StatusChange` (`DRAFT → SUBMITTED`).
+- **2.2 Expense Type & VAT Rate config** (replaces the old flat category list;
+  ADR-0018) — two admin-editable reference tables (`VatRate`: value/order/active;
+  `ExpenseType`: name/order/active/**required** default VAT rate), **seeded via
+  migration** (2026: VAT 25.5/13.5/10/0; six expense types) **and** an
+  **ADMIN-only CRUD screen** to edit both (method-secured, ADR-0008). Historical
+  rates preserved by the `active` flag, not per-year versioning.
+- **2.3 Persistence + migration** — report/line/status-change/expense-type/
+  vat-rate tables; `numeric(19,2)` amounts (ADR-0010); lines in insertion order,
+  cascade + orphan-removal; bigint PKs + app-side audit timestamps (ADR-0016).
+- **2.4 Services + DTOs** (ADR-0019) — whole-aggregate save, in-memory until
+  first save: `create(dto)→id`, `update(id, dto, version)` (lines reconciled by
+  nullable id: match/insert/orphan-remove), `submit(id, version)`, `delete(id)`;
+  list DTO for My Reports; manual mapping; transactions own the boundary
+  (ADR-0003). VAT amount + net/VAT/gross totals derived, never stored.
+- **2.5 My Reports view** (UC-002) — own reports; columns date/info/status/total;
+  newest-first; **status filter + month+year (period) filter** on `reportDate`;
+  `EmptyState` (ADR-0017); "New report".
+- **2.6 Report detail view** (UC-005/UC-001; ADR-0019) — routes `/report` (new,
+  transient) + `/report/{id}`. Editable in `DRAFT`/`REJECTED` (inline **Grid row
+  editor**, Binder validation, live **net/VAT/gross** totals via Signals,
+  ADR-0015), read-only in `SUBMITTED`/`APPROVED`; Save/Submit; Delete only in
+  `DRAFT`. `REJECTED`-editing + rejection-comment display wire in Phase 5.
+  *Provisional:* inline Grid editor + ComboBox + Binder + Signals is friction-
+  prone — expect Vaadin findings (F-004).
+- **2.7 Domain unit tests** — state machine + guards (layer 1, DB-free,
+  ADR-0012): submit-empty rejection, edit-after-submit rejection, delete-guard,
+  status-history append, VAT/total derivation.
 
 ## Phase 3 — Receipts (UC-001 receipt image)
 Goal: attach and view a receipt on a line.
