@@ -124,6 +124,48 @@ Deployment/Observability · UX-spec
 - Owner / next step: open `/actuator/health` (0.8) and wire
   `VaadinSecurityConfigurer` + route/method security (1.4).
 
+### F-007 — Spring Boot 4 modular auto-config: Flyway silently doesn't run, actuator/test classes relocated
+- Date: 2026-07-09
+- Area: Tooling/Template
+- Severity: Medium
+- Task being attempted: Wiring the Flyway baseline, health-probe security, and
+  the Testcontainers acceptance test (Phase 0.3, ADR-0005/0012/0013).
+- Expected vs actual: Spring Boot 4.0 split the monolithic
+  `spring-boot-autoconfigure` into per-technology modules, and the starters no
+  longer pull every autoconfig transitively. Two concrete bites:
+  1. **Flyway ran nowhere.** `flyway-core` + `flyway-database-postgresql` were on
+     the classpath (Phase 0.2), but the JPA starter no longer brings Flyway's
+     autoconfiguration, which now lives in a separate `spring-boot-flyway`
+     module. The result is *silent*: no `Flyway` bean, no migration, and the
+     context still boots because there are no entities for `ddl-auto=validate` to
+     check — so "app starts fine" masks "schema was never migrated". Only the
+     acceptance test (no `flyway_schema_history`, no `Flyway` bean to autowire)
+     surfaced it.
+  2. **Classes relocated across new modules.** `EndpointRequest` →
+     `org.springframework.boot.security.autoconfigure.actuate.web.servlet`
+     (module `spring-boot-security`); `HealthEndpoint` →
+     `org.springframework.boot.health.actuate.endpoint` (module
+     `spring-boot-health`); `@AutoConfigureMockMvc` moved to module
+     `spring-boot-webmvc-test`, which `spring-boot-starter-test` does **not** pull.
+- Workaround used: Added `spring-boot-flyway` explicitly. Used the new package
+  coordinates for `EndpointRequest`/`HealthEndpoint`. Avoided `@AutoConfigureMockMvc`
+  (module absent) by building `MockMvc` by hand from the `WebApplicationContext`
+  plus the `springSecurityFilterChain` `FilterChainProxy` (both on the `spring-test`
+  classpath) — this exercises the real security filter chain without adding a
+  test dependency.
+- Evidence: `NoSuchBeanDefinitionException: ... org.flywaydb.core.Flyway`;
+  after the fix, boot log `Migrating schema "public" to version "1 - init"` /
+  `now at version v1`; `FoundationAcceptanceTest` green (3/3).
+- Impact: The most dangerous failure mode is #1 — a missing autoconfig module
+  fails open (no error, no migration) rather than closed. Any Boot 4 phase that
+  assumes "starter X ⇒ autoconfig X" (like pre-4 muscle memory / copied snippets)
+  can ship a broken foundation that still starts. An integration test that
+  actually asserts the behaviour is the only reliable guard.
+- Suggested Vaadin/product improvement: n/a (Spring Boot 4 ecosystem change);
+  worth a note in project onboarding that Boot 4 autoconfig is opt-in per module.
+- Owner / next step: none — resolved in Phase 0.3. Watch for the same fail-open
+  pattern when later phases add tech that needs its own `spring-boot-*` module.
+
 ### F-004 — Inline Grid row editor + ComboBox + Binder + Signals (provisional)
 - Date: 2026-07-09
 - Area: Vaadin
