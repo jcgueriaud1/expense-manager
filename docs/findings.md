@@ -185,3 +185,33 @@ Deployment/Observability · UX-spec
 - Suggested Vaadin/product improvement: TBD from findings during build.
 - Owner / next step: capture concrete friction (prompts, code, docs gaps) while
   implementing 2.6.
+
+### F-008 — Auto-menu shell was smooth; UI unit test couldn't reuse the integration base
+- Date: 2026-07-09
+- Area: Vaadin · Verification
+- Severity: Low
+- Task being attempted: Phase 0.4 base UI shell (#7) — Aura `MainLayout` with a
+  `SideNav` auto-generated from `@Menu` via `MenuConfiguration`, `EmptyState`,
+  and global 404 / uncaught-exception views (`HasErrorParameter`).
+- Expected vs actual: The core shell was frictionless — `@Layout` + `AppLayout` +
+  `MenuConfiguration.getMenuEntries()` produced the security-filterable side nav
+  exactly as documented, and `RouteNotFoundError` / `HasErrorParameter` gave the
+  two error surfaces with no surprises. The only snag was on the *test* side:
+  `SpringBrowserlessTest` (Vaadin's browserless UI tester) must be the test's
+  superclass, but so must `AbstractIntegrationTest` (our singleton-Testcontainers
+  base) — Java's single inheritance forces one or the other.
+- Workaround used: Duplicated the `@ServiceConnection` singleton
+  `PostgreSQLContainer` static setup into `NavigationShellUiTest`. Testcontainers
+  reuse means it shares the same Docker container, so the cost is a few lines of
+  duplicated boilerplate, not a second database.
+- Evidence: `NavigationShellUiTest` (3 green UI tests); `MainLayout`,
+  `NotFoundView`, `ErrorView` in `base/ui/`.
+- Impact: Low, but every future UI unit test faces the same choice. Worth a
+  shared composition helper (e.g. a `@TestConfiguration` or a JUnit extension
+  that contributes the container) so UI tests and integration tests can share
+  the datasource wiring without an inheritance clash.
+- Suggested Vaadin/product improvement: `browserless-test-spring` could offer a
+  composable (extension-based) entry point rather than a mandatory base class,
+  so projects with their own test base aren't forced to choose.
+- Owner / next step: revisit when the second UI unit test lands — extract the
+  container wiring into a shared JUnit extension if the duplication spreads.
