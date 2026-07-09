@@ -75,6 +75,14 @@
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-database-postgresql</artifactId>
         </dependency>
+        <!-- Spring Boot 4 modularised the auto-configuration: the data-jpa starter no
+             longer pulls Flyway's autoconfig transitively, so without this module the
+             flyway-core jars are present but migrations never run (the context still
+             boots because there are no entities to validate yet). See F-007. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-flyway</artifactId>
+        </dependency>
 
         <!-- Validation & Actuator (ADR-0013) -->
         <dependency>
