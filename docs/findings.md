@@ -215,3 +215,33 @@ Deployment/Observability · UX-spec
   so projects with their own test base aren't forced to choose.
 - Owner / next step: revisit when the second UI unit test lands — extract the
   container wiring into a shared JUnit extension if the duplication spreads.
+
+### F-009 — `@Push` websocket threads don't inherit the request correlation id
+- Date: 2026-07-09
+- Area: Deployment/Observability
+- Severity: Low
+- Task being attempted: Phase 0.5 structured JSON logging & request correlation
+  id (#8) — a lightweight `OncePerRequestFilter` (`RequestCorrelationFilter`)
+  that stamps an `X-Request-Id` into the MDC so every log line for one user
+  action shares an id, with no Micrometer/OTel tracing stack in V1.
+- Expected vs actual: Expected the id to be present on all log lines produced
+  while handling a user action. Actual: it is present for ordinary HTTP and
+  Vaadin UIDL requests (which pass the servlet filter), but **not** for `@Push`
+  messages. Server pushes run on Atmosphere websocket threads that never enter
+  the servlet filter chain, so they inherit no MDC and their log lines print an
+  empty `[]` correlation slot.
+- Workaround used: Accepted and documented, not worked around (per ADR-0013 and
+  the issue). Spring Boot 4's built-in structured logging
+  (`logging.structured.format.console=ecs`) covers staging/prod with no
+  logstash encoder or custom `logback-spring.xml`; `local` stays human-readable
+  with `logging.pattern.correlation=[%X{requestId:-}]`.
+- Evidence: `RequestCorrelationFilter` javadoc; `application.properties`
+  (`logging.pattern.correlation`); `RequestCorrelationFilterTest`.
+- Impact: Log lines emitted from push handlers can't be tied back to the
+  originating user action by id alone. Low for V1 (single service, push is a
+  minor share of logging); grows if push-driven flows expand.
+- Suggested Vaadin/product improvement: a documented hook to propagate MDC (or
+  a request-scoped context) onto the Atmosphere push thread would close the gap
+  without a full tracing dependency.
+- Owner / next step: upgrade path is Micrometer Tracing if/when a second service
+  or richer correlation is needed; revisit then.
