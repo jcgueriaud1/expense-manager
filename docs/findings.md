@@ -516,3 +516,38 @@ Deployment/Observability · UX-spec
 - Suggested Vaadin/product improvement: none — this is Spring proxying, not
   Vaadin; worth a note in any Vaadin OAuth provisioning example that shows a
   custom `OidcUserService`.
+
+### F-017 — `ButtonVariant.LUMO_*` has theme-agnostic replacements in Vaadin 25 (supersedes the F-013 "those stay" note)
+- Date: 2026-07-10
+- Area: Vaadin / Docs
+- Severity: Low
+- Task being attempted: Removing every Lumo reference from the app so only Aura
+  is used — including the `ButtonVariant.LUMO_*` enum constants that F-013 and
+  `CLAUDE.md` had said should stay as "the correct Java API".
+- Expected vs actual: F-013 concluded the `LUMO_*` enum constants were unavoidable
+  API (unlike the `--lumo-*` CSS tokens). Actual: the Vaadin 25.2 `ButtonVariant`
+  enum now carries **theme-agnostic** constants — `PRIMARY`, `TERTIARY`, `ERROR`,
+  `SUCCESS`, `WARNING`, `SMALL`, `LARGE` — alongside the legacy `LUMO_*` (and a
+  few `AURA_*`) ones; the current Button docs use the bare names. Each bare
+  constant emits the same `theme="…"` attribute as its `LUMO_` twin (verified by
+  decompiling the enum), so the swap is behaviour-preserving. Caveat: three
+  variants — `tertiary-inline`, `contrast`, `icon` — are **Lumo-only** (per the
+  Button styling matrix, "Supported by: Lumo") and have no Aura rendering, so
+  those usages were collapsed to plain `TERTIARY`.
+- Workaround used: Replaced all `ButtonVariant.LUMO_*` with the theme-agnostic
+  constants across `MainLayout` and the report prototypes; `LUMO_TERTIARY_INLINE`
+  / `LUMO_CONTRAST` → `TERTIARY`. Also fixed two `var(--lumo-*)` inline styles the
+  F-013 sweep missed because they landed later on the Phase 1.3 branch
+  (`--lumo-error-text-color` → `--aura-red-text`, `--lumo-secondary-text-color` →
+  `--vaadin-text-color-secondary`). Updated `CLAUDE.md` to prescribe the bare
+  constants and flag the Lumo-only variants.
+- Evidence: `base/ui/MainLayout.java`, `report/prototype/*.java`,
+  `security/ui/LoginView.java`; `ButtonVariant` (25.2.1) decompilation showing
+  bare + `LUMO_` + `AURA_` constants; Button styling doc variant-support matrix.
+- Impact: The codebase is now Lumo-free in functional code (only historical
+  finding/NOTES prose still names Lumo, to explain the rationale). Design tokens
+  and theme variants are consistently Aura/theme-agnostic.
+- Suggested Vaadin/product improvement: mark the `LUMO_*` `ButtonVariant`
+  constants `@Deprecated` in favour of the theme-agnostic names, and have the
+  styling docs state the bare names are the default so teams don't reach for
+  `LUMO_*` out of habit.

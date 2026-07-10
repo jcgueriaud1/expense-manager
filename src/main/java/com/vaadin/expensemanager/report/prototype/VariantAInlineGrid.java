@@ -134,7 +134,7 @@ final class VariantAInlineGrid extends VerticalLayout {
 
     private HorizontalLayout rowActions(LineDraft line, Editor<LineDraft> editor) {
         var edit = new Button(VaadinIcon.PENCIL.create());
-        edit.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE);
+        edit.addThemeVariants(ButtonVariant.TERTIARY);
         edit.addClickListener(e -> {
             if (editor.isOpen()) {
                 editor.cancel();
@@ -142,7 +142,7 @@ final class VariantAInlineGrid extends VerticalLayout {
             editor.editItem(line);
         });
         var del = new Button(VaadinIcon.TRASH.create());
-        del.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE, ButtonVariant.LUMO_ERROR);
+        del.addThemeVariants(ButtonVariant.TERTIARY, ButtonVariant.ERROR);
         del.addClickListener(e -> {
             report.lines.remove(line);
             grid.getDataProvider().refreshAll();
@@ -150,9 +150,9 @@ final class VariantAInlineGrid extends VerticalLayout {
         });
 
         var save = new Button("Save", e -> editor.save());
-        save.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_SMALL);
+        save.addThemeVariants(ButtonVariant.PRIMARY, ButtonVariant.SMALL);
         var cancel = new Button("Cancel", e -> editor.cancel());
-        cancel.addThemeVariants(ButtonVariant.LUMO_TERTIARY, ButtonVariant.LUMO_SMALL);
+        cancel.addThemeVariants(ButtonVariant.TERTIARY, ButtonVariant.SMALL);
 
         var row = new HorizontalLayout();
         row.setSpacing(false);
@@ -172,10 +172,10 @@ final class VariantAInlineGrid extends VerticalLayout {
             grid.getDataProvider().refreshAll();
             grid.getEditor().editItem(line);
         });
-        addLine.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+        addLine.addThemeVariants(ButtonVariant.TERTIARY);
 
         var save = new Button("Save report");
-        save.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        save.addThemeVariants(ButtonVariant.PRIMARY);
         var submit = new Button("Submit", VaadinIcon.PAPERPLANE.create());
         submit.setEnabled(!report.lines.isEmpty());
 

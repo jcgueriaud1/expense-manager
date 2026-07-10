@@ -143,7 +143,7 @@ final class VariantCCardDialog extends VerticalLayout {
             renderCards();
             refreshTotals();
         });
-        del.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE, ButtonVariant.LUMO_ERROR);
+        del.addThemeVariants(ButtonVariant.TERTIARY, ButtonVariant.ERROR);
 
         var body = new HorizontalLayout(left, amounts, del);
         body.setWidthFull();
@@ -166,7 +166,7 @@ final class VariantCCardDialog extends VerticalLayout {
     private Button addButton() {
         var add = new Button("Add expense", VaadinIcon.PLUS.create(),
                 e -> openEditor(new LineDraft(), true));
-        add.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        add.addThemeVariants(ButtonVariant.PRIMARY);
         add.setWidthFull();
         return add;
     }
@@ -211,7 +211,7 @@ final class VariantCCardDialog extends VerticalLayout {
             refreshTotals();
             dialog.close();
         });
-        save.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        save.addThemeVariants(ButtonVariant.PRIMARY);
         var cancel = new Button("Cancel", e -> dialog.close());
         dialog.getFooter().add(cancel, save);
 
@@ -227,13 +227,13 @@ final class VariantCCardDialog extends VerticalLayout {
 
     private Button saveReport() {
         var b = new Button("Save");
-        b.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+        b.addThemeVariants(ButtonVariant.TERTIARY);
         return b;
     }
 
     private Button submit() {
         var b = new Button("Submit", VaadinIcon.PAPERPLANE.create());
-        b.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        b.addThemeVariants(ButtonVariant.PRIMARY);
         b.setEnabled(!report.lines.isEmpty());
         return b;
     }

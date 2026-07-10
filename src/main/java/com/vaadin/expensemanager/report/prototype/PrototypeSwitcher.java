@@ -33,8 +33,10 @@ final class PrototypeSwitcher extends HorizontalLayout {
 
         var prev = new Button(VaadinIcon.CHEVRON_LEFT.create());
         var next = new Button(VaadinIcon.CHEVRON_RIGHT.create());
-        prev.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE, ButtonVariant.LUMO_CONTRAST);
-        next.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE, ButtonVariant.LUMO_CONTRAST);
+        // Aura has no tertiary-inline or contrast variant (both Lumo-only), so
+        // these icon-only nav buttons use the plain Aura tertiary variant.
+        prev.addThemeVariants(ButtonVariant.TERTIARY);
+        next.addThemeVariants(ButtonVariant.TERTIARY);
 
         int size = variants.size();
         String prevKey = variants.get((idx - 1 + size) % size).key();

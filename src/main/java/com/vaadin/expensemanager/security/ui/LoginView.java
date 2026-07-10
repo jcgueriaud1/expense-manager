@@ -60,7 +60,7 @@ public class LoginView extends VerticalLayout implements BeforeEnterObserver {
         setAlignItems(Alignment.CENTER);
 
         errorMessage.setVisible(false);
-        errorMessage.getStyle().setColor("var(--lumo-error-text-color)");
+        errorMessage.getStyle().setColor("var(--aura-red-text)");
 
         if (oauthMode) {
             buildGoogleSignIn();
@@ -81,7 +81,7 @@ public class LoginView extends VerticalLayout implements BeforeEnterObserver {
         googleLogin.setRouterIgnore(true);
 
         var hint = new Paragraph("Sign in with your vaadin.com Google account.");
-        hint.getStyle().setColor("var(--lumo-secondary-text-color)");
+        hint.getStyle().setColor("var(--vaadin-text-color-secondary)");
 
         add(title, errorMessage, googleLogin, hint);
         setHorizontalComponentAlignment(FlexComponent.Alignment.CENTER,

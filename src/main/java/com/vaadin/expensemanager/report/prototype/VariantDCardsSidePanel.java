@@ -94,7 +94,7 @@ final class VariantDCardsSidePanel extends VerticalLayout {
             renderCards();
             edit(line);
         });
-        add.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        add.addThemeVariants(ButtonVariant.PRIMARY);
         add.setWidthFull();
 
         var col = new VerticalLayout(stickyTotals(), cardList, add);
@@ -192,9 +192,9 @@ final class VariantDCardsSidePanel extends VerticalLayout {
         form.setResponsiveSteps(new FormLayout.ResponsiveStep("0", 1));
 
         applyButton.addClickListener(e -> applyToCurrent());
-        applyButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        applyButton.addThemeVariants(ButtonVariant.PRIMARY);
         removeButton.addClickListener(e -> removeCurrent());
-        removeButton.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_TERTIARY);
+        removeButton.addThemeVariants(ButtonVariant.ERROR, ButtonVariant.TERTIARY);
 
         var panel = new VerticalLayout(formHeading, form,
                 new HorizontalLayout(applyButton, removeButton));
@@ -271,13 +271,13 @@ final class VariantDCardsSidePanel extends VerticalLayout {
 
     private Button saveReport() {
         var b = new Button("Save");
-        b.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+        b.addThemeVariants(ButtonVariant.TERTIARY);
         return b;
     }
 
     private Button submit() {
         var b = new Button("Submit", VaadinIcon.PAPERPLANE.create());
-        b.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        b.addThemeVariants(ButtonVariant.PRIMARY);
         b.setEnabled(!report.lines.isEmpty());
         return b;
     }

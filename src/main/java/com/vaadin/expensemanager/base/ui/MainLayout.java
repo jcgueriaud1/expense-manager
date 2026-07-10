@@ -73,7 +73,7 @@ public class MainLayout extends AppLayout {
 
         var logout = new Button("Sign out", new Icon(VaadinIcon.SIGN_OUT),
                 event -> authenticationContext.logout());
-        logout.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+        logout.addThemeVariants(ButtonVariant.TERTIARY);
 
         var bar = new HorizontalLayout(userName, logout);
         bar.setAlignItems(FlexComponent.Alignment.CENTER);
