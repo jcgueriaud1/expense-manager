@@ -556,36 +556,48 @@ Deployment/Observability · UX-spec
   styling docs state the bare names are the default so teams don't reach for
   `LUMO_*` out of habit.
 
-### F-018 — Grid cell text is invisible to the browserless view tester
-- Date: 2026-07-10
+### F-018 — `getTextRecursively()` doesn't render grid cells; use `GridTester.getCellText`
+- Date: 2026-07-10 (revised 2026-07-10 after re-checking the API)
 - Area: Verification
-- Severity: Low
+- Severity: Low → **not a product gap** (corrected below)
 - Task being attempted: Phase 2.1 (#22) — a layer-3 view test asserting the
-  ADMIN-only reference-data settings screen renders the Flyway seed (VAT rates
-  and expense types) in its two `Grid`s.
+  ADMIN-only reference-data settings screens render the Flyway seed (VAT rates
+  and expense types) in their `Grid`s, and driving the add/edit/reorder/deactivate
+  actions through the grid's per-row action buttons.
 - Expected vs actual: Expected `view.getElement().getTextRecursively()` to
   contain the seeded cell values (e.g. "25.5 %", "Restaurant/meals"), as it does
-  for plain `H2`/`Paragraph` text. Actual: the grids' cell content is **absent**
-  from the server-side element text — the browserless tester
-  (`SpringBrowserlessTest`) doesn't render `Grid` rows, which stream to the
-  client via the data provider and are materialised browser-side. The heading and
-  intro paragraph were present; every row was missing, so the naive text
+  for plain `H2`/`Paragraph` text. Actual: grid cell content is **absent** from
+  the server-side element text — `Grid` rows stream via the data provider and are
+  materialised through renderers, not as child elements — so the naive text
   assertion failed even though the grids were correctly populated.
-- Workaround used: Assert on the grids' loaded **model** instead of rendered
-  text — `$(Grid.class).all()` then
-  `grid.getGenericDataView().getItems()` — checking the seeded items are present.
-  This verifies the view queried the service and fed the grid, which is the real
-  contract; pixel-level cell rendering is out of scope for a browserless test.
-  Confirmed the actual cell rendering, dialog/error-summary, reorder-boundary
-  disabling, and 360px reflow by driving the running app with Playwright MCP.
-- Evidence: `reference/ui/ReferenceDataViewUiTest` (item-model assertion);
-  the initial red run showed the seeded values missing from `getTextRecursively()`.
-- Impact: Any view test that "reads the grid" must assert the data-view items,
-  not element text — a trap for AI agents and copied snippets that reach for
-  `getTextRecursively()` by reflex. Generalises F-008/F-010: the browserless tier
-  verifies wiring and access control, not client-rendered output.
-- Suggested Vaadin/product improvement: `browserless-test-spring` could expose a
-  helper to read a `Grid`'s rendered cell values (or document that grid content
-  is model-only in this tier) so the gap is discoverable without a failing test.
-- Owner / next step: none — pattern captured; reuse the data-view assertion for
-  later grid-backed views (My Reports, approval queue).
+- **Correction (original entry was wrong).** The initial workaround asserted the
+  grid's loaded *model* (`$(Grid.class)` → `getGenericDataView().getItems()`) and
+  proposed a missing-helper product improvement. Both were mistaken: the
+  browserless tier **does** render grid cells, and the helper already exists.
+  `test(grid)` / the `findGrid(T.class)` locator return a `GridTester` with
+  `getCellText(row, col)` (rendered text, incl. `ComponentRenderer`/value
+  providers), `getCellComponent(row, col)`, `size()`, and `getRow(int)`. The
+  earlier claim that grid content is "model-only in this tier" was a
+  `getTextRecursively()`-by-reflex trap, not a tier limitation.
+- Resolution used: Assert rendered cells with
+  `findGrid(VatRateDto.class).getCellText(row, col)`. For the per-row **action
+  buttons** (Edit / Move / Deactivate) — which live inside a component column and
+  so are *not* reachable from a UI-wide `findButton()` — scope the search to the
+  cell: `getCellComponent(row, actionsCol)` then `find(Button.class, cell)`
+  (helper `rowActionButton(..)` in `AbstractReferenceDataViewUiTest`). Editor
+  dialog fields/buttons and the view header's Add button are in the normal tree
+  and reachable directly via `findButton()` / `findBigDecimalField()` /
+  `findComboBox(..)`.
+- Evidence: `reference/ui/VatRateViewUiTest` and `ExpenseTypeViewUiTest`
+  (17 green) drive full CRUD + active-options filtering and read every assertion
+  from `getCellText` — no Playwright fallback needed for cell content.
+- Impact: The real trap is only `getTextRecursively()`; the browserless grid API
+  covers rendered cells and cell components fine. Two things that ARE tier-real:
+  (1) component-column contents need cell-scoped `find`, not a UI-wide query;
+  (2) `getTextRecursively()` still isn't a grid-reading tool — reach for the
+  `GridTester` instead.
+- Suggested Vaadin/product improvement: none — the helper exists and is
+  documented (`flow/testing/browserless/component-testers`). Optional: a doc note
+  that component-column children aren't matched by a UI-wide `find()`.
+- Owner / next step: none — corrected pattern captured; reuse `getCellText` /
+  `rowActionButton` for later grid-backed views (My Reports, approval queue).
