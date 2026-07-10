@@ -30,7 +30,7 @@ the domain sharpens.
   (inactive types are hidden from new lines but preserved on historical ones),
   and a **required default VAT rate**. Replaces the plan's earlier flat
   "Category" list (plan 2.2).
-- **VAT Rate** — admin-editable config: a rate value (e.g. 25.5, 14, 10, 0), a
+- **VAT Rate** — admin-editable config: a rate value (2026 seed: 25.5, 13.5, 10, 0), a
   display **order**, and an **active** flag ("old rate" = inactive, hidden from
   new lines but kept on historical ones so past reports retain their original
   rate). Seeded from the Finnish (Verohallinto) rates.

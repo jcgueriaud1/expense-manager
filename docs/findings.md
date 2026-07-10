@@ -76,8 +76,12 @@ Deployment/Observability · UX-spec
   change maintenance burden; per-year versioning would be over-engineering given
   the FK-preserves-history approach.
 - Suggested Vaadin/product improvement: n/a (domain/spec finding).
-- Owner / next step: verify exact seed values against the Verohallinto decision
-  for the target year before the V__ migration ships.
+- Owner / next step: **Resolved (2026-07-10, Phase 2.1 #22).** V3 migration seeds
+  the 2026 figures **25.5 / 13.5 / 10 / 0** (general 25.5 %; reduced 13.5 %, i.e.
+  the 14 % → 13.5 % change of 1 Jan 2026; reduced 10 %; zero-rated), with the six
+  expense types mapped to those rates. Values held authoritative per the issue
+  author (Finnish tax domain). Rate changes ship as deactivate-old + add-new, never
+  an in-place value edit, so filed lines keep their original rate (ADR-0018).
 
 ### F-005 — Testcontainers 2.x renamed the Maven modules (`testcontainers-*` prefix)
 - Date: 2026-07-09
@@ -551,3 +555,37 @@ Deployment/Observability · UX-spec
   constants `@Deprecated` in favour of the theme-agnostic names, and have the
   styling docs state the bare names are the default so teams don't reach for
   `LUMO_*` out of habit.
+
+### F-018 — Grid cell text is invisible to the browserless view tester
+- Date: 2026-07-10
+- Area: Verification
+- Severity: Low
+- Task being attempted: Phase 2.1 (#22) — a layer-3 view test asserting the
+  ADMIN-only reference-data settings screen renders the Flyway seed (VAT rates
+  and expense types) in its two `Grid`s.
+- Expected vs actual: Expected `view.getElement().getTextRecursively()` to
+  contain the seeded cell values (e.g. "25.5 %", "Restaurant/meals"), as it does
+  for plain `H2`/`Paragraph` text. Actual: the grids' cell content is **absent**
+  from the server-side element text — the browserless tester
+  (`SpringBrowserlessTest`) doesn't render `Grid` rows, which stream to the
+  client via the data provider and are materialised browser-side. The heading and
+  intro paragraph were present; every row was missing, so the naive text
+  assertion failed even though the grids were correctly populated.
+- Workaround used: Assert on the grids' loaded **model** instead of rendered
+  text — `$(Grid.class).all()` then
+  `grid.getGenericDataView().getItems()` — checking the seeded items are present.
+  This verifies the view queried the service and fed the grid, which is the real
+  contract; pixel-level cell rendering is out of scope for a browserless test.
+  Confirmed the actual cell rendering, dialog/error-summary, reorder-boundary
+  disabling, and 360px reflow by driving the running app with Playwright MCP.
+- Evidence: `reference/ui/ReferenceDataViewUiTest` (item-model assertion);
+  the initial red run showed the seeded values missing from `getTextRecursively()`.
+- Impact: Any view test that "reads the grid" must assert the data-view items,
+  not element text — a trap for AI agents and copied snippets that reach for
+  `getTextRecursively()` by reflex. Generalises F-008/F-010: the browserless tier
+  verifies wiring and access control, not client-rendered output.
+- Suggested Vaadin/product improvement: `browserless-test-spring` could expose a
+  helper to read a `Grid`'s rendered cell values (or document that grid content
+  is model-only in this tier) so the gap is discoverable without a failing test.
+- Owner / next step: none — pattern captured; reuse the data-view assertion for
+  later grid-backed views (My Reports, approval queue).
