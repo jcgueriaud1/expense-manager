@@ -43,7 +43,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
 
         // The DatePicker tester refuses to *set* an invalid value (null on a
         // required field), so clear the value straight on the component to model
-        // a user emptying the field, then save (finding F-020).
+        // a user emptying the field, then save (finding F-021).
         $(DatePicker.class).first().clear();
         findButton().withText("Save").click();
 

@@ -40,7 +40,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * {@code TestSecurityContextHolder}'s own strategy instance, which — once a
  * browserless test context has installed Vaadin's session-aware strategy
  * globally — is no longer the one the app reads, so the principal is invisible
- * to the service (finding F-019). Writing and reading through the same global
+ * to the service (finding F-020). Writing and reading through the same global
  * holder here is order-independent.
  */
 class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
@@ -66,7 +66,7 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
         // AuthenticationContext reads the global static holder. In the multi-context
         // test JVM the two can be different instances (a later browserless context
         // overwrites the static), so pin the static to this context's bean, then
-        // write the authentication through it — both readers now agree (F-019).
+        // write the authentication through it — both readers now agree (F-020).
         SecurityContextHolder.setContextHolderStrategy(securityContextHolderStrategy);
         var principal = userDetailsService.loadUserByUsername(
                 LocalUserSeeder.PLAIN_USER_EMAIL);

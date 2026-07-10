@@ -99,11 +99,28 @@ domain terms in [glossary.md](glossary.md).
   status-history append, VAT/total derivation.
 
 ## Phase 3 — Receipts (UC-001 receipt image)
-Goal: attach and view a receipt on a line.
+Goal: attach and view a receipt on a line. Design grilled into ADR-0021 (which
+refines ADR-0009 and retires ADR-0019's "save before attaching"); domain term in
+[glossary.md](glossary.md).
 
-- **3.1 Receipt storage** — bytea column, size/type validation (ADR-0009).
-- **3.2 Upload** — `UploadHandler`, not `StreamResource` (F-002).
-- **3.3 View/download** — `DownloadHandler` streaming service method.
+- **3.1 Receipt entity + migration** — **separate `receipt` table** (bigint PK,
+  audit timestamps), `LAZY` one-to-one owned by the receipt (FK to
+  `expense_line`); **0..1 per line, optional**. Columns: `content_type` (not
+  null), `filename`, `size_bytes`, `bytea` (ADR-0009, ADR-0021, ADR-0016).
+- **3.2 Upload** — `UploadHandler`, not `StreamResource` (F-002). Control is
+  **never gated/disabled**; attachable even on an unsaved report — bytes buffered
+  in the `ReportDetailDto` working copy and persisted on `create`/`update`
+  (overrides ADR-0019). Validate at upload time: allow-list **JPEG/PNG/PDF** by
+  **server-side magic-byte** check (store the sniffed `content_type`, not the
+  browser's), **10 MB** cap aligned across Vaadin + Spring multipart
+  (`max-request-size` ~12 MB) + proxy. Replace = overwrite (no history); explicit
+  remove; mutations only in `DRAFT`/`REJECTED`. HEIC excluded (F-019).
+- **3.3 View/download** — `DownloadHandler` streaming service method reading a
+  **dedicated projection** (only the one receipt's `bytea` by id), guarded by the
+  owning-report authorization check (ADR-0008); served with `Content-Disposition`
+  + `X-Content-Type-Options: nosniff`. **Bytes never cross a DTO** — the UI holds
+  a receipt *summary* only. Inline image preview (thumbnail → dialog); PDF
+  opens/downloads; unsaved image previews from buffered bytes (ADR-0021).
 
 ## Phase 4 — Finnish allowances (UC-001 trip/allowance)
 Goal: trip inputs generate allowance lines; rates are editable config.

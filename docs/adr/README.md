@@ -14,7 +14,7 @@ Status values: `Accepted`, `Superseded by ADR-XXXX`, `Deprecated`.
 | [0006](0006-rich-domain-aggregate.md) | Rich domain, ExpenseReport aggregate root | Accepted |
 | [0007](0007-google-oauth-provisioning.md) | Google OAuth2 + domain-gated auto-provisioning | Accepted |
 | [0008](0008-route-and-method-security.md) | Route + method security; invariants in domain | Accepted |
-| [0009](0009-receipts-as-blobs.md) | Receipts stored as Postgres bytea | Accepted |
+| [0009](0009-receipts-as-blobs.md) | Receipts stored as Postgres bytea | Accepted (refined by 0020) |
 | [0010](0010-money-eur-bigdecimal.md) | EUR-only, BigDecimal scale 2, no Money VO | Accepted |
 | [0011](0011-optimistic-locking.md) | Optimistic locking (@Version) on the report | Accepted |
 | [0012](0012-testing-strategy.md) | Test pyramid layers 1–3, OAuth form-stub | Accepted |
@@ -24,7 +24,8 @@ Status values: `Accepted`, `Superseded by ADR-XXXX`, `Deprecated`.
 | [0016](0016-persistence-baseline-pk-audit.md) | Bigint PKs, app-side audit timestamps, minimal V1 baseline | Accepted |
 | [0017](0017-base-ui-shell-and-ux-states.md) | Base UI shell: auto-menu nav + shared UX-state primitives | Accepted |
 | [0018](0018-expense-type-and-vat-config.md) | Expense Type & VAT Rate as editable reference config | Accepted |
-| [0019](0019-report-save-model.md) | Report edit/save: whole-aggregate, in-memory until first save | Accepted |
+| [0019](0019-report-save-model.md) | Report edit/save: whole-aggregate, in-memory until first save | Accepted (receipt consequence retired by 0021) |
 | [0020](0020-accessible-and-mobile-friendly.md) | Accessible (WCAG 2.1 AA) and mobile-friendly baseline | Accepted |
+| [0021](0021-receipt-entity-upload-serving.md) | Receipt: separate entity, buffered upload, summary-only DTO | Accepted |
 
 See also: [../glossary.md](../glossary.md) · [../plan.md](../plan.md) · [../findings.md](../findings.md)
