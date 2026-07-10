@@ -10,10 +10,11 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
 
 /**
- * Vaadin route security + real Google OAuth2 login for {@code staging}/
- * {@code prod} (ADR-0007, ADR-0008, ADR-0013).
+ * Vaadin route security + real Google OAuth2 login for the Google-backed
+ * profiles {@code staging}/{@code prod}/{@code vherd} (ADR-0007, ADR-0008,
+ * ADR-0013).
  *
- * <p>The {@code staging}/{@code prod} counterpart of {@link LocalLoginSecurityConfig}:
+ * <p>The Google-login counterpart of {@link LocalLoginSecurityConfig}:
  * instead of the form-stub it wires Spring's OAuth2 login against the {@code google}
  * client registration, with {@link ProvisioningOidcUserService} as the
  * {@code OidcUserService} so the domain gate + claim/create runs at login and the
@@ -28,7 +29,7 @@ import org.springframework.security.web.SecurityFilterChain;
  * still renders; the health-probe chain ({@code @Order(1)}) keeps precedence.
  */
 @Configuration
-@Profile({"staging", "prod"})
+@Profile({"staging", "prod", "vherd"})
 public class OAuthLoginSecurityConfig {
 
     @Bean

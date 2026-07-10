@@ -44,11 +44,16 @@ import org.springframework.core.env.Environment;
 public class LoginView extends VerticalLayout implements BeforeEnterObserver {
 
     private final boolean oauthMode;
+    private final String contextPath;
     private final LoginForm loginForm = new LoginForm();
     private final Paragraph errorMessage = new Paragraph();
 
     public LoginView(Environment environment) {
-        this.oauthMode = environment.matchesProfiles("staging", "prod");
+        this.oauthMode = environment.matchesProfiles("staging", "prod", "vherd");
+        // Empty at the root (staging/prod), "/expense-manager" under a sub-path
+        // deployment (vherd) — so the Google authorize link below stays correct
+        // whether or not the app runs under a servlet context path.
+        this.contextPath = environment.getProperty("server.servlet.context-path", "");
 
         setSizeFull();
         setJustifyContentMode(JustifyContentMode.CENTER);
@@ -69,7 +74,9 @@ public class LoginView extends VerticalLayout implements BeforeEnterObserver {
 
         // A native <a href> (router-ignored) so the click reaches Spring's
         // authorization endpoint as a full navigation, not client-side routing.
-        var googleLogin = new Anchor("/oauth2/authorization/google",
+        // Prefixed with the context path so it resolves correctly under a
+        // sub-path deployment (e.g. /expense-manager/oauth2/authorization/google).
+        var googleLogin = new Anchor(contextPath + "/oauth2/authorization/google",
                 new Button("Sign in with Google"));
         googleLogin.setRouterIgnore(true);
 
