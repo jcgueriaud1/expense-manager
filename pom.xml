@@ -112,6 +112,12 @@
             <artifactId>browserless-test-spring</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- @WithUserDetails / @WithMockUser for browserless view-security tests (ADR-0012). -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
 
         <!-- Testcontainers Postgres for the integration test layer (harness wired in Phase 0.9, ADR-0004/0012).
              Testcontainers 2.x renamed the modules to the testcontainers-* prefix (F-005). -->

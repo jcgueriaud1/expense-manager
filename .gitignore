@@ -13,3 +13,6 @@ node_modules/
 src/main/frontend/generated/
 src/main/frontend/index.html
 vite.generated.ts
+
+# Playwright MCP scratch output
+.playwright-mcp/

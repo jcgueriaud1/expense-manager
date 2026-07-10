@@ -245,3 +245,65 @@ Deployment/Observability · UX-spec
   without a full tracing dependency.
 - Owner / next step: upgrade path is Micrometer Tracing if/when a second service
   or richer correlation is needed; revisit then.
+
+### F-010 — `LoginI18n.createDefault()` returns a null `Header`
+- Date: 2026-07-09
+- Area: Vaadin
+- Severity: Low
+- Task being attempted: Phase 1.1 (#9) local form-stub login — a public
+  `LoginView` hosting a `LoginForm`, customising its title/description via
+  `LoginI18n`.
+- Expected vs actual: Expected `LoginI18n.createDefault()` to return a fully
+  populated i18n object (the "default" name implies every sub-object is present,
+  and `getForm()` *is* populated). Actual: `getHeader()` returns `null`, so
+  `i18n.getHeader().setTitle(...)` throws `NullPointerException` in the view
+  constructor. Because the view is instantiated during navigation, the failure
+  surfaced only at runtime as the uncaught-exception `ErrorView` rendered inside
+  the shell at `/login` — not at compile time and not in the browserless tests
+  (which bypass the form POST and navigate authenticated).
+- Workaround used: Construct the header explicitly —
+  `var h = new LoginI18n.Header(); h.setTitle(...); i18n.setHeader(h);`.
+- Evidence: `security/ui/LoginView.java`; server log
+  `NullPointerException ... LoginI18n.getHeader() is null`.
+- Impact: Low once known; a five-minute trap. Notable that no test layer caught
+  it — the gap is that view *construction* on the real login path isn't
+  exercised by the browserless view tests (which authenticate via
+  `@WithUserDetails` and never render `LoginView`). Manual/Playwright run caught
+  it; worth a smoke test that navigates `/login` anonymously.
+- Suggested Vaadin/product improvement: `createDefault()` should populate
+  `Header` like it does `Form`, or the getter should never return null for the
+  "default" instance.
+- Owner / next step: add an anonymous `/login` render smoke test if the login
+  view grows more logic.
+
+### F-011 — Form-stub principal must carry production-identical authorities (expected)
+- Date: 2026-07-09
+- Area: Vaadin/Security
+- Severity: Low
+- Task being attempted: Phase 1.1 (#9) — wiring the `local`/`test` form-stub
+  login so its principal has the same authorities as the future Google OIDC
+  path (the friction the issue explicitly flagged as expected).
+- Expected vs actual: Anticipated (per the issue) that reconciling the two login
+  paths onto one authority model would be fiddly. Actual: it was smooth once a
+  shared `AppUserPrincipal` interface (id/email/name/roles) was introduced —
+  both `AppUserDetails` (form-stub) and the eventual OIDC principal implement it,
+  and `CurrentUserProvider` adapts either into the immutable `CurrentUser` record
+  with no per-call DB query. Authorities derive from the *local* stored roles
+  (`ROLE_USER`/`ROLE_ADMIN`), so `@RolesAllowed`/`@PreAuthorize` behave
+  identically regardless of login mechanism. The only real subtlety: the
+  form-stub has no per-user password (there is no password column) — every seeded
+  user authenticates against one shared dev password, encoded once, which the
+  `RoleHierarchy` bean then complements so an admin storing only `{ADMIN}` gains
+  USER access.
+- Workaround used: None needed; the `AppUserPrincipal` seam is the design, not a
+  workaround.
+- Evidence: `security/AppUserPrincipal.java`, `AppUserDetails.java`,
+  `LocalUserDetailsService.java`, `CurrentUserProvider.java`,
+  `MethodSecurityConfig.java` (RoleHierarchy); `MethodSecurityIntegrationTest`.
+- Impact: Positive — the shared-principal seam means Phase 1.2 (Google OAuth)
+  only has to build a second `AppUserPrincipal`; the dashboard, header, and
+  `CurrentUser` accessor are unchanged.
+- Suggested Vaadin/product improvement: none — this is Spring Security working as
+  intended once the principal contract is explicit.
+- Owner / next step: reuse `AppUserPrincipal` when the `OidcUserService` lands in
+  Phase 1.2.
