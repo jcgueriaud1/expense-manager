@@ -25,5 +25,6 @@ Status values: `Accepted`, `Superseded by ADR-XXXX`, `Deprecated`.
 | [0017](0017-base-ui-shell-and-ux-states.md) | Base UI shell: auto-menu nav + shared UX-state primitives | Accepted |
 | [0018](0018-expense-type-and-vat-config.md) | Expense Type & VAT Rate as editable reference config | Accepted |
 | [0019](0019-report-save-model.md) | Report edit/save: whole-aggregate, in-memory until first save | Accepted |
+| [0020](0020-accessible-and-mobile-friendly.md) | Accessible (WCAG 2.1 AA) and mobile-friendly baseline | Accepted |
 
 See also: [../glossary.md](../glossary.md) · [../plan.md](../plan.md) · [../findings.md](../findings.md)
