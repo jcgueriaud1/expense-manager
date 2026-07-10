@@ -27,8 +27,12 @@ CSS custom properties** — they are undefined under Aura, so `getStyle().set(..
 Aura has no `Npct` opacity scale (unlike Lumo's `--lumo-*-10pct`); derive
 variants with `color-mix(in srgb, var(--aura-red) 15%, transparent)`. Look up
 exact token names via the Vaadin docs MCP (`get_theme_css_properties theme=aura`).
-`ButtonVariant.LUMO_*` enum constants are the correct Java API and are unrelated
-to `--lumo-*` CSS tokens — those stay. See finding F-013.
+
+For component **theme variants**, use the theme-agnostic `ButtonVariant`
+constants — `PRIMARY`, `TERTIARY`, `ERROR`, `SUCCESS`, `WARNING`, `SMALL`,
+`LARGE` — **not** the legacy `LUMO_*` ones. The `tertiary-inline`, `contrast`,
+and `icon` variants are Lumo-only (no effect under Aura); use plain `TERTIARY`
+instead. See findings F-013 and F-017.
 
 ## Agent skills
 

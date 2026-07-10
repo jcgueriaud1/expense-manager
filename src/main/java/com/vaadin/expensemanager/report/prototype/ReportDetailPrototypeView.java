@@ -99,7 +99,7 @@ public class ReportDetailPrototypeView extends VerticalLayout implements BeforeE
             VaadinSession.getCurrent().setAttribute(SESSION_KEY, null);
             UI.getCurrent().getPage().reload();
         });
-        reset.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_TERTIARY_INLINE);
+        reset.addThemeVariants(ButtonVariant.SMALL, ButtonVariant.TERTIARY);
 
         var bar = new HorizontalLayout(text, reset);
         bar.setAlignItems(Alignment.CENTER);

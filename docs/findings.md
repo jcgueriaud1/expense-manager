@@ -426,3 +426,128 @@ Deployment/Observability · UX-spec
   `--lumo-error-*`→`--aura-red`/`--aura-red-text`.
   (`ButtonVariant.LUMO_*` Java enum constants are unaffected — they are the API,
   not CSS tokens.)
+
+### F-014 — Driving OIDC provisioning without a real Google
+- Date: 2026-07-10
+- Area: Verification
+- Severity: Low
+- Task being attempted: Phase 1.3 (#11) — integration-testing the domain gate +
+  claim/create policy through the real `OidcUserService`, on Testcontainers
+  Postgres, without a live Google exchange (the friction the issue explicitly
+  flagged as expected; a mock OIDC server is out of scope).
+- Expected vs actual: `OidcUserService.loadUser(OidcUserRequest)` needs a real
+  token exchange, so it can't be called directly in a test. Expected to need
+  some seam to inject synthesized claims. Actual: extracting the policy into a
+  separate `UserProvisioningService.provision(OidcUser)` (the thin
+  `ProvisioningOidcUserService` adapter calls it after `super.loadUser`) made the
+  whole gate/claim/create path drivable with a hand-built `DefaultOidcUser` — no
+  HTTP, no mock server. The test synthesizes an `OidcIdToken` with
+  `sub`/`email`/`email_verified`/`hd`/`name` claims and calls `provision`
+  directly, reusing `AbstractIntegrationTest` so provisioning runs against real
+  Flyway-migrated Postgres and the seeded bootstrap admin.
+- Workaround used: Public, `@Transactional` `provision(OidcUser)` on a
+  profile-agnostic `UserProvisioningService` (instantiable under `test`, wired
+  into the filter chain only in `staging`/`prod`) so the slice autowires it
+  directly. Covers claim-preserves-ADMIN, new-USER, wrong-domain, unverified,
+  disabled, and no-re-sync. Bonus: the split also dodged a CGLIB proxy over
+  `OidcUserService`'s `final` setters (see below).
+- Evidence: `security/UserProvisioningService.java` (`provision`),
+  `security/ProvisioningOidcUserService.java` (adapter),
+  `OidcProvisioningIntegrationTest`.
+- Impact: Full provisioning coverage with no mock-OIDC dependency, matching the
+  issue's "out of scope unless regressions slip through" stance. The gap that
+  remains untested is the token exchange itself (`super.loadUser`) and the
+  end-to-end redirect/failure-handler wiring — accepted for V1.
+- Suggested Vaadin/product improvement: a documented pattern for testing a custom
+  `OidcUserService` (drive the post-fetch policy with a synthesized `OidcUser`)
+  would save every team from rediscovering this seam.
+
+### F-015 — "Set once" name vs a JPA `updatable=false` column
+- Date: 2026-07-10
+- Area: Spec
+- Severity: Low
+- Task being attempted: Phase 1.3 (#11) — claiming the pre-seeded admin row at
+  first Google login must populate `sub` **and** replace the placeholder `name`
+  ('Expense Admin') with the Google display name (ADR-0007), while `name` is
+  still "set once".
+- Expected vs actual: Phase 1.1 mapped `User.name` with `@Column(updatable =
+  false)` to encode "set once". But claim is an UPDATE of an existing row, and
+  Hibernate silently drops `updatable=false` columns from UPDATE statements — so
+  the claim's new name would vanish with no error, leaving the placeholder.
+- Workaround used: Dropped `updatable=false` from `name` and moved the "set once"
+  guarantee into the domain: `User.claim(sub, name)` runs only while `sub` is
+  null and provisioning never touches an already-linked (`sub`-present) row, so
+  name is written exactly once (at provision or claim) despite the mutable
+  column. `email` keeps `updatable=false` (it is the match key, never rewritten).
+- Evidence: `user/User.java` (`claim` + `name` column comment),
+  `OidcProvisioningIntegrationTest#doesNotResyncNameOrEmailOnSecondLogin`.
+- Impact: "Set once" is now a code-level invariant with a guard that fails fast
+  on a second claim, rather than a column constraint that silently no-ops. The
+  lesson generalises: an immutability rule that has a legitimate one-time
+  write-later (seed placeholder → real value) can't be expressed as
+  `updatable=false`.
+- Suggested Vaadin/product improvement: none — Hibernate behaviour is correct;
+  this is a modelling note for the team.
+
+### F-016 — `@Transactional` on an `OidcUserService` subclass ⇒ CGLIB warns on final methods
+- Date: 2026-07-10
+- Area: Tooling/Template
+- Severity: Low
+- Task being attempted: Phase 1.3 (#11) — running the provisioning transaction
+  inside the custom `OidcUserService`.
+- Expected vs actual: The first cut put `@Transactional` directly on a class
+  `extends OidcUserService`. It worked, but on a `staging` boot Spring logged
+  three `CglibAopProxy` WARNINGs: `OidcUserService`'s `final` setters
+  (`setOauth2UserService`, `setClaimTypeConverterFactory`, `setRetrieveUserInfo`)
+  "cannot get proxied via CGLIB". Transactional advice forces a CGLIB subclass
+  proxy; final methods can't be overridden, so the framework warns. Benign here
+  (those setters aren't re-invoked post-construction, and `loadUser` is non-final
+  so the advice still applies) — but noisy and fragile.
+- Workaround used: Split the transaction out to a plain `UserProvisioningService`
+  (`@Transactional`, cleanly proxyable) and left `ProvisioningOidcUserService`
+  as a thin, advice-free adapter that isn't proxied at all. Warnings gone; the
+  provisioning policy is also now a first-class, directly-testable service.
+- Evidence: `security/ProvisioningOidcUserService.java` (adapter),
+  `security/UserProvisioningService.java` (transaction); the WARN lines appeared
+  in a `staging`-profile boot before the split.
+- Impact: Cleaner separation and no proxy noise. Generalises: don't hang Spring
+  advice (`@Transactional`, `@Cacheable`, …) on a subclass of a framework class
+  that has `final` methods — delegate to a plain collaborator instead.
+- Suggested Vaadin/product improvement: none — this is Spring proxying, not
+  Vaadin; worth a note in any Vaadin OAuth provisioning example that shows a
+  custom `OidcUserService`.
+
+### F-017 — `ButtonVariant.LUMO_*` has theme-agnostic replacements in Vaadin 25 (supersedes the F-013 "those stay" note)
+- Date: 2026-07-10
+- Area: Vaadin / Docs
+- Severity: Low
+- Task being attempted: Removing every Lumo reference from the app so only Aura
+  is used — including the `ButtonVariant.LUMO_*` enum constants that F-013 and
+  `CLAUDE.md` had said should stay as "the correct Java API".
+- Expected vs actual: F-013 concluded the `LUMO_*` enum constants were unavoidable
+  API (unlike the `--lumo-*` CSS tokens). Actual: the Vaadin 25.2 `ButtonVariant`
+  enum now carries **theme-agnostic** constants — `PRIMARY`, `TERTIARY`, `ERROR`,
+  `SUCCESS`, `WARNING`, `SMALL`, `LARGE` — alongside the legacy `LUMO_*` (and a
+  few `AURA_*`) ones; the current Button docs use the bare names. Each bare
+  constant emits the same `theme="…"` attribute as its `LUMO_` twin (verified by
+  decompiling the enum), so the swap is behaviour-preserving. Caveat: three
+  variants — `tertiary-inline`, `contrast`, `icon` — are **Lumo-only** (per the
+  Button styling matrix, "Supported by: Lumo") and have no Aura rendering, so
+  those usages were collapsed to plain `TERTIARY`.
+- Workaround used: Replaced all `ButtonVariant.LUMO_*` with the theme-agnostic
+  constants across `MainLayout` and the report prototypes; `LUMO_TERTIARY_INLINE`
+  / `LUMO_CONTRAST` → `TERTIARY`. Also fixed two `var(--lumo-*)` inline styles the
+  F-013 sweep missed because they landed later on the Phase 1.3 branch
+  (`--lumo-error-text-color` → `--aura-red-text`, `--lumo-secondary-text-color` →
+  `--vaadin-text-color-secondary`). Updated `CLAUDE.md` to prescribe the bare
+  constants and flag the Lumo-only variants.
+- Evidence: `base/ui/MainLayout.java`, `report/prototype/*.java`,
+  `security/ui/LoginView.java`; `ButtonVariant` (25.2.1) decompilation showing
+  bare + `LUMO_` + `AURA_` constants; Button styling doc variant-support matrix.
+- Impact: The codebase is now Lumo-free in functional code (only historical
+  finding/NOTES prose still names Lumo, to explain the rationale). Design tokens
+  and theme variants are consistently Aura/theme-agnostic.
+- Suggested Vaadin/product improvement: mark the `LUMO_*` `ButtonVariant`
+  constants `@Deprecated` in favour of the theme-agnostic names, and have the
+  styling docs state the bare names are the default so teams don't reach for
+  `LUMO_*` out of habit.

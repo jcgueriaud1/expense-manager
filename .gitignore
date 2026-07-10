@@ -16,3 +16,6 @@ vite.generated.ts
 
 # Playwright MCP scratch output
 .playwright-mcp/
+
+# Claude Code agent worktree scratch dirs
+.claude/worktrees/

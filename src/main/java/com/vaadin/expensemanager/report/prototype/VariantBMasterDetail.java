@@ -102,7 +102,7 @@ final class VariantBMasterDetail extends VerticalLayout {
             grid.getDataProvider().refreshAll();
             grid.select(line);
         });
-        add.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+        add.addThemeVariants(ButtonVariant.TERTIARY);
 
         var box = new VerticalLayout(add, grid);
         box.setPadding(false);
@@ -117,9 +117,9 @@ final class VariantBMasterDetail extends VerticalLayout {
         form.setResponsiveSteps(new FormLayout.ResponsiveStep("0", 1));
 
         var saveLine = new Button("Apply", e -> applyToCurrent());
-        saveLine.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        saveLine.addThemeVariants(ButtonVariant.PRIMARY);
         var removeLine = new Button("Remove line", e -> removeCurrent());
-        removeLine.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_TERTIARY);
+        removeLine.addThemeVariants(ButtonVariant.ERROR, ButtonVariant.TERTIARY);
         var actions = new HorizontalLayout(saveLine, removeLine);
 
         var panel = new VerticalLayout(totals, formHeading, form, actions);
@@ -218,7 +218,7 @@ final class VariantBMasterDetail extends VerticalLayout {
 
     private Button primary(String text) {
         var b = new Button(text);
-        b.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        b.addThemeVariants(ButtonVariant.PRIMARY);
         return b;
     }
 
