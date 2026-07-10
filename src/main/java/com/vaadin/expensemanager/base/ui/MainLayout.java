@@ -60,8 +60,8 @@ public class MainLayout extends AppLayout {
     private Component createHeader() {
         var appName = new H1("Expense Manager");
         appName.getStyle()
-                .setFontSize("var(--lumo-font-size-l)")
-                .setMargin("var(--lumo-space-m)");
+                .setFontSize("var(--aura-font-size-l)")
+                .setMargin("var(--vaadin-padding)");
         return appName;
     }
 
@@ -79,7 +79,7 @@ public class MainLayout extends AppLayout {
         bar.setAlignItems(FlexComponent.Alignment.CENTER);
         bar.setWidthFull();
         bar.setJustifyContentMode(FlexComponent.JustifyContentMode.END);
-        bar.getStyle().setPaddingRight("var(--lumo-space-m)");
+        bar.getStyle().setPaddingRight("var(--vaadin-padding)");
         return bar;
     }
 

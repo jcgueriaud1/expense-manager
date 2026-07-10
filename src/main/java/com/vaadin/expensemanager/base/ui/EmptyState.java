@@ -32,16 +32,16 @@ public class EmptyState extends VerticalLayout {
         if (icon != null) {
             var iconComponent = new Icon(icon);
             iconComponent.setSize("3em");
-            iconComponent.getStyle().setColor("var(--lumo-contrast-30pct)");
+            iconComponent.getStyle().setColor("var(--vaadin-text-color-secondary)");
             add(new Div(iconComponent));
         }
 
         var title = new H2(heading);
-        title.getStyle().setFontSize("var(--lumo-font-size-xl)");
+        title.getStyle().setFontSize("var(--aura-font-size-xl)");
         add(title);
 
         var body = new Paragraph(description);
-        body.getStyle().setColor("var(--lumo-secondary-text-color)");
+        body.getStyle().setColor("var(--vaadin-text-color-secondary)");
         add(body);
     }
 }

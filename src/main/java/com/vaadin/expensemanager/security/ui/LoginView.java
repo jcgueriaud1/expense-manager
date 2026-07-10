@@ -50,7 +50,7 @@ public class LoginView extends VerticalLayout implements BeforeEnterObserver {
 
         var hint = new Paragraph(
                 "Local/test sign-in: use a seeded account's email with the dev password.");
-        hint.getStyle().setColor("var(--lumo-secondary-text-color)");
+        hint.getStyle().setColor("var(--vaadin-text-color-secondary)");
 
         add(loginForm, hint);
         setHorizontalComponentAlignment(FlexComponent.Alignment.CENTER, loginForm, hint);

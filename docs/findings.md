@@ -352,3 +352,77 @@ Deployment/Observability · UX-spec
   of a false sense of defense-in-depth.
 - Owner / next step: real admin services in Phases 5/6 annotate their methods the
   same way and point the method-security slice at them, then delete the stand-in.
+
+### F-013 — `--lumo-*` inline styles silently no-op under Aura, and the design-system guardrail that warned about it was deleted
+- Date: 2026-07-10
+- Area: Vaadin / Docs / Template
+- Severity: Medium
+- Task being attempted: Prototyping the Phase 2 report-detail line editor (issue
+  #3, relates to F-004). Styling the card variants — borders, a selected-card
+  highlight, container backgrounds, spacing — with `getStyle().set(...)`.
+- Expected vs actual: Expected `getStyle().set("border", "var(--lumo-contrast-10pct)")`
+  and friends to render as they always have in Vaadin. Actual: **nothing painted**
+  — no border, background, padding, or radius — with no error, no warning, no
+  devtools complaint. The inline `style` attribute was present in the DOM, but
+  every `var(--lumo-*)` resolved to the empty string. `getComputedStyle(:root)`
+  confirmed **all `--lumo-*` tokens are undefined**: this app runs **Aura**
+  (Vaadin 25's default, `@StyleSheet(Aura.STYLESHEET)`), which defines
+  `--vaadin-*` / `--aura-*` tokens instead. Aura and Lumo are separate,
+  incompatible design systems; the Lumo names simply do not exist here.
+- Why "Lumo was added" (investigation): **Lumo was never added.** There is no
+  Lumo dependency, no Lumo stylesheet import, and `styles.css` is empty — the
+  generated start.vaadin.com project has been Aura-only since commit `28ce50a`.
+  The `--lumo-*` references are hand-written inline-style *strings*, introduced
+  in `ecdba67` ("Phase 0.4 — **Aura** navigation shell & UX-state primitives")
+  when `MainLayout` and `EmptyState` were authored. Root cause is **stale
+  convention / muscle memory**: Lumo was Vaadin's default theme for ~7 years, so
+  `--lumo-*` is the reflexive idiom in old docs, examples, and LLM training data,
+  and it got reached for by habit. Aggravating factor: the generated
+  `spec/design-system.md` **explicitly forbade it** — *"Do not use `--lumo-*`
+  CSS variables … must not be mixed with Aura. Use `--aura-*` … and `--vaadin-*`"*
+  — but that spec file was later **removed from the working tree**, so the
+  guardrail was no longer in context when the base UI (and later code) was
+  written. A real, correct guardrail existed and was dropped.
+- Workaround used: Initially, a Lumo→Aura compatibility shim on the prototype
+  view root that mapped each `--lumo-*` token to its Aura equivalent via CSS
+  custom-property inheritance. That crutch has since been **removed** — every
+  `var(--lumo-*)` in the codebase was replaced with its `--aura-*` / `--vaadin-*`
+  equivalent (see the fixed mapping below), so no shim is needed.
+- Evidence: `Application.java:12` (`@StyleSheet(Aura.STYLESHEET)`, no Lumo);
+  empty `src/main/resources/META-INF/resources/styles.css`; `--lumo-*` usages in
+  `base/ui/MainLayout.java:63-82` and `base/ui/EmptyState.java:35-44`;
+  `getComputedStyle(document.documentElement)` returns `""` for every
+  `--lumo-*` probed and real values for `--vaadin-background-container` /
+  `--vaadin-border-color` / `--aura-accent-surface` / `--aura-font-size-*`;
+  generated `spec/design-system.md` (commit `28ce50a`) line 12 forbidding Lumo;
+  the file's later deletion (`git show 28ce50a:spec/design-system.md` exists,
+  working tree does not); introducing commit `ecdba67`. Correct token names via
+  Vaadin docs MCP `get_theme_css_properties theme=aura vaadin_version=25.2`.
+- Impact: The existing base UI already ships these no-op styles — `MainLayout`
+  (app-name font size, drawer/navbar spacing) and `EmptyState` (icon colour,
+  heading size, secondary text colour) render with Aura defaults, not the
+  intended tokens, today. It looks "fine" only because Aura's defaults are
+  reasonable, which makes the bug invisible and self-perpetuating: every new
+  hand-styled view is one habit away from the same silent no-op, and there is no
+  build/lint signal.
+- Suggested Vaadin/product improvement: (1) a dev-mode warning when a
+  `var(--lumo-*)` is used while Aura is the active theme (undefined-token
+  linting) would turn a silent failure into a visible one; (2) start.vaadin.com
+  should keep `spec/design-system.md` (or fold its "Aura, not Lumo" rule into
+  `CLAUDE.md`) so the guardrail survives; (3) docs/MCP could offer a Lumo→Aura
+  token migration table.
+- Owner / next step: **Resolved (2026-07-10).** All `var(--lumo-*)` CSS tokens
+  removed across the codebase — base UI (`MainLayout`, `EmptyState`,
+  `LoginView`) and the Phase 2 prototype variants — mapped to `--aura-*` /
+  `--vaadin-*`; the prototype shim was deleted. The "Aura, never Lumo" rule is
+  now in `CLAUDE.md`. Mapping applied: `--lumo-space-m`→`--vaadin-padding`,
+  `--lumo-border-radius-l`→`--vaadin-radius-l`,
+  `--lumo-contrast-{5,10}pct`→`--vaadin-background-container`/`--vaadin-border-color`,
+  `--lumo-contrast-{30,50,90}pct`+`--lumo-secondary-text-color`→
+  `--vaadin-text-color[-secondary]`, `--lumo-base-color`→`--aura-surface-color`,
+  `--lumo-primary-color[-10pct]`→`--aura-accent-color`/`--aura-accent-surface`,
+  `--lumo-box-shadow-m`→`--aura-shadow-m`,
+  `--lumo-font-size-*`→`--aura-font-size-*`,
+  `--lumo-error-*`→`--aura-red`/`--aura-red-text`.
+  (`ButtonVariant.LUMO_*` Java enum constants are unaffected — they are the API,
+  not CSS tokens.)
