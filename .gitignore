@@ -19,3 +19,6 @@ vite.generated.ts
 
 # Claude Code agent worktree scratch dirs
 .claude/worktrees/
+
+# Claude Code local hooks
+.claude/hooks/
