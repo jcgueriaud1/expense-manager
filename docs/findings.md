@@ -307,3 +307,48 @@ Deployment/Observability · UX-spec
   intended once the principal contract is explicit.
 - Owner / next step: reuse `AppUserPrincipal` when the `OidcUserService` lands in
   Phase 1.2.
+
+### F-012 — Vaadin route security and Spring method security read `@RolesAllowed` from different switches
+- Date: 2026-07-10
+- Area: Vaadin/Security
+- Severity: Low
+- Task being attempted: Phase 1.2 (#10) — wiring the two authorization layers so
+  a stand-in privileged operation is guarded by
+  `@RolesAllowed("ADMIN")` at both the route (view) and the service-method level
+  (the friction the issue explicitly flagged as expected).
+- Expected vs actual: Both layers can wear the *same*
+  `jakarta.annotation.security.RolesAllowed` annotation, which reads cleanly —
+  but they honour it through **independent** mechanisms, and this is a quiet
+  trap. Vaadin's `VaadinSecurityConfigurer` navigation access control reads
+  `@RolesAllowed` on views out of the box, so the ADMIN-only route was enforced
+  immediately (a USER typing `/admin` is rejected; the auto-menu hides the
+  entry). Spring **method** security, however, ignores JSR-250 by default:
+  `@EnableMethodSecurity` turns on `@PreAuthorize` only. The pre-existing
+  `MethodSecurityConfig` used `@EnableMethodSecurity` (bare) and the old
+  placeholder test used `@PreAuthorize`, so nothing surfaced the gap — the moment
+  the stand-in service switched to the issue-mandated `@RolesAllowed("ADMIN")`,
+  a plain USER was **allowed** through and the method-security test failed. The
+  method guard, the actual enforcement point, was silently a no-op.
+- Workaround used: Set `@EnableMethodSecurity(jsr250Enabled = true)`. Now one
+  annotation vocabulary spans both layers: route security for navigation UX,
+  method security for real enforcement.
+- Evidence: `security/MethodSecurityConfig.java`
+  (`@EnableMethodSecurity(jsr250Enabled = true)`),
+  `security/StandInPrivilegedService.java` (`@RolesAllowed`),
+  `base/ui/AdminToolsView.java` (`@RolesAllowed` route);
+  `MethodSecurityIntegrationTest` (USER-rejected / ADMIN-allowed / hierarchy
+  passthrough), `AdminToolsViewUiTest` (route + auto-menu filtering). The
+  initial red run showed `userMayNotCallAdminOperation` "Expecting code to raise
+  a throwable".
+- Impact: Two-layer authorization is real and verified. The catch generalises:
+  every later phase using `@RolesAllowed` on a service method (approve/reject,
+  user management, rate config) depends on `jsr250Enabled` staying on. If someone
+  standardises on `@PreAuthorize` instead, JSR-250 can be turned back off — but
+  the *route* views would keep working, so a flip is only caught by the method
+  slice. That is exactly why the reusable method-security slice matters.
+- Suggested Vaadin/product improvement: docs/starter guidance could call out that
+  `@RolesAllowed` on a Vaadin view (route-enforced by default) and on a service
+  method (needs `jsr250Enabled = true`) travel different paths — an easy source
+  of a false sense of defense-in-depth.
+- Owner / next step: real admin services in Phases 5/6 annotate their methods the
+  same way and point the method-security slice at them, then delete the stand-in.
