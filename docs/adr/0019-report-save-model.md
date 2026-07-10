@@ -1,6 +1,8 @@
 # ADR-0019 — Report edit/save model: whole-aggregate, in-memory until first save
 
-**Status:** Accepted
+**Status:** Accepted — the receipt consequence below (*"save before attaching"*)
+is **retired by [ADR-0020](0020-receipt-entity-upload-serving.md)**: receipts are
+buffered in the working copy and persisted on save, so no save-first step exists.
 
 ## Context
 The report detail view (plan 2.6) lets a user build and edit a report and its

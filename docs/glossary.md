@@ -34,8 +34,16 @@ the domain sharpens.
   display **order**, and an **active** flag ("old rate" = inactive, hidden from
   new lines but kept on historical ones so past reports retain their original
   rate). Seeded from the Finnish (Verohallinto) rates.
-- **Receipt** — an image attached to an expense line, stored as Postgres bytea
-  (ADR-0009), with a size cap and validated content type.
+- **Receipt** — a scanned document attached to an expense line: **0..1 per line,
+  always optional** (V1). A JPEG, PNG, or PDF (≤ 10 MB), stored as Postgres bytea
+  in a **separate `receipt` table** alongside its `content_type`, `filename`, and
+  `size_bytes` (ADR-0009, ADR-0020). The file type is verified by **magic bytes**,
+  not the browser's claim. Attachable at any time (buffered in the working copy,
+  written on save — no "save first" step); replaceable (overwrite, no history) and
+  removable, but only while the report is `DRAFT`/`REJECTED` — view-only in
+  `SUBMITTED`/`APPROVED`. Images preview inline; PDFs open/download. The bytes are
+  never carried in a DTO — the UI holds only a receipt *summary* and streams the
+  blob on demand (ADR-0020).
 - **User** — a local record linked to a Google identity by `sub`. Holds email,
   display name, role(s), and an `enabled` flag. Distinct from the Google account.
 - **Allowance Rate Config** — editable, per-year reference data: domestic
