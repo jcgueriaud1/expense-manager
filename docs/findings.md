@@ -601,3 +601,27 @@ Deployment/Observability · UX-spec
   that component-column children aren't matched by a UI-wide `find()`.
 - Owner / next step: none — corrected pattern captured; reuse `getCellText` /
   `rowActionButton` for later grid-backed views (My Reports, approval queue).
+
+### F-019 — HEIC receipts excluded; iPhone default format will bite users
+- Date: 2026-07-10
+- Area: UX-spec
+- Severity: Medium
+- Task being attempted: Choosing the allowed receipt content types (Phase 3,
+  ADR-0021).
+- Expected vs actual: The natural user gesture is "photograph the receipt with my
+  phone." iPhones default to **HEIC**, which browsers cannot render inline and is
+  awkward to handle server-side, so V1 accepts only JPEG/PNG/PDF (magic-byte
+  verified). An iPhone user uploading a straight-from-camera photo will therefore
+  be rejected until they change their capture format or convert.
+- Workaround used: Exclude HEIC from the allow-list for V1; reject at upload with
+  a clear message. Multi-image per line and "receipt required over a threshold"
+  are likewise out of scope.
+- Evidence: ADR-0021; magic-byte allow-list (JPEG `FF D8 FF` / PNG `89 50 4E 47`
+  / PDF `25 50 44 46`).
+- Impact: A common, non-obvious rejection for the most natural input path. Server-
+  side HEIC→JPEG transcoding (or client-side capture-format guidance) is the
+  likely follow-up if real usage hits it.
+- Suggested Vaadin/product improvement: an upload component option to transcode or
+  clearly flag HEIC would save every mobile-first app this same rejection.
+- Owner / next step: revisit if the demo/real usage surfaces HEIC rejections;
+  candidate for a transcoding step or a documented "shoot in JPEG" note.
