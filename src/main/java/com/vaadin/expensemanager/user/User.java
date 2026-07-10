@@ -25,9 +25,12 @@ import jakarta.persistence.UniqueConstraint;
  * <p>The entity is the source of truth for authorization — {@code roles} and
  * {@code enabled} are managed locally and never overwritten by Google claims.
  * {@code email} and {@code name} are <strong>set once</strong> at
- * provision/claim time; {@code sub} is <strong>nullable until claimed</strong>
- * (the bootstrap-admin seed carries a {@code null} sub until its first Google
- * login) and <strong>unique when set</strong>.
+ * provision/claim time and never re-synced on later logins (enforced in code:
+ * {@link #claim(String, String)} runs only while {@code sub} is null, and
+ * provisioning never touches an already-linked row); {@code sub} is
+ * <strong>nullable until claimed</strong> (the bootstrap-admin seed carries a
+ * {@code null} sub until its first Google login) and <strong>unique when
+ * set</strong>.
  *
  * <p>Per ADR-0003 this entity never leaves the service layer: the UI exchanges
  * the immutable {@link CurrentUser} record instead. There is deliberately no
@@ -57,7 +60,11 @@ public class User extends AuditedEntity {
     @Column(name = "email", nullable = false, updatable = false)
     private String email;
 
-    @Column(name = "name", nullable = false, updatable = false)
+    // Not updatable=false: the bootstrap-admin seed carries a placeholder name
+    // that claim() replaces once with the Google display name at first login.
+    // "Set once" is a code-level invariant (claim() only runs while sub is null),
+    // not a column constraint.
+    @Column(name = "name", nullable = false)
     private String name;
 
     @Column(name = "enabled", nullable = false)
@@ -86,6 +93,28 @@ public class User extends AuditedEntity {
 
     public String getSub() {
         return sub;
+    }
+
+    /**
+     * Links this row to a Google identity on first login (ADR-0007): sets the
+     * stable {@code sub} and replaces the display {@code name} with the one
+     * Google supplied. Preserves {@code roles} and {@code enabled} — this is how
+     * the pre-seeded bootstrap admin keeps {@code ADMIN} when it is claimed.
+     *
+     * <p>Only valid while {@code sub} is still {@code null}: claiming an
+     * already-linked row would be an identity hijack, so it fails fast. This
+     * guard is what makes {@code name} "set once" despite the mutable column.
+     *
+     * @throws IllegalStateException if this row is already linked to a Google
+     *         {@code sub}
+     */
+    public void claim(String sub, String name) {
+        if (this.sub != null) {
+            throw new IllegalStateException(
+                    "User " + id + " is already linked to a Google identity");
+        }
+        this.sub = sub;
+        this.name = name;
     }
 
     public String getEmail() {

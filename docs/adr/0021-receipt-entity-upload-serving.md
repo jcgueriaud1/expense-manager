@@ -1,4 +1,4 @@
-# ADR-0020 — Receipt: separate entity, buffered upload, summary-only DTO
+# ADR-0021 — Receipt: separate entity, buffered upload, summary-only DTO
 
 **Status:** Accepted
 
@@ -68,6 +68,6 @@ All mutations are gated to `DRAFT`/`REJECTED`, mirroring line editability
   bites under real use, revisit with a staging store — log a finding.
 - Magic-byte verification means "we accept images," not "we accept things labeled
   as images," making inline preview safe.
-- HEIC (iPhone default) is excluded; iPhone users will hit it. Logged as F-013.
+- HEIC (iPhone default) is excluded; iPhone users will hit it. Logged as F-019.
 - Multi-image per line and "receipt required over a threshold" are out of scope
   for V1; both are plausible later work.

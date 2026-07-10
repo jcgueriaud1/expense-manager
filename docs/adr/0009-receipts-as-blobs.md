@@ -1,6 +1,6 @@
 # ADR-0009 — Receipts stored as Postgres bytea
 
-**Status:** Accepted — refined by [ADR-0020](0020-receipt-entity-upload-serving.md)
+**Status:** Accepted — refined by [ADR-0021](0021-receipt-entity-upload-serving.md)
 (separate `receipt` table, buffered upload, summary-only DTO, magic-byte validation).
 
 ## Context

@@ -1,0 +1,4 @@
+# SDKMAN per-project JDK pin. This project targets Java 25 (see pom.xml
+# <java.version>). With sdkman_auto_env=true, SDKMAN switches to this JDK on
+# `cd` into the project; otherwise run `sdk env` here once per shell.
+java=25-amzn
