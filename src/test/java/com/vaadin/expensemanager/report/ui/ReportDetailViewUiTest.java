@@ -3,6 +3,7 @@ package com.vaadin.expensemanager.report.ui;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
+import com.vaadin.expensemanager.report.domain.ReportStatus;
 import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.VatRateDto;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
@@ -129,6 +130,55 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         assertThat(getCurrentView().getElement().getTextRecursively())
                 .contains("No expenses yet");
         assertThat(service.findMine(id).lines()).isEmpty();
+    }
+
+    @Test
+    void submittingADraftWithALineLocksItReadOnly() {
+        var id = seedReportWithLine(LocalDate.of(2026, 7, 1), "60.00");
+        navigate(ReportDetailView.class, id);
+
+        findButton().withText("Submit for approval").click();
+
+        // The report is now SUBMITTED and read-only to the owner: the editing
+        // affordances are gone and the status is shown as text (ADR-0020).
+        assertThat(service.findMine(id).status()).isEqualTo(ReportStatus.SUBMITTED);
+        assertThat(getCurrentView().getElement().getTextRecursively())
+                .contains("Submitted");
+        assertThat(findButton().withText("Save").exists()).isFalse();
+        assertThat(findButton().withText("Submit for approval").exists()).isFalse();
+        assertThat(findButton().withText("Add expense").exists()).isFalse();
+        assertThat(findButton().withText("Delete").exists()).isFalse();
+    }
+
+    @Test
+    void submittingAnEmptyDraftShowsTheReasonAndStaysEnabled() {
+        var id = seedReport(LocalDate.of(2026, 7, 1), "empty");
+        navigate(ReportDetailView.class, id);
+
+        // Always-enabled Submit (ADR-0020): a zero-line submit is blocked with the
+        // reason in the top-of-form error summary, not a silent no-op.
+        findButton().withText("Submit for approval").click();
+
+        assertThat(getCurrentView().getElement().getTextRecursively())
+                .contains("at least one line");
+        assertThat(service.findMine(id).status()).isEqualTo(ReportStatus.DRAFT);
+        // Submit button is still there (never disabled) so the owner can retry.
+        assertThat(findButton().withText("Submit for approval").exists()).isTrue();
+    }
+
+    @Test
+    void anAlreadySubmittedReportOpensReadOnly() {
+        var id = seedSubmittedReport(LocalDate.of(2026, 7, 1), "80.00");
+        navigate(ReportDetailView.class, id);
+
+        assertThat(getCurrentView().getElement().getTextRecursively())
+                .contains("Submitted");
+        assertThat(findButton().withText("Save").exists()).isFalse();
+        assertThat(findButton().withText("Submit for approval").exists()).isFalse();
+        assertThat(findButton().withText("Delete").exists()).isFalse();
+        assertThat(findButton().withText("Add expense").exists()).isFalse();
+        // The line is shown but its remove affordance is not offered.
+        assertThat(findButton().withAriaLabel("Remove line").exists()).isFalse();
     }
 
     @Test

@@ -9,6 +9,7 @@ import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.ReferenceDataService;
 import com.vaadin.expensemanager.reference.VatRateDto;
 import com.vaadin.expensemanager.report.domain.LineAmounts;
+import com.vaadin.expensemanager.report.domain.ReportStatus;
 import com.vaadin.expensemanager.report.service.ExpenseLineDto;
 import com.vaadin.expensemanager.report.service.ExpenseReportService;
 import com.vaadin.expensemanager.report.service.ReportDetailDto;
@@ -70,10 +71,13 @@ import static com.vaadin.expensemanager.report.ui.ReportViewSupport.statusLabel;
  * and <strong>Save is always enabled</strong> with a top-of-form error summary;
  * line-field validation lives in the dialog. Report-level fields, the card
  * actions, and Save show only while the report is editable ({@code DRAFT}/
- * {@code REJECTED}); <strong>Delete</strong> only while a persisted {@code DRAFT}
- * (the aggregate enforces the guard, ADR-0006). Stale writes surface the
- * "reload" message (ADR-0011). {@code @PermitAll}; owner-scoping is enforced in
- * the service.
+ * {@code REJECTED}); <strong>Submit for approval</strong> (always enabled — a
+ * zero-line submit surfaces the reason, never a silent no-op) only for a
+ * persisted {@code DRAFT}, moving it to {@code SUBMITTED} and read-only;
+ * <strong>Delete</strong> only while a persisted {@code DRAFT} (the aggregate
+ * enforces the guard, ADR-0006). Stale writes surface a "reload" affordance,
+ * never a silent overwrite (ADR-0011). {@code @PermitAll}; owner-scoping is
+ * enforced in the service.
  */
 @Route("report")
 @PageTitle("Report")
@@ -91,6 +95,7 @@ public class ReportDetailView extends VerticalLayout
     private final Span grossDisplay = new Span();
     private final Span breakdownDisplay = new Span();
     private final Button save = new Button("Save");
+    private final Button submit = new Button("Submit for approval");
     private final Button addLine = new Button("Add expense", VaadinIcon.PLUS.create());
     private final Button delete = new Button("Delete");
     private final Binder<ReportFormModel> binder = new Binder<>();
@@ -128,14 +133,17 @@ public class ReportDetailView extends VerticalLayout
                 .bind(ReportFormModel::getAdditionalInformation,
                         ReportFormModel::setAdditionalInformation);
 
-        save.addThemeVariants(ButtonVariant.PRIMARY);
         save.addClickListener(event -> onSave());
+        // Submit is the primary forward action on a draft; Save is the quieter
+        // "keep working" action beside it (two primaries would compete).
+        submit.addThemeVariants(ButtonVariant.PRIMARY);
+        submit.addClickListener(event -> onSubmit());
         delete.addThemeVariants(ButtonVariant.ERROR, ButtonVariant.TERTIARY);
         delete.addClickListener(event -> confirmDelete());
         addLine.addThemeVariants(ButtonVariant.TERTIARY);
         addLine.addClickListener(event -> addLine());
 
-        var actions = new HorizontalLayout(save, delete);
+        var actions = new HorizontalLayout(save, submit, delete);
         actions.setAlignItems(FlexComponent.Alignment.CENTER);
 
         add(headerRow(), errorSummary, reportDate, additionalInformation,
@@ -175,6 +183,9 @@ public class ReportDetailView extends VerticalLayout
         additionalInformation.setReadOnly(!editable);
         save.setVisible(editable);
         addLine.setVisible(editable);
+        // Submit only for a persisted DRAFT: a brand-new report must be saved
+        // first, and resubmitting a REJECTED report is Phase 5 (out of scope).
+        submit.setVisible(dto.isPersisted() && dto.status() == ReportStatus.DRAFT);
         // Delete only while DRAFT and already persisted (ADR-0006, glossary).
         delete.setVisible(dto.isPersisted() && dto.status().isDeletable());
 
@@ -206,8 +217,25 @@ public class ReportDetailView extends VerticalLayout
                 Notification.show("Report saved.");
             }
         } catch (ObjectOptimisticLockingFailureException stale) {
-            showErrors(List.of("This report was changed elsewhere. "
-                    + "Reload to see the latest version before saving again."));
+            showConflict();
+        } catch (IllegalArgumentException | IllegalStateException invalid) {
+            showErrors(List.of(invalid.getMessage()));
+        }
+    }
+
+    /**
+     * Submits the persisted report for approval (UC-003): {@code DRAFT →
+     * SUBMITTED}. The button is always enabled (ADR-0020) — a zero-line report
+     * is not silently no-op'd but surfaces the domain reason in the error
+     * summary. A stale write surfaces the reload affordance (ADR-0011).
+     */
+    private void onSubmit() {
+        clearErrors();
+        try {
+            load(service.submit(working.id(), working.version()));
+            Notification.show("Report submitted for approval.");
+        } catch (ObjectOptimisticLockingFailureException stale) {
+            showConflict();
         } catch (IllegalArgumentException | IllegalStateException invalid) {
             showErrors(List.of(invalid.getMessage()));
         }
@@ -395,6 +423,31 @@ public class ReportDetailView extends VerticalLayout
     private void clearErrors() {
         errorSummary.removeAll();
         errorSummary.setVisible(false);
+    }
+
+    /**
+     * The optimistic-lock conflict UX (ADR-0011): a never-silent-overwrite
+     * message plus a Reload affordance that re-fetches the latest committed
+     * version into the form, so the owner can review it before acting again.
+     */
+    private void showConflict() {
+        errorSummary.removeAll();
+        var heading = new Span("This report was changed elsewhere.");
+        heading.getStyle().setFontWeight("600");
+        var detail = new Paragraph(
+                "Reload to see the latest version before saving again.");
+        var reload = new Button("Reload", event -> reload());
+        reload.addThemeVariants(ButtonVariant.TERTIARY);
+        errorSummary.add(heading, detail, reload);
+        errorSummary.setVisible(true);
+    }
+
+    /** Re-fetches the persisted report, discarding the stale working copy. */
+    private void reload() {
+        if (working.isPersisted()) {
+            load(service.findMine(working.id()));
+            Notification.show("Reloaded the latest version.");
+        }
     }
 
     private void showErrors(List<String> messages) {

@@ -140,6 +140,38 @@ public class ExpenseReport extends AuditedEntity {
     }
 
     /**
+     * Submits the report for approval (glossary: Submit): {@code DRAFT →
+     * SUBMITTED}, appending the first {@link StatusChange} (the acting user is
+     * the owner; no comment). Requires at least one line — an empty report is
+     * blocked with a friendly reason. There is <strong>no total-sign guard</strong>:
+     * a negative or zero total is permitted (ADR-0006), only an empty line set
+     * is not.
+     *
+     * <p>An illegal transition (submitting anything but a {@code DRAFT}) is
+     * rejected rather than silently ignored; authorization ("who may submit")
+     * stays in the security/service layer (ADR-0008).
+     *
+     * @param actingUser  the user performing the submit (the owner)
+     * @param submittedAt when the transition happened (supplied by the caller so
+     *                    the domain stays free of the clock)
+     * @throws IllegalStateException if the report is not a {@code DRAFT} or has
+     *                               no lines
+     */
+    public void submit(User actingUser, Instant submittedAt) {
+        if (status != ReportStatus.DRAFT) {
+            throw new IllegalStateException(
+                    "Report " + id + " is " + status + " and cannot be submitted");
+        }
+        if (lines.isEmpty()) {
+            throw new IllegalStateException(
+                    "Add at least one line before submitting.");
+        }
+        ReportStatus from = status;
+        status = ReportStatus.SUBMITTED;
+        recordStatusChange(from, status, actingUser, null, submittedAt);
+    }
+
+    /**
      * Guards the draft-only delete invariant (ADR-0006, glossary): a report is
      * hard-deletable only while {@code DRAFT}. Submitted/approved/rejected
      * reports are retained for the audit trail.

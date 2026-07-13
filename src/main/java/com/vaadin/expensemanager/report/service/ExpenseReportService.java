@@ -1,5 +1,6 @@
 package com.vaadin.expensemanager.report.service;
 
+import java.time.Instant;
 import java.util.List;
 
 import com.vaadin.expensemanager.report.domain.ExpenseLine;
@@ -122,6 +123,30 @@ public class ExpenseReportService {
         }
         report.updateDetails(dto.reportDate(), dto.additionalInformation());
         report.reconcileLines(toSpecs(dto.lines()));
+        return toDetail(report);
+    }
+
+    /**
+     * Submits one of the current user's reports for approval (UC-003, ADR-0006):
+     * {@code DRAFT → SUBMITTED}, appending the first {@link
+     * com.vaadin.expensemanager.report.domain.StatusChange}. Owner-scoped and
+     * version-checked (ADR-0011): the {@code @Version} the UI last saw is
+     * verified before the transition so a stale submit surfaces as a conflict
+     * rather than acting on an outdated view. The aggregate enforces the
+     * "≥1 line, DRAFT-only" invariants.
+     *
+     * @param expectedVersion the {@code @Version} the UI last saw
+     * @throws ObjectOptimisticLockingFailureException if the report changed
+     *         underneath the editor
+     */
+    @RolesAllowed("USER")
+    @Transactional
+    public ReportDetailDto submit(Long id, long expectedVersion) {
+        var report = requireOwned(id);
+        if (report.getVersion() != expectedVersion) {
+            throw new ObjectOptimisticLockingFailureException(ExpenseReport.class, id);
+        }
+        report.submit(report.getOwner(), Instant.now());
         return toDetail(report);
     }
 

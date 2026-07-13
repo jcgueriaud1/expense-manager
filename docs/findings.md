@@ -768,3 +768,40 @@ Deployment/Observability · UX-spec
   distinction could be more prominent given how easy it is to hit.
 - Owner / next step: none — reuse this shape for other live-total surfaces
   (allowance calculator, export preview).
+
+### F-024 — Optimistic-lock read-only guard can't be proven at the service layer inside a `@Transactional` (rollback) test
+- Date: 2026-07-13
+- Area: Testing
+- Severity: Low
+- Task being attempted: Phase 2.4 (#25) — a layer-2 service test asserting a
+  `SUBMITTED` report rejects a whole-aggregate `update()` with the aggregate's
+  editable guard (`IllegalStateException`), passing the version the caller last
+  saw.
+- Expected vs actual: expected `update(id, dto, submittedVersion)` to reach the
+  domain `reconcileLines`/`updateDetails` guard and throw `IllegalStateException`.
+  Actual: it threw `ObjectOptimisticLockingFailureException` first. In a
+  `@Transactional` (rollback) test every service call joins the *same*
+  persistence context; the preceding `submit()` leaves the entity dirty, and the
+  next `@Transactional` service method auto-flushes before its query — bumping
+  `@Version` in the shared context — so the version the test captured from
+  `submit()`'s returned DTO (read *before* that flush) is already stale by the
+  time `update()` runs its explicit version check. The service's version guard
+  fires before the domain guard is ever reached.
+- Workaround used: keep the service-layer test to the *version-independent* path
+  (a `SUBMITTED` report rejects `delete()` — no version arg, so it always reaches
+  `assertDeletable()`), and prove the edit-once-submitted guard where it belongs:
+  the domain unit test (`ExpenseReportTest`, layer 1, no persistence context to
+  drift) and the view test (no Save/Add/Delete offered once `SUBMITTED`). The
+  genuine optimistic-lock conflict lives in its own committed-state class
+  (`ExpenseReportOptimisticLockIntegrationTest`, non-`@Transactional`, ADR-0011).
+- Evidence: `report/service/ExpenseReportServiceIntegrationTest`
+  (`aSubmittedReportCannotBeDeleted`), `report/domain/ExpenseReportTest`
+  (`aSubmittedReportRejectsLineAndDetailEditsAndDelete`).
+- Impact: reinforces ADR-0012's layering — version/flush semantics make the
+  rollback slice a poor place to assert state-machine guards that sit *behind* a
+  version check; push those to layer 1, and use the committed-state exception
+  only for the lock behaviour itself.
+- Suggested Vaadin/product improvement: none — this is a JPA/`@Transactional`
+  test-isolation nuance, not a framework gap.
+- Owner / next step: none — pattern captured; apply the same split to the Phase 5
+  approve/reject guards.

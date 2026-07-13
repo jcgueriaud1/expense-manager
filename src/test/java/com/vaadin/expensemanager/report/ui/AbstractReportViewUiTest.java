@@ -79,6 +79,16 @@ abstract class AbstractReportViewUiTest extends SpringBrowserlessTest
                 ReportStatus.DRAFT, 0L, List.of(line), zero, zero, zero));
     }
 
+    /**
+     * Seeds a report with one line and submits it, so tests can open an already
+     * {@code SUBMITTED} (read-only) report. Returns its id.
+     */
+    protected Long seedSubmittedReport(LocalDate date, String amount) {
+        var id = seedReportWithLine(date, amount);
+        service.submit(id, service.findMine(id).version());
+        return id;
+    }
+
     /** The first active expense type / VAT rate, for driving the line editor. */
     protected ExpenseTypeDto firstActiveType() {
         return referenceData.activeExpenseTypes().getFirst();
