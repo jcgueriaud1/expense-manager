@@ -1,7 +1,10 @@
 package com.vaadin.expensemanager.report.ui;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
+import com.vaadin.expensemanager.reference.ExpenseTypeDto;
+import com.vaadin.expensemanager.reference.VatRateDto;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
 import com.vaadin.flow.component.datepicker.DatePicker;
 import org.junit.jupiter.api.Test;
@@ -85,5 +88,89 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
 
         // Delete is hidden until the report is a persisted DRAFT.
         assertThat(findButton().withText("Delete").exists()).isFalse();
+    }
+
+    // ---------------------------------------------------------- line editing
+
+    @Test
+    void addingFillingAndSavingALinePersistsTheAggregateWithDerivedTotal() {
+        navigate(ReportDetailView.class);
+
+        findButton().withText("Add expense").click();
+        findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
+                .selectItem("Parking/supplies/goods"); // default 25.5 %
+        findBigDecimalField().setValue(new BigDecimal("125.50"));
+        findButton().withText("Save").click();
+
+        var mine = service.listMine();
+        assertThat(mine).hasSize(1);
+        assertThat(mine.getFirst().total()).isEqualByComparingTo("125.50");
+        var detail = service.findMine(mine.getFirst().id());
+        assertThat(detail.lines()).hasSize(1);
+        assertThat(detail.lines().getFirst().amount()).isEqualByComparingTo("125.50");
+        assertThat(getCurrentView()).isInstanceOf(ReportDetailView.class);
+    }
+
+    @Test
+    void pickingAnExpenseTypePrefillsItsDefaultVatRateWhichIsOverridable() {
+        navigate(ReportDetailView.class);
+        findButton().withText("Add expense").click();
+
+        // Publications defaults to 10 % — prefilled from the type.
+        findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
+                .selectItem("Publications");
+        assertThat(findComboBox(VatRateDto.class).withLabel("VAT rate")
+                .getSelected().value()).isEqualByComparingTo("10.00");
+
+        // Override it, then save; the override is what persists.
+        findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
+        findBigDecimalField().setValue(new BigDecimal("125.50"));
+        findButton().withText("Save").click();
+
+        var detail = service.findMine(service.listMine().getFirst().id());
+        assertThat(detail.lines().getFirst().vatRate().value())
+                .isEqualByComparingTo("25.50");
+    }
+
+    @Test
+    void liveTotalsUpdateAsALineIsFilledIn() {
+        navigate(ReportDetailView.class);
+        findButton().withText("Add expense").click();
+        findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
+                .selectItem("Parking/supplies/goods"); // 25.5 %
+        findBigDecimalField().setValue(new BigDecimal("125.50"));
+
+        // Live net/VAT/gross reflect the still-unsaved line (Signals, ADR-0015).
+        var text = getCurrentView().getElement().getTextRecursively();
+        assertThat(text).contains("€125.50");        // gross
+        assertThat(text).contains("€100.00");         // net
+        assertThat(text).contains("€25.50");          // VAT
+    }
+
+    @Test
+    void incompleteLineShowsErrorSummaryAndPersistsNothing() {
+        navigate(ReportDetailView.class);
+        findButton().withText("Add expense").click();
+        // Nothing chosen: type, amount and rate are all missing.
+        findButton().withText("Save").click();
+
+        var text = getCurrentView().getElement().getTextRecursively();
+        assertThat(text).contains("choose an expense type");
+        assertThat(text).contains("enter a gross amount");
+        assertThat(text).contains("choose a VAT rate");
+        assertThat(service.listMine()).isEmpty();
+    }
+
+    @Test
+    void negativeAmountIsAcceptedAndReflectedInTheTotal() {
+        navigate(ReportDetailView.class);
+        findButton().withText("Add expense").click();
+        findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
+                .selectItem("Travel allowance"); // 0 %
+        findBigDecimalField().setValue(new BigDecimal("-50.00"));
+        findButton().withText("Save").click();
+
+        var detail = service.findMine(service.listMine().getFirst().id());
+        assertThat(detail.total()).isEqualByComparingTo("-50.00");
     }
 }

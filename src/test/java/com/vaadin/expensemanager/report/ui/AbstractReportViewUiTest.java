@@ -55,7 +55,7 @@ abstract class AbstractReportViewUiTest extends SpringBrowserlessTest
     /** Seeds one DRAFT report owned by the current user; returns its id. */
     protected Long seedReport(LocalDate date, String info) {
         return service.create(new ReportDetailDto(null, date, info,
-                ReportStatus.DRAFT, 0L, null));
+                ReportStatus.DRAFT, 0L, null, java.util.List.of()));
     }
 
     /**

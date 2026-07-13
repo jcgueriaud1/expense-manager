@@ -27,4 +27,17 @@ final class ReportViewSupport {
     static String formatEur(BigDecimal amount) {
         return "€" + amount.setScale(2, RoundingMode.HALF_UP).toPlainString();
     }
+
+    /**
+     * VAT rate as a percent label, e.g. {@code "25.5 %"} / {@code "0 %"} — matches
+     * the reference-data screens' formatting so a line's rate reads identically to
+     * the admin settings.
+     */
+    static String formatRate(BigDecimal value) {
+        var normalized = value.stripTrailingZeros();
+        if (normalized.scale() < 0) {
+            normalized = normalized.setScale(0);
+        }
+        return normalized.toPlainString() + " %";
+    }
 }

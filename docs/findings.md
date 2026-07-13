@@ -170,25 +170,64 @@ Deployment/Observability · UX-spec
 - Owner / next step: none — resolved in Phase 0.3. Watch for the same fail-open
   pattern when later phases add tech that needs its own `spring-boot-*` module.
 
-### F-004 — Inline Grid row editor + ComboBox + Binder + Signals (provisional)
-- Date: 2026-07-09
-- Area: Vaadin
-- Severity: Low (provisional — confirm on implementation)
-- Task being attempted: Designing the line editor for the report detail view
-  (Phase 2.6, ADR-0015/0019).
-- Expected vs actual: Chose an inline Grid row editor (edit in place) with
-  `ComboBox` columns for expense type / VAT rate, Binder validation, and Signals
-  for live net/VAT/gross totals. This is the fiddliest Vaadin 25 combination
-  (Grid editor + editor-component binding + per-row validation + reactive totals)
-  and is expected to surface friction.
-- Expected vs actual: TBD — to be filled from real implementation experience.
-- Workaround used: TBD.
-- Evidence: design decision; ADR-0019.
-- Impact: TBD; may motivate falling back to a dialog/master-detail editor if the
-  inline approach proves too costly.
-- Suggested Vaadin/product improvement: TBD from findings during build.
-- Owner / next step: capture concrete friction (prompts, code, docs gaps) while
-  implementing 2.6.
+### F-004 — Report line editor (variant D): reconciliation, Signals & a11y friction
+- Date: 2026-07-13
+- Area: Vaadin · Verification
+- Severity: Medium
+- Task being attempted: Building the report line editor for real (Phase 2.3,
+  #24) — variant D (receipt cards + persistent side panel), whole-aggregate save
+  with line reconciliation (ADR-0019), live net/VAT/gross totals via Signals
+  (ADR-0015), and the "default-but-overridable" VAT rate (ADR-0018). This
+  supersedes the provisional inline-Grid pick; the resolved friction is below.
+- Expected vs actual: functional, but five concrete snags surfaced. **(1)
+  `@OrderColumn` + `orphanRemoval` + a `unique(report_id, line_index)` constraint
+  throws `duplicate key value violates unique constraint` on save.** When the
+  aggregate reconciles its line collection (insert/update/orphan-remove +
+  reorder), Hibernate rewrites `line_index` values mid-transaction and transiently
+  duplicates one; Postgres checks a plain unique constraint *per row*, so it fails
+  before the indices settle. **(2) Whole-aggregate `update` that maps the returned
+  DTO before commit sees `null` child ids** — a freshly-inserted `ExpenseLine`
+  has no identity until flush, so the UI's working copy came back with a null line
+  id (which then breaks the next reconcile). **(3) Type→VAT-default is imperative,
+  and an `isFromClient` guard is a trap.** Prefilling the VAT `ComboBox` from the
+  chosen expense type can't be expressed through Binder; it needs a manual
+  `valueChangeListener`. The prototype guarded that listener on `isFromClient` —
+  but a programmatic/browserless `selectItem` (and any `setValue`) is *not*
+  from-client, so the default silently didn't apply and a view test caught it.
+  **(4) Signals don't observe plain-bean mutation.** `Span.bindText(Signal.computed(...))`
+  works and *does* flush in browserless view tests, but because Binder writes into
+  a mutable `LineModel`, editing a field doesn't notify any signal — I had to bump
+  an explicit `ValueSignal<Integer> linesRevision` on every change for the computed
+  totals to recompute. The reactive win over an imperative `refreshTotals()` is
+  therefore modest here. **(5) A clickable card isn't keyboard-operable.** A card
+  is a styled `Div`; to meet ADR-0020 it needed a manual `role=button`,
+  `tabindex=0`, an `aria-label`, and a `keydown` listener filtered to Enter/Space
+  — there is no "card button" primitive.
+- Workaround used: (1) `deferrable initially deferred` on the order constraint
+  (V5) so the check runs at commit, by which point indices are contiguous; (2) an
+  explicit `reportRepository.flush()` in `update()` before mapping; (3) replaced
+  the `isFromClient` guard with a `populating` flag (suppress the default while
+  loading a bean, apply it on any genuine change); (4) the `linesRevision` signal
+  bumped from every mutation; (5) the manual ARIA card pattern. Also: a selected
+  now-deactivated type/rate is merged into the picker's item list on the fly
+  (`optionsWith`) so a historical line still renders its filed value (ADR-0018).
+- Evidence: `V5__expense_lines.sql` (constraint comment), `ExpenseReportService.update`
+  (flush), `ReportDetailView` (`applyDefaultVat`/`populating`, `linesRevision`,
+  `card(...)` ARIA, `optionsWith`); tests `updateReconcilesLinesByNullableId_*`
+  (was red on the unique constraint and the null id) and
+  `liveTotalsUpdateAsALineIsFilledIn` / `pickingAnExpenseTypePrefills…` (green).
+- Impact: variant D is a good fit (calm, mobile-friendly, gives Phase 3 receipts a
+  home), but the reconciliation + reorder + Signals combination is more
+  hand-wired than the ADR-0015 "reactive by default" framing implies. None of the
+  five is a blocker; together they are the real cost of the pattern.
+- Suggested Vaadin/product improvement: (a) document the `@OrderColumn` +
+  `orphanRemoval` interaction with immediate unique constraints and recommend a
+  deferrable constraint; (b) a Binder↔Signals bridge so a bound bean's edits emit
+  a signal without a manual revision counter; (c) a documented accessible-card
+  recipe (or a focusable card container component).
+- Owner / next step: revisit the Binder↔Signals gap if the allowance editor
+  (Phase 4) hits the same manual-revision pattern; consider promoting the
+  `optionsWith`/ARIA-card helpers to `base/ui` if a second view needs them.
 
 ### F-008 — Auto-menu shell was smooth; UI unit test couldn't reuse the integration base
 - Date: 2026-07-09

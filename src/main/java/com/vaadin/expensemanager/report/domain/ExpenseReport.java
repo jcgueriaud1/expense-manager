@@ -5,7 +5,11 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import com.vaadin.expensemanager.base.AuditedEntity;
 import com.vaadin.expensemanager.user.User;
@@ -32,9 +36,10 @@ import jakarta.persistence.Version;
  * <p>Owns its report-level fields (a required user-entered {@link #reportDate}
  * defaulting to today in the UI, optional {@link #additionalInformation}, no
  * title), its lifecycle {@link #status} (starting {@link ReportStatus#DRAFT}),
- * and an ordered {@link StatusChange} log. The gross line collection and the
- * money it carries arrive in Phase 2.3; until then {@link #total()} is €0.00 —
- * the {@code // lines: Phase 2.3} comments mark the seam.
+ * its ordered {@link ExpenseLine} collection, and an ordered {@link StatusChange}
+ * log. The report total ({@link #total()}, {@link #netTotal()},
+ * {@link #vatTotal()}) is the per-line-then-sum of the derived line figures
+ * (ADR-0010, ADR-0019) — never a stored column.
  *
  * <p><strong>Invariants live here, not in the service (ADR-0006).</strong> The
  * aggregate owns the delete guard — {@link #assertDeletable()} rejects deleting
@@ -88,6 +93,20 @@ public class ExpenseReport extends AuditedEntity {
     @JoinColumn(name = "report_id", nullable = false)
     @OrderColumn(name = "entry_index")
     private List<StatusChange> statusHistory = new ArrayList<>();
+
+    /**
+     * The report's expense lines, owned by the aggregate (cascade + orphan
+     * removal, insertion order persisted via {@link OrderColumn}). Like {@link
+     * #statusHistory} the collection is the <strong>owning</strong> side (it maps
+     * the {@code report_id} FK and the {@code line_index} order column); {@link
+     * ExpenseLine}'s back-reference is read-only. Lines are added, edited, and
+     * removed only through {@link #replaceLines} so ordering and the line
+     * invariants stay under the aggregate's control (ADR-0006, ADR-0019).
+     */
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
+    @JoinColumn(name = "report_id", nullable = false)
+    @OrderColumn(name = "line_index")
+    private List<ExpenseLine> lines = new ArrayList<>();
 
     /** JPA constructor. */
     protected ExpenseReport() {
@@ -148,12 +167,73 @@ public class ExpenseReport extends AuditedEntity {
     }
 
     /**
-     * The derived report total — never stored (ADR-0010, ADR-0019). Sums the
-     * gross line amounts; with no lines yet (Phase 2.3) this is {@code 0.00}.
+     * Reconciles the line collection against the desired end state by nullable
+     * line id (ADR-0019): a matched id updates the existing line in place, a
+     * {@code null} id inserts a new line, and any existing line absent from
+     * {@code inputs} is orphan-removed. Insertion order follows {@code inputs}.
+     * Allowed only while the report is editable (ADR-0006); each resulting line
+     * enforces its own invariants (non-zero amount, required type/rate).
+     *
+     * @throws IllegalStateException    if the report is not editable
+     * @throws IllegalArgumentException if a line violates its invariants
+     */
+    public void replaceLines(List<LineInput> inputs) {
+        if (!status.isEditable()) {
+            throw new IllegalStateException(
+                    "Report " + id + " is " + status + " and cannot be edited");
+        }
+        // Drop lines whose id is no longer present in the desired state.
+        Set<Long> keptIds = new HashSet<>();
+        for (LineInput input : inputs) {
+            if (input.id() != null) {
+                keptIds.add(input.id());
+            }
+        }
+        lines.removeIf(line -> line.getId() != null && !keptIds.contains(line.getId()));
+
+        // Rebuild the collection in the input order, reusing matched instances so
+        // orphan removal fires only for genuinely dropped lines.
+        Map<Long, ExpenseLine> byId = new HashMap<>();
+        for (ExpenseLine line : lines) {
+            if (line.getId() != null) {
+                byId.put(line.getId(), line);
+            }
+        }
+        List<ExpenseLine> rebuilt = new ArrayList<>(inputs.size());
+        for (LineInput input : inputs) {
+            ExpenseLine existing = input.id() == null ? null : byId.get(input.id());
+            if (existing != null) {
+                existing.update(input.expenseType(), input.amount(), input.vatRate(),
+                        input.comment());
+                rebuilt.add(existing);
+            } else {
+                rebuilt.add(new ExpenseLine(this, input.expenseType(), input.amount(),
+                        input.vatRate(), input.comment()));
+            }
+        }
+        lines.clear();
+        lines.addAll(rebuilt);
+    }
+
+    /**
+     * The derived report total (gross) — never stored (ADR-0010, ADR-0019).
+     * Sums each line's derived gross; €0.00 for a report with no lines.
      */
     public BigDecimal total() {
-        // lines: Phase 2.3 — sum ExpenseLine gross amounts here.
-        return BigDecimal.ZERO.setScale(2);
+        return lines.stream().map(ExpenseLine::gross)
+                .reduce(LineMoney.zero(), BigDecimal::add);
+    }
+
+    /** Derived net total — the per-line-then-sum of line net (ADR-0019). */
+    public BigDecimal netTotal() {
+        return lines.stream().map(ExpenseLine::net)
+                .reduce(LineMoney.zero(), BigDecimal::add);
+    }
+
+    /** Derived VAT total — the per-line-then-sum of line VAT (ADR-0019). */
+    public BigDecimal vatTotal() {
+        return lines.stream().map(ExpenseLine::vat)
+                .reduce(LineMoney.zero(), BigDecimal::add);
     }
 
     public Long getId() {
@@ -178,6 +258,11 @@ public class ExpenseReport extends AuditedEntity {
 
     public ReportStatus getStatus() {
         return status;
+    }
+
+    /** Unmodifiable view of the expense lines in insertion order. */
+    public List<ExpenseLine> getLines() {
+        return Collections.unmodifiableList(lines);
     }
 
     /** Unmodifiable view of the status history in insertion order. */
