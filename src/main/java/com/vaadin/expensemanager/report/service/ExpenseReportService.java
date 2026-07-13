@@ -2,10 +2,17 @@ package com.vaadin.expensemanager.report.service;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import com.vaadin.expensemanager.report.domain.ExpenseLine;
 import com.vaadin.expensemanager.report.domain.ExpenseLineSpec;
 import com.vaadin.expensemanager.report.domain.ExpenseReport;
+import com.vaadin.expensemanager.report.domain.Receipt;
+import com.vaadin.expensemanager.report.domain.ReceiptType;
+import com.vaadin.expensemanager.report.domain.ReceiptValidator;
 import com.vaadin.expensemanager.reference.ExpenseType;
 import com.vaadin.expensemanager.reference.ExpenseTypeRepository;
 import com.vaadin.expensemanager.reference.VatRate;
@@ -50,17 +57,20 @@ import org.springframework.transaction.annotation.Transactional;
 public class ExpenseReportService {
 
     private final ExpenseReportRepository reportRepository;
+    private final ReceiptRepository receiptRepository;
     private final UserRepository userRepository;
     private final ExpenseTypeRepository expenseTypeRepository;
     private final VatRateRepository vatRateRepository;
     private final CurrentUserProvider currentUserProvider;
 
     public ExpenseReportService(ExpenseReportRepository reportRepository,
+            ReceiptRepository receiptRepository,
             UserRepository userRepository,
             ExpenseTypeRepository expenseTypeRepository,
             VatRateRepository vatRateRepository,
             CurrentUserProvider currentUserProvider) {
         this.reportRepository = reportRepository;
+        this.receiptRepository = receiptRepository;
         this.userRepository = userRepository;
         this.expenseTypeRepository = expenseTypeRepository;
         this.vatRateRepository = vatRateRepository;
@@ -98,12 +108,30 @@ public class ExpenseReportService {
     @RolesAllowed("USER")
     @Transactional
     public Long create(ReportDetailDto dto) {
+        return create(dto, Map.of());
+    }
+
+    /**
+     * First save (ADR-0019) that also persists buffered receipt uploads
+     * (ADR-0021). {@code receipts} maps a position in {@code dto.lines()} to the
+     * receipt buffered against that line; the report is flushed first so its new
+     * lines have ids, then each upload is validated and written.
+     */
+    @RolesAllowed("USER")
+    @Transactional
+    public Long create(ReportDetailDto dto, Map<Integer, ReceiptUpload> receipts) {
         User owner = userRepository.findById(currentUserId()).orElseThrow(
                 () -> new IllegalStateException("Current user no longer exists"));
         var report = new ExpenseReport(owner, dto.reportDate(),
                 dto.additionalInformation());
         report.reconcileLines(toSpecs(dto.lines()));
-        return reportRepository.save(report).getId();
+        // Persist then flush (not saveAndFlush → merge): the aggregate stays the
+        // managed instance, so its new lines get ids and orphan-removals run
+        // before receipts are applied against those lines.
+        reportRepository.save(report);
+        reportRepository.flush();
+        applyReceipts(report, receipts);
+        return report.getId();
     }
 
     /**
@@ -117,12 +145,30 @@ public class ExpenseReportService {
     @RolesAllowed("USER")
     @Transactional
     public ReportDetailDto update(Long id, ReportDetailDto dto, long expectedVersion) {
+        return update(id, dto, expectedVersion, Map.of());
+    }
+
+    /**
+     * Whole-aggregate UPDATE that also persists buffered receipt mutations
+     * (ADR-0021): {@code receipts} maps a position in {@code dto.lines()} to an
+     * attach (overwrite) or {@link ReceiptUpload#REMOVE}. The aggregate is
+     * flushed first (so reconciled/new lines have ids and orphan-removes run),
+     * then each receipt is applied against its line.
+     */
+    @RolesAllowed("USER")
+    @Transactional
+    public ReportDetailDto update(Long id, ReportDetailDto dto, long expectedVersion,
+            Map<Integer, ReceiptUpload> receipts) {
         var report = requireOwned(id);
         if (report.getVersion() != expectedVersion) {
             throw new ObjectOptimisticLockingFailureException(ExpenseReport.class, id);
         }
         report.updateDetails(dto.reportDate(), dto.additionalInformation());
         report.reconcileLines(toSpecs(dto.lines()));
+        // The aggregate is already managed; flush (don't merge) so reconciled
+        // new lines get ids and orphan-removals execute before receipts apply.
+        reportRepository.flush();
+        applyReceipts(report, receipts);
         return toDetail(report);
     }
 
@@ -164,6 +210,38 @@ public class ExpenseReportService {
     }
 
     // --------------------------------------------------------------- internals
+
+    /**
+     * Applies buffered receipt mutations to the just-flushed aggregate (ADR-0021).
+     * The bytes are re-validated server-side and the stored {@code content_type}
+     * is the <strong>sniffed</strong> signature, never the browser's claim — so a
+     * caller cannot bypass magic-byte validation. Attach overwrites any existing
+     * receipt (no history); {@link ReceiptUpload#REMOVE} clears it.
+     */
+    private void applyReceipts(ExpenseReport report,
+            Map<Integer, ReceiptUpload> receipts) {
+        if (receipts == null || receipts.isEmpty()) {
+            return;
+        }
+        List<ExpenseLine> lines = report.getLines();
+        receipts.forEach((index, upload) -> {
+            if (index == null || index < 0 || index >= lines.size()) {
+                throw new IllegalArgumentException("No line at index " + index);
+            }
+            Long lineId = lines.get(index).getId();
+            if (upload.isRemoval()) {
+                receiptRepository.findByExpenseLineId(lineId)
+                        .ifPresent(receiptRepository::delete);
+                return;
+            }
+            ReceiptType type = ReceiptValidator.validate(upload.data());
+            receiptRepository.findByExpenseLineId(lineId).ifPresentOrElse(
+                    existing -> existing.replace(upload.data(), upload.filename(),
+                            type.contentType()),
+                    () -> receiptRepository.save(new Receipt(lines.get(index),
+                            upload.data(), upload.filename(), type.contentType())));
+        });
+    }
 
     private ExpenseReport requireOwned(Long id) {
         return reportRepository.findByIdAndOwnerId(id, currentUserId()).orElseThrow(
@@ -212,17 +290,33 @@ public class ExpenseReportService {
                 r.getAdditionalInformation(), r.getStatus(), r.total());
     }
 
-    private static ReportDetailDto toDetail(ExpenseReport r) {
-        var lines = r.getLines().stream().map(ExpenseReportService::toLineDto).toList();
+    private ReportDetailDto toDetail(ExpenseReport r) {
+        var lines = r.getLines();
+        var lineIds = lines.stream().map(ExpenseLine::getId)
+                .filter(Objects::nonNull).toList();
+        // One blob-free projection query for the whole report's receipts — the
+        // bytea never rides this (or any) aggregate load (ADR-0021).
+        Map<Long, ReceiptSummaryView> byLine = lineIds.isEmpty() ? Map.of()
+                : receiptRepository.findSummariesByExpenseLineIdIn(lineIds).stream()
+                        .collect(Collectors.toMap(ReceiptSummaryView::getExpenseLineId,
+                                Function.identity()));
+        var lineDtos = lines.stream()
+                .map(line -> toLineDto(line, byLine.get(line.getId()))).toList();
         return new ReportDetailDto(r.getId(), r.getReportDate(),
-                r.getAdditionalInformation(), r.getStatus(), r.getVersion(), lines,
+                r.getAdditionalInformation(), r.getStatus(), r.getVersion(), lineDtos,
                 r.total(), r.netTotal(), r.vatTotal());
     }
 
-    private static ExpenseLineDto toLineDto(ExpenseLine line) {
+    private static ExpenseLineDto toLineDto(ExpenseLine line,
+            ReceiptSummaryView receipt) {
         var type = line.getExpenseType();
         var rate = line.getVatRate();
-        return new ExpenseLineDto(line.getId(), type.getId(), type.getName(),
+        var dto = ExpenseLineDto.of(line.getId(), type.getId(), type.getName(),
                 rate.getId(), rate.getValue(), line.getAmount(), line.getComment());
+        if (receipt == null) {
+            return dto;
+        }
+        return dto.withReceipt(receipt.getId(), receipt.getFilename(),
+                receipt.getContentType(), receipt.getSizeBytes());
     }
 }

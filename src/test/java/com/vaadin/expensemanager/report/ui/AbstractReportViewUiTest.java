@@ -3,6 +3,7 @@ package com.vaadin.expensemanager.report.ui;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 import com.vaadin.browserless.SpringBrowserlessTest;
 import com.vaadin.browserless.locator.Locators;
@@ -11,6 +12,7 @@ import com.vaadin.expensemanager.report.domain.ReportStatus;
 import com.vaadin.expensemanager.report.service.ExpenseLineDto;
 import com.vaadin.expensemanager.report.service.ExpenseReportRepository;
 import com.vaadin.expensemanager.report.service.ExpenseReportService;
+import com.vaadin.expensemanager.report.service.ReceiptUpload;
 import com.vaadin.expensemanager.report.service.ReportDetailDto;
 import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.ReferenceDataService;
@@ -72,7 +74,7 @@ abstract class AbstractReportViewUiTest extends SpringBrowserlessTest
     protected Long seedReportWithLine(LocalDate date, String amount) {
         var type = referenceData.activeExpenseTypes().getFirst();
         var rate = referenceData.activeVatRates().getFirst();
-        var line = new ExpenseLineDto(null, type.id(), type.name(), rate.id(),
+        var line = ExpenseLineDto.of(null, type.id(), type.name(), rate.id(),
                 rate.value(), new BigDecimal(amount), null);
         var zero = BigDecimal.ZERO.setScale(2);
         return service.create(new ReportDetailDto(null, date, "seed",
@@ -85,6 +87,36 @@ abstract class AbstractReportViewUiTest extends SpringBrowserlessTest
      */
     protected Long seedSubmittedReport(LocalDate date, String amount) {
         var id = seedReportWithLine(date, amount);
+        service.submit(id, service.findMine(id).version());
+        return id;
+    }
+
+    /** A minimal but valid JPEG (magic bytes {@code FF D8 FF} + padding). */
+    protected static byte[] jpegBytes() {
+        byte[] file = new byte[16];
+        file[0] = (byte) 0xFF;
+        file[1] = (byte) 0xD8;
+        file[2] = (byte) 0xFF;
+        return file;
+    }
+
+    /** Seeds a DRAFT report with one line carrying a receipt; returns its id. */
+    protected Long seedReportWithReceipt(LocalDate date, String amount,
+            String filename) {
+        var type = referenceData.activeExpenseTypes().getFirst();
+        var rate = referenceData.activeVatRates().getFirst();
+        var line = ExpenseLineDto.of(null, type.id(), type.name(), rate.id(),
+                rate.value(), new BigDecimal(amount), null);
+        var zero = BigDecimal.ZERO.setScale(2);
+        return service.create(new ReportDetailDto(null, date, "seed",
+                ReportStatus.DRAFT, 0L, List.of(line), zero, zero, zero),
+                Map.of(0, new ReceiptUpload(jpegBytes(), filename)));
+    }
+
+    /** Seeds a SUBMITTED report whose single line carries a receipt. */
+    protected Long seedSubmittedReportWithReceipt(LocalDate date, String amount,
+            String filename) {
+        var id = seedReportWithReceipt(date, amount, filename);
         service.submit(id, service.findMine(id).version());
         return id;
     }

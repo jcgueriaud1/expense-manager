@@ -3,7 +3,9 @@ package com.vaadin.expensemanager.report.ui;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.ReferenceDataService;
@@ -12,6 +14,7 @@ import com.vaadin.expensemanager.report.domain.LineAmounts;
 import com.vaadin.expensemanager.report.domain.ReportStatus;
 import com.vaadin.expensemanager.report.service.ExpenseLineDto;
 import com.vaadin.expensemanager.report.service.ExpenseReportService;
+import com.vaadin.expensemanager.report.service.ReceiptUpload;
 import com.vaadin.expensemanager.report.service.ReportDetailDto;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
@@ -104,6 +107,14 @@ public class ReportDetailView extends VerticalLayout
     /** Working lines, the reactive source for both the cards and live totals. */
     private final transient ListSignal<ExpenseLineDto> lines = new ListSignal<>();
 
+    /**
+     * Buffered receipt mutations keyed by their working-line entry (ADR-0021):
+     * the bytes live here — off the DTO — until the next save, when they are
+     * mapped to line positions and handed to the service. Cleared on (re)load.
+     */
+    private final transient Map<ValueSignal<ExpenseLineDto>, ReceiptUpload> pendingReceipts =
+            new HashMap<>();
+
     /** The current working copy (transient for a new report until first save). */
     private transient ReportDetailDto working;
 
@@ -189,6 +200,7 @@ public class ReportDetailView extends VerticalLayout
         // Delete only while DRAFT and already persisted (ADR-0006, glossary).
         delete.setVisible(dto.isPersisted() && dto.status().isDeletable());
 
+        pendingReceipts.clear();
         lines.clear();
         if (!dto.lines().isEmpty()) {
             lines.insertAllLast(dto.lines());
@@ -206,14 +218,15 @@ public class ReportDetailView extends VerticalLayout
                 model.getAdditionalInformation(), working.status(),
                 working.version(), currentLines(), working.total(),
                 working.netTotal(), working.vatTotal());
+        var receipts = pendingReceiptsByLineIndex();
         try {
             if (!working.isPersisted()) {
-                Long newId = service.create(edited);
+                Long newId = service.create(edited, receipts);
                 Notification.show("Report saved.");
                 // First save routes /report → /report/{id} (ADR-0019).
                 getUI().ifPresent(ui -> ui.navigate(ReportDetailView.class, newId));
             } else {
-                load(service.update(working.id(), edited, working.version()));
+                load(service.update(working.id(), edited, working.version(), receipts));
                 Notification.show("Report saved.");
             }
         } catch (ObjectOptimisticLockingFailureException stale) {
@@ -246,14 +259,45 @@ public class ReportDetailView extends VerticalLayout
         return lines.peek().stream().map(ValueSignal::peek).toList();
     }
 
+    /**
+     * Maps each buffered receipt mutation to its line's position in the save
+     * snapshot (ADR-0021). Iterating {@code lines.peek()} shares the order with
+     * {@link #currentLines()}, so index {@code i} here addresses the same line
+     * the service reconciles at {@code dto.lines().get(i)}.
+     */
+    private Map<Integer, ReceiptUpload> pendingReceiptsByLineIndex() {
+        if (pendingReceipts.isEmpty()) {
+            return Map.of();
+        }
+        var entries = lines.peek();
+        Map<Integer, ReceiptUpload> byIndex = new HashMap<>();
+        for (int i = 0; i < entries.size(); i++) {
+            ReceiptUpload upload = pendingReceipts.get(entries.get(i));
+            if (upload != null) {
+                byIndex.put(i, upload);
+            }
+        }
+        return byIndex;
+    }
+
     private void addLine() {
         new LineEditorDialog(referenceData.activeExpenseTypes(),
-                referenceData.activeVatRates(), null, lines::insertLast).open();
+                referenceData.activeVatRates(), null, (dto, receipt) -> {
+                    var entry = lines.insertLast(dto);
+                    if (receipt != null) {
+                        pendingReceipts.put(entry, receipt);
+                    }
+                }).open();
     }
 
     private void openEditor(ValueSignal<ExpenseLineDto> entry) {
         new LineEditorDialog(referenceData.activeExpenseTypes(),
-                referenceData.activeVatRates(), entry.peek(), entry::set).open();
+                referenceData.activeVatRates(), entry.peek(), (dto, receipt) -> {
+                    entry.set(dto);
+                    if (receipt != null) {
+                        pendingReceipts.put(entry, receipt);
+                    }
+                }).open();
     }
 
     private void confirmDelete() {
@@ -345,7 +389,15 @@ public class ReportDetailView extends VerticalLayout
         subtitle.bindText(entry.map(ReportDetailView::subtitleOf));
         subtitle.getStyle().setColor("var(--vaadin-text-color-secondary)");
         subtitle.getStyle().setFontSize("var(--aura-font-size-s)");
-        var texts = new VerticalLayout(name, subtitle);
+        // Receipt indicator (summary only — the read/preview path is a later
+        // slice); shows in every state so a submitted report still reads clearly.
+        var receipt = new Span();
+        receipt.bindText(entry.map(dto -> dto.hasReceipt()
+                ? "📎 " + dto.receiptFilename() : ""));
+        receipt.bindVisible(entry.map(ExpenseLineDto::hasReceipt));
+        receipt.getStyle().setColor("var(--vaadin-text-color-secondary)");
+        receipt.getStyle().setFontSize("var(--aura-font-size-xs)");
+        var texts = new VerticalLayout(name, subtitle, receipt);
         texts.setPadding(false);
         texts.setSpacing(false);
 
@@ -382,8 +434,10 @@ public class ReportDetailView extends VerticalLayout
         // Trash lives outside the clickable body, so removing a line never also
         // opens the editor (no click-propagation hack needed).
         if (editable) {
-            var trash = new Button(VaadinIcon.TRASH.create(),
-                    event -> lines.remove(entry));
+            var trash = new Button(VaadinIcon.TRASH.create(), event -> {
+                pendingReceipts.remove(entry);
+                lines.remove(entry);
+            });
             trash.addThemeVariants(ButtonVariant.TERTIARY, ButtonVariant.ERROR);
             trash.getElement().setAttribute("aria-label", "Remove line");
             card.add(trash);

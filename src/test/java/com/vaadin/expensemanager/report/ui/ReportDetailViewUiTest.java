@@ -182,6 +182,70 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
     }
 
     @Test
+    void uploadingAReceiptOnAnUnsavedReportPersistsItOnFirstSave() {
+        // Brand-new, never-saved report: the receipt attaches at any time, no
+        // "save first" gate (ADR-0021 overrides ADR-0019's save-before-attach).
+        navigate(ReportDetailView.class);
+
+        findButton().withText("Add expense").click();
+        findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
+                .selectItem("Parking/supplies/goods");
+        findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
+        findBigDecimalField().setValue(new BigDecimal("100"));
+        // Drive the real UploadHandler: bytes are validated server-side by magic
+        // bytes and buffered in memory (the browser mime is not trusted).
+        findUpload().upload("taxi.jpg", "image/jpeg", jpegBytes());
+        findButton().withText("Save expense").click();
+
+        // The card reflects the buffered receipt before the report is even saved.
+        assertThat(getCurrentView().getElement().getTextRecursively())
+                .contains("taxi.jpg");
+
+        findButton().withText("Save").click();
+
+        var mine = service.listMine();
+        assertThat(mine).hasSize(1);
+        var line = service.findMine(mine.getFirst().id()).lines().getFirst();
+        assertThat(line.hasReceipt()).isTrue();
+        assertThat(line.receiptFilename()).isEqualTo("taxi.jpg");
+        assertThat(line.receiptContentType()).isEqualTo("image/jpeg");
+    }
+
+    @Test
+    void aMislabeledUploadIsRejectedAndNothingIsBuffered() {
+        var id = seedReport(LocalDate.of(2026, 7, 1), "trip");
+        navigate(ReportDetailView.class, id);
+
+        findButton().withText("Add expense").click();
+        findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
+                .selectItem("Parking/supplies/goods");
+        findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
+        findBigDecimalField().setValue(new BigDecimal("100"));
+        // A text file renamed to .jpg: magic-byte check rejects it at upload; the
+        // control is never disabled, the reason is surfaced instead (ADR-0020).
+        findUpload().upload("fake.jpg", "image/jpeg", "not an image".getBytes());
+        findButton().withText("Save expense").click();
+        findButton().withText("Save").click();
+
+        // The line saved, but with no receipt — the rejected bytes were dropped.
+        assertThat(service.findMine(id).lines().getFirst().hasReceipt()).isFalse();
+    }
+
+    @Test
+    void aSubmittedReportShowsTheReceiptSummaryButOffersNoUpload() {
+        var id = seedSubmittedReportWithReceipt(LocalDate.of(2026, 7, 1), "50.00",
+                "hotel.jpg");
+        navigate(ReportDetailView.class, id);
+
+        // The summary is visible (read-only), but every mutation surface is gone:
+        // no Add expense to open the editor, so the receipt cannot be changed.
+        assertThat(getCurrentView().getElement().getTextRecursively())
+                .contains("hotel.jpg");
+        assertThat(findButton().withText("Add expense").exists()).isFalse();
+        assertThat(findButton().withAriaLabel("Remove line").exists()).isFalse();
+    }
+
+    @Test
     void removingALinePersistsOnSave() {
         var id = seedReportWithLine(LocalDate.of(2026, 7, 1), "60.00");
         navigate(ReportDetailView.class, id);
