@@ -228,6 +228,22 @@ Deployment/Observability · UX-spec
 - Owner / next step: revisit the Binder↔Signals gap if the allowance editor
   (Phase 4) hits the same manual-revision pattern; consider promoting the
   `optionsWith`/ARIA-card helpers to `base/ui` if a second view needs them.
+- Update (2026-07-13, post-review): reviewer feedback surfaced a **latent
+  write-through bug** and drove a cleaner design. *Bug:* the editor re-set the
+  ComboBox items on every line selection; setting items resets a ComboBox's
+  value, and because the per-line Binder used write-through `setBean`, that reset
+  wrote `null` back into the *previously* selected line — so adding a second line
+  silently wiped the first line's type/rate (the `populating` flag muted my
+  listener but not Binder's write). *Fix + redesign:* the whole editor is now a
+  `CustomField<List<ReportLineModel>>` (`ReportLinesField`) composing a
+  `ReportLineCards` list and a `ReportLineEditorPanel`; combo items are set once
+  (active ∪ historical) while no line is bound. Making the line editor a bindable
+  field also removed friction (4) above: `generateModelValue()` returns a **deep
+  copy**, so the field emits real value-change events (a `HasValue` can't observe
+  in-place bean mutation) and the live totals ride those events — the manual
+  `linesRevision` signal is gone. Net: the Binder↔Signals gap is better bridged
+  by exposing the collection as one `CustomField` value than by a revision
+  counter. Regression locked by `addingASecondLineKeepsTheFirstLinesType`.
 
 ### F-008 — Auto-menu shell was smooth; UI unit test couldn't reuse the integration base
 - Date: 2026-07-09

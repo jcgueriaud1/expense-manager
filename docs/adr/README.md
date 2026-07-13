@@ -27,5 +27,6 @@ Status values: `Accepted`, `Superseded by ADR-XXXX`, `Deprecated`.
 | [0019](0019-report-save-model.md) | Report edit/save: whole-aggregate, in-memory until first save | Accepted (receipt consequence retired by 0021) |
 | [0020](0020-accessible-and-mobile-friendly.md) | Accessible (WCAG 2.1 AA) and mobile-friendly baseline | Accepted |
 | [0021](0021-receipt-entity-upload-serving.md) | Receipt: separate entity, buffered upload, summary-only DTO | Accepted |
+| [0022](0022-view-binding-models-are-top-level.md) | View binding models are top-level classes, not inner classes | Accepted |
 
 See also: [../glossary.md](../glossary.md) · [../plan.md](../plan.md) · [../findings.md](../findings.md)

@@ -162,6 +162,34 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
     }
 
     @Test
+    void addingASecondLineKeepsTheFirstLinesType() {
+        // Regression: adding a second line used to reset the combo items while the
+        // write-through binder was still bound to line 1, wiping its type/rate.
+        navigate(ReportDetailView.class);
+
+        findButton().withText("Add expense").click();
+        findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
+                .selectItem("Parking/supplies/goods");
+        findBigDecimalField().setValue(new BigDecimal("125.50"));
+
+        findButton().withText("Add expense").click();
+        findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
+                .selectItem("Publications");
+        findBigDecimalField().setValue(new BigDecimal("110.00"));
+
+        findButton().withText("Save").click();
+
+        var detail = service.findMine(service.listMine().getFirst().id());
+        assertThat(detail.lines()).hasSize(2);
+        assertThat(detail.lines().get(0).expenseType().name())
+                .isEqualTo("Parking/supplies/goods");
+        assertThat(detail.lines().get(0).amount()).isEqualByComparingTo("125.50");
+        assertThat(detail.lines().get(1).expenseType().name()).isEqualTo("Publications");
+        assertThat(detail.lines().get(1).amount()).isEqualByComparingTo("110.00");
+        assertThat(detail.total()).isEqualByComparingTo("235.50");
+    }
+
+    @Test
     void negativeAmountIsAcceptedAndReflectedInTheTotal() {
         navigate(ReportDetailView.class);
         findButton().withText("Add expense").click();
