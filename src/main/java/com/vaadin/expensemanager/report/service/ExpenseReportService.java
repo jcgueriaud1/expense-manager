@@ -2,7 +2,13 @@ package com.vaadin.expensemanager.report.service;
 
 import java.util.List;
 
+import com.vaadin.expensemanager.report.domain.ExpenseLine;
+import com.vaadin.expensemanager.report.domain.ExpenseLineSpec;
 import com.vaadin.expensemanager.report.domain.ExpenseReport;
+import com.vaadin.expensemanager.reference.ExpenseType;
+import com.vaadin.expensemanager.reference.ExpenseTypeRepository;
+import com.vaadin.expensemanager.reference.VatRate;
+import com.vaadin.expensemanager.reference.VatRateRepository;
 import com.vaadin.expensemanager.security.CurrentUserProvider;
 import com.vaadin.expensemanager.user.User;
 import com.vaadin.expensemanager.user.UserRepository;
@@ -21,8 +27,12 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p><strong>Whole-aggregate save, in-memory until first save (ADR-0019).</strong>
  * {@link #create} INSERTs the whole aggregate on first save; {@link #update}
- * UPDATEs report-level fields carrying the {@code @Version} the UI last saw. The
- * line collection and its reconciliation arrive in Phase 2.3.
+ * UPDATEs report-level fields and the line collection carrying the
+ * {@code @Version} the UI last saw. Lines reconcile by their nullable id
+ * (match/insert/orphan-remove) inside the aggregate; this service only resolves
+ * the reference-data ids to entities — <strong>unfiltered</strong>, so a line
+ * filed under a now-deactivated type/rate still saves (ADR-0018) — and owns the
+ * transaction boundary.
  *
  * <p><strong>Owner scoping (ADR-0008, ADR-0016).</strong> Every read and write
  * is bound to the {@link CurrentUserProvider current user}: the list query and
@@ -40,12 +50,19 @@ public class ExpenseReportService {
 
     private final ExpenseReportRepository reportRepository;
     private final UserRepository userRepository;
+    private final ExpenseTypeRepository expenseTypeRepository;
+    private final VatRateRepository vatRateRepository;
     private final CurrentUserProvider currentUserProvider;
 
     public ExpenseReportService(ExpenseReportRepository reportRepository,
-            UserRepository userRepository, CurrentUserProvider currentUserProvider) {
+            UserRepository userRepository,
+            ExpenseTypeRepository expenseTypeRepository,
+            VatRateRepository vatRateRepository,
+            CurrentUserProvider currentUserProvider) {
         this.reportRepository = reportRepository;
         this.userRepository = userRepository;
+        this.expenseTypeRepository = expenseTypeRepository;
+        this.vatRateRepository = vatRateRepository;
         this.currentUserProvider = currentUserProvider;
     }
 
@@ -84,6 +101,7 @@ public class ExpenseReportService {
                 () -> new IllegalStateException("Current user no longer exists"));
         var report = new ExpenseReport(owner, dto.reportDate(),
                 dto.additionalInformation());
+        report.reconcileLines(toSpecs(dto.lines()));
         return reportRepository.save(report).getId();
     }
 
@@ -103,6 +121,7 @@ public class ExpenseReportService {
             throw new ObjectOptimisticLockingFailureException(ExpenseReport.class, id);
         }
         report.updateDetails(dto.reportDate(), dto.additionalInformation());
+        report.reconcileLines(toSpecs(dto.lines()));
         return toDetail(report);
     }
 
@@ -130,13 +149,55 @@ public class ExpenseReportService {
         return currentUserProvider.require().id();
     }
 
+    /**
+     * Resolves each incoming line DTO's reference-data ids to managed entities
+     * (unfiltered — a now-inactive historical type/rate must still resolve,
+     * ADR-0018) and pairs them with the nullable line id for reconciliation.
+     */
+    private List<ExpenseLineSpec> toSpecs(List<ExpenseLineDto> lines) {
+        if (lines == null) {
+            return List.of();
+        }
+        return lines.stream().map(this::toSpec).toList();
+    }
+
+    private ExpenseLineSpec toSpec(ExpenseLineDto dto) {
+        return new ExpenseLineSpec(dto.id(), requireType(dto.expenseTypeId()),
+                dto.amount(), requireRate(dto.vatRateId()), dto.comment());
+    }
+
+    private ExpenseType requireType(Long id) {
+        if (id == null) {
+            throw new IllegalArgumentException("Expense type is required");
+        }
+        return expenseTypeRepository.findById(id).orElseThrow(
+                () -> new IllegalArgumentException("No expense type with id " + id));
+    }
+
+    private VatRate requireRate(Long id) {
+        if (id == null) {
+            throw new IllegalArgumentException("VAT rate is required");
+        }
+        return vatRateRepository.findById(id).orElseThrow(
+                () -> new IllegalArgumentException("No VAT rate with id " + id));
+    }
+
     private static ReportSummaryDto toSummary(ExpenseReport r) {
         return new ReportSummaryDto(r.getId(), r.getReportDate(),
                 r.getAdditionalInformation(), r.getStatus(), r.total());
     }
 
     private static ReportDetailDto toDetail(ExpenseReport r) {
+        var lines = r.getLines().stream().map(ExpenseReportService::toLineDto).toList();
         return new ReportDetailDto(r.getId(), r.getReportDate(),
-                r.getAdditionalInformation(), r.getStatus(), r.getVersion(), r.total());
+                r.getAdditionalInformation(), r.getStatus(), r.getVersion(), lines,
+                r.total(), r.netTotal(), r.vatTotal());
+    }
+
+    private static ExpenseLineDto toLineDto(ExpenseLine line) {
+        var type = line.getExpenseType();
+        var rate = line.getVatRate();
+        return new ExpenseLineDto(line.getId(), type.getId(), type.getName(),
+                rate.getId(), rate.getValue(), line.getAmount(), line.getComment());
     }
 }

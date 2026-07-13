@@ -1,11 +1,18 @@
 package com.vaadin.expensemanager.report.ui;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 
-import com.vaadin.expensemanager.report.domain.ReportStatus;
+import com.vaadin.expensemanager.reference.ExpenseTypeDto;
+import com.vaadin.expensemanager.reference.ReferenceDataService;
+import com.vaadin.expensemanager.reference.VatRateDto;
+import com.vaadin.expensemanager.report.domain.LineAmounts;
+import com.vaadin.expensemanager.report.service.ExpenseLineDto;
 import com.vaadin.expensemanager.report.service.ExpenseReportService;
 import com.vaadin.expensemanager.report.service.ReportDetailDto;
+import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.datepicker.DatePicker;
@@ -16,6 +23,7 @@ import com.vaadin.flow.component.html.ListItem;
 import com.vaadin.flow.component.html.Paragraph;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.html.UnorderedList;
+import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
@@ -28,16 +36,21 @@ import com.vaadin.flow.router.HasUrlParameter;
 import com.vaadin.flow.router.OptionalParameter;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
+import com.vaadin.flow.signals.Signal;
+import com.vaadin.flow.signals.local.ListSignal;
+import com.vaadin.flow.signals.local.ValueSignal;
 
 import jakarta.annotation.security.PermitAll;
 
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 
 import static com.vaadin.expensemanager.report.ui.ReportViewSupport.formatEur;
+import static com.vaadin.expensemanager.report.ui.ReportViewSupport.formatPercent;
 import static com.vaadin.expensemanager.report.ui.ReportViewSupport.statusLabel;
 
 /**
- * Create and edit a single report (UC-001/UC-005, ADR-0019).
+ * Create and edit a single report with its expense lines (UC-001/UC-005,
+ * ADR-0019) — the variant-C detail editor (issue #24).
  *
  * <p>Two entry points on one route: {@code /report} opens a <strong>transient
  * working copy</strong> (no row is persisted until the first save, ADR-0019)
@@ -45,16 +58,22 @@ import static com.vaadin.expensemanager.report.ui.ReportViewSupport.statusLabel;
  * report. The first successful save routes from {@code /report} to
  * {@code /report/{id}}.
  *
- * <p>Report-level fields only for now — date and optional additional
- * information. <strong>Save is always enabled with a validation error summary on
- * top of the form</strong> (never a disabled submit, project rule / ADR-0020);
- * <strong>Delete</strong> shows only while the report is a {@code DRAFT} (the
- * aggregate enforces the guard, ADR-0006). Stale writes surface the
- * "reload" message (ADR-0011).
+ * <p>Lines are shown as receipt-style cards; adding or clicking a card opens the
+ * focused modal {@link LineEditorDialog}. The report total bar shows live
+ * net/VAT/gross that recompute as lines change — driven by Signals (ADR-0015):
+ * a {@link ListSignal} of working lines feeds both the bound card list and the
+ * computed totals, so an unsaved edit is reflected immediately without manual
+ * refresh. The whole aggregate saves at once; the line collection reconciles by
+ * nullable id in the service (ADR-0019).
  *
- * <p>The line editor and live net/VAT/gross totals land in Phase 2.3 — the
- * {@code linesSeam} container and the {@code €0.00} total below mark where they
- * plug in. {@code @PermitAll}; owner-scoping is enforced in the service.
+ * <p>Validation follows the project rule (ADR-0020): the report date is required
+ * and <strong>Save is always enabled</strong> with a top-of-form error summary;
+ * line-field validation lives in the dialog. Report-level fields, the card
+ * actions, and Save show only while the report is editable ({@code DRAFT}/
+ * {@code REJECTED}); <strong>Delete</strong> only while a persisted {@code DRAFT}
+ * (the aggregate enforces the guard, ADR-0006). Stale writes surface the
+ * "reload" message (ADR-0011). {@code @PermitAll}; owner-scoping is enforced in
+ * the service.
  */
 @Route("report")
 @PageTitle("Report")
@@ -63,22 +82,33 @@ public class ReportDetailView extends VerticalLayout
         implements HasUrlParameter<Long> {
 
     private final transient ExpenseReportService service;
+    private final transient ReferenceDataService referenceData;
 
     private final Div errorSummary = new Div();
     private final Span statusBadge = new Span();
     private final DatePicker reportDate = new DatePicker("Report date");
     private final TextArea additionalInformation = new TextArea("Additional information");
-    private final Span totalDisplay = new Span();
+    private final Span grossDisplay = new Span();
+    private final Span breakdownDisplay = new Span();
     private final Button save = new Button("Save");
+    private final Button addLine = new Button("Add expense", VaadinIcon.PLUS.create());
     private final Button delete = new Button("Delete");
-    private final Binder<FormModel> binder = new Binder<>();
-    private final FormModel model = new FormModel();
+    private final Binder<ReportFormModel> binder = new Binder<>();
+    private final ReportFormModel model = new ReportFormModel();
+
+    /** Working lines, the reactive source for both the cards and live totals. */
+    private final transient ListSignal<ExpenseLineDto> lines = new ListSignal<>();
 
     /** The current working copy (transient for a new report until first save). */
     private transient ReportDetailDto working;
 
-    public ReportDetailView(ExpenseReportService service) {
+    /** Whether the loaded report allows edits (drives card/actions interactivity). */
+    private boolean editable = true;
+
+    public ReportDetailView(ExpenseReportService service,
+            ReferenceDataService referenceData) {
         this.service = service;
+        this.referenceData = referenceData;
         setPadding(true);
         setSpacing(true);
         setMaxWidth("40rem");
@@ -93,21 +123,23 @@ public class ReportDetailView extends VerticalLayout
 
         binder.forField(reportDate)
                 .asRequired("Report date is required")
-                .bind(FormModel::getReportDate, FormModel::setReportDate);
+                .bind(ReportFormModel::getReportDate, ReportFormModel::setReportDate);
         binder.forField(additionalInformation)
-                .bind(FormModel::getAdditionalInformation,
-                        FormModel::setAdditionalInformation);
+                .bind(ReportFormModel::getAdditionalInformation,
+                        ReportFormModel::setAdditionalInformation);
 
         save.addThemeVariants(ButtonVariant.PRIMARY);
         save.addClickListener(event -> onSave());
         delete.addThemeVariants(ButtonVariant.ERROR, ButtonVariant.TERTIARY);
         delete.addClickListener(event -> confirmDelete());
+        addLine.addThemeVariants(ButtonVariant.TERTIARY);
+        addLine.addClickListener(event -> addLine());
 
         var actions = new HorizontalLayout(save, delete);
         actions.setAlignItems(FlexComponent.Alignment.CENTER);
 
         add(headerRow(), errorSummary, reportDate, additionalInformation,
-                linesSeam(), totalRow(), actions);
+                totalsBar(), linesSection(), actions);
     }
 
     @Override
@@ -135,26 +167,34 @@ public class ReportDetailView extends VerticalLayout
 
         clearErrors();
         statusBadge.setText(statusLabel(dto.status()));
-        totalDisplay.setText(formatEur(dto.total()));
 
-        boolean editable = dto.status().isEditable();
+        // Set editability before repopulating so the card factory builds the
+        // right (interactive vs read-only) cards.
+        editable = dto.status().isEditable();
         reportDate.setReadOnly(!editable);
         additionalInformation.setReadOnly(!editable);
         save.setVisible(editable);
+        addLine.setVisible(editable);
         // Delete only while DRAFT and already persisted (ADR-0006, glossary).
         delete.setVisible(dto.isPersisted() && dto.status().isDeletable());
+
+        lines.clear();
+        if (!dto.lines().isEmpty()) {
+            lines.insertAllLast(dto.lines());
+        }
     }
 
     private void onSave() {
         clearErrors();
         if (!binder.writeBeanIfValid(model)) {
             showErrors(binder.validate().getValidationErrors().stream()
-                    .map(ValidationResult::getErrorMessage).toList());
+                    .map(ValidationResult::getErrorMessage).distinct().toList());
             return;
         }
         var edited = new ReportDetailDto(working.id(), model.getReportDate(),
                 model.getAdditionalInformation(), working.status(),
-                working.version(), working.total());
+                working.version(), currentLines(), working.total(),
+                working.netTotal(), working.vatTotal());
         try {
             if (!working.isPersisted()) {
                 Long newId = service.create(edited);
@@ -171,6 +211,21 @@ public class ReportDetailView extends VerticalLayout
         } catch (IllegalArgumentException | IllegalStateException invalid) {
             showErrors(List.of(invalid.getMessage()));
         }
+    }
+
+    /** A snapshot of the working lines, in order, for a save. */
+    private List<ExpenseLineDto> currentLines() {
+        return lines.peek().stream().map(ValueSignal::peek).toList();
+    }
+
+    private void addLine() {
+        new LineEditorDialog(referenceData.activeExpenseTypes(),
+                referenceData.activeVatRates(), null, lines::insertLast).open();
+    }
+
+    private void openEditor(ValueSignal<ExpenseLineDto> entry) {
+        new LineEditorDialog(referenceData.activeExpenseTypes(),
+                referenceData.activeVatRates(), entry.peek(), entry::set).open();
     }
 
     private void confirmDelete() {
@@ -206,25 +261,135 @@ public class ReportDetailView extends VerticalLayout
         return header;
     }
 
-    /**
-     * Seam for the Phase 2.3 line editor: the inline Grid row editor + ComboBox
-     * (expense type / VAT rate) drop in here, above the total.
-     */
-    private Div linesSeam() {
-        var placeholder = new Div(new Paragraph(
-                "Expense lines are added in a later phase. A saved report starts "
-                        + "with no lines and a total of €0.00."));
-        placeholder.getStyle().setColor("var(--vaadin-text-color-secondary)");
-        return placeholder;
+    /** The pinned live-total bar — recomputes net/VAT/gross via Signals. */
+    private Div totalsBar() {
+        var label = new Span("Report total");
+        label.getStyle().setColor("var(--vaadin-text-color-secondary)");
+        grossDisplay.getStyle().setFontWeight("700");
+        grossDisplay.getStyle().setFontSize("var(--aura-font-size-xl)");
+        breakdownDisplay.getStyle().setColor("var(--vaadin-text-color-secondary)");
+        breakdownDisplay.getStyle().setFontSize("var(--aura-font-size-s)");
+
+        grossDisplay.bindText(Signal.computed(
+                () -> formatEur(currentTotals().gross())));
+        breakdownDisplay.bindText(Signal.computed(() -> {
+            var totals = currentTotals();
+            return "net " + formatEur(totals.net())
+                    + "  ·  VAT " + formatEur(totals.vat());
+        }));
+
+        var column = new VerticalLayout(label, grossDisplay, breakdownDisplay);
+        column.setPadding(false);
+        column.setSpacing(false);
+
+        var bar = new Div(column);
+        bar.setWidthFull();
+        bar.getStyle().set("position", "sticky").set("top", "0").set("z-index", "5")
+                .set("padding", "var(--vaadin-padding)")
+                .set("background", "var(--aura-accent-surface)")
+                .set("border-radius", "var(--vaadin-radius-l)");
+        return bar;
     }
 
-    private HorizontalLayout totalRow() {
-        var label = new Span("Total");
-        label.getStyle().setFontWeight("600");
-        totalDisplay.getStyle().setFontWeight("600");
-        var row = new HorizontalLayout(label, totalDisplay);
-        row.setAlignItems(FlexComponent.Alignment.BASELINE);
-        return row;
+    private Div linesSection() {
+        var emptyState = new Span("No expenses yet — add your first.");
+        emptyState.getStyle().setColor("var(--vaadin-text-color-secondary)");
+        emptyState.bindVisible(Signal.computed(() -> lines.get().isEmpty()));
+
+        var cardList = new VerticalLayout();
+        cardList.setPadding(false);
+        cardList.setSpacing(true);
+        cardList.setWidthFull();
+        cardList.bindChildren(lines, this::card);
+
+        var section = new Div(emptyState, cardList, addLine);
+        section.setWidthFull();
+        return section;
+    }
+
+    /** One receipt-style card for a working line; clickable to edit when editable. */
+    private Component card(ValueSignal<ExpenseLineDto> entry) {
+        var name = new Span();
+        name.bindText(entry.map(dto -> dto.expenseTypeName() == null
+                ? "New expense" : dto.expenseTypeName()));
+        name.getStyle().setFontWeight("600");
+        var subtitle = new Span();
+        subtitle.bindText(entry.map(ReportDetailView::subtitleOf));
+        subtitle.getStyle().setColor("var(--vaadin-text-color-secondary)");
+        subtitle.getStyle().setFontSize("var(--aura-font-size-s)");
+        var texts = new VerticalLayout(name, subtitle);
+        texts.setPadding(false);
+        texts.setSpacing(false);
+
+        var gross = new Span();
+        gross.bindText(entry.map(dto -> formatEur(grossOf(dto))));
+        gross.getStyle().setFontWeight("600");
+        var breakdown = new Span();
+        breakdown.bindText(entry.map(ReportDetailView::breakdownOf));
+        breakdown.getStyle().setColor("var(--vaadin-text-color-secondary)");
+        breakdown.getStyle().setFontSize("var(--aura-font-size-xs)");
+        var amounts = new VerticalLayout(gross, breakdown);
+        amounts.setPadding(false);
+        amounts.setSpacing(false);
+        amounts.setAlignItems(FlexComponent.Alignment.END);
+
+        var body = new HorizontalLayout(texts, amounts);
+        body.setWidthFull();
+        body.setFlexGrow(1, texts);
+        body.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
+        body.setAlignItems(FlexComponent.Alignment.CENTER);
+        if (editable) {
+            body.getStyle().setCursor("pointer");
+            body.addClickListener(event -> openEditor(entry));
+        }
+
+        var card = new HorizontalLayout(body);
+        card.setWidthFull();
+        card.setAlignItems(FlexComponent.Alignment.CENTER);
+        card.setFlexGrow(1, body);
+        card.getStyle().set("padding", "var(--vaadin-padding)")
+                .set("border", "1px solid var(--vaadin-border-color)")
+                .set("border-radius", "var(--vaadin-radius-l)")
+                .set("background", "var(--aura-surface-color)");
+        // Trash lives outside the clickable body, so removing a line never also
+        // opens the editor (no click-propagation hack needed).
+        if (editable) {
+            var trash = new Button(VaadinIcon.TRASH.create(),
+                    event -> lines.remove(entry));
+            trash.addThemeVariants(ButtonVariant.TERTIARY, ButtonVariant.ERROR);
+            trash.getElement().setAttribute("aria-label", "Remove line");
+            card.add(trash);
+        }
+        return card;
+    }
+
+    private LineAmounts currentTotals() {
+        return lines.get().stream().map(ValueSignal::get)
+                .filter(dto -> dto.amount() != null && dto.vatRatePercent() != null)
+                .map(dto -> LineAmounts.of(dto.amount(), dto.vatRatePercent()))
+                .reduce(LineAmounts.zero(), LineAmounts::add);
+    }
+
+    private static BigDecimal grossOf(ExpenseLineDto dto) {
+        return dto.amount() == null ? BigDecimal.ZERO.setScale(2)
+                : dto.amount().setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private static String subtitleOf(ExpenseLineDto dto) {
+        if (dto.comment() != null && !dto.comment().isBlank()) {
+            return dto.comment();
+        }
+        return dto.vatRatePercent() == null ? ""
+                : "VAT " + formatPercent(dto.vatRatePercent());
+    }
+
+    private static String breakdownOf(ExpenseLineDto dto) {
+        if (dto.amount() == null || dto.vatRatePercent() == null) {
+            return "";
+        }
+        var totals = LineAmounts.of(dto.amount(), dto.vatRatePercent());
+        return "net " + formatEur(totals.net()) + " · VAT " + formatEur(totals.vat())
+                + " (" + formatPercent(dto.vatRatePercent()) + ")";
     }
 
     private void clearErrors() {
@@ -244,27 +409,5 @@ public class ReportDetailView extends VerticalLayout
         messages.forEach(message -> list.add(new ListItem(message)));
         errorSummary.add(heading, list);
         errorSummary.setVisible(true);
-    }
-
-    /** Mutable binding model for the report-level fields (Binder needs setters). */
-    private static final class FormModel {
-        private LocalDate reportDate;
-        private String additionalInformation;
-
-        LocalDate getReportDate() {
-            return reportDate;
-        }
-
-        void setReportDate(LocalDate reportDate) {
-            this.reportDate = reportDate;
-        }
-
-        String getAdditionalInformation() {
-            return additionalInformation;
-        }
-
-        void setAdditionalInformation(String additionalInformation) {
-            this.additionalInformation = additionalInformation;
-        }
     }
 }
