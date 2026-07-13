@@ -1,6 +1,7 @@
 package com.vaadin.expensemanager.report.domain;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
@@ -159,6 +160,79 @@ class ExpenseReportTest {
         assertThatThrownBy(() -> report.reconcileLines(
                 List.of(spec(999L, "10.00", RATE_255))))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void submitMovesDraftToSubmittedAndAppendsAStatusChange() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+        report.reconcileLines(List.of(spec(null, "100.00", RATE_255)));
+        var at = Instant.parse("2026-07-13T09:30:00Z");
+
+        report.submit(OWNER, at);
+
+        assertThat(report.getStatus()).isEqualTo(ReportStatus.SUBMITTED);
+        assertThat(report.getStatusHistory()).hasSize(1);
+        var change = report.getStatusHistory().getFirst();
+        assertThat(change.getFromStatus()).isEqualTo(ReportStatus.DRAFT);
+        assertThat(change.getToStatus()).isEqualTo(ReportStatus.SUBMITTED);
+        assertThat(change.getActingUser()).isSameAs(OWNER);
+        assertThat(change.getChangedAt()).isEqualTo(at);
+        assertThat(change.getComment()).isNull();
+    }
+
+    @Test
+    void submitRequiresAtLeastOneLine() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+
+        assertThatThrownBy(() -> report.submit(OWNER, Instant.EPOCH))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("at least one line");
+        // Nothing changed: still an empty DRAFT with no history.
+        assertThat(report.getStatus()).isEqualTo(ReportStatus.DRAFT);
+        assertThat(report.getStatusHistory()).isEmpty();
+    }
+
+    @Test
+    void submitPermitsANonPositiveTotal() {
+        // No total-sign guard (ADR-0006): a report netting to zero still submits.
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+        report.reconcileLines(List.of(
+                spec(null, "100.00", RATE_0),
+                spec(null, "-100.00", RATE_0)));
+        assertThat(report.total()).isEqualByComparingTo("0.00");
+
+        report.submit(OWNER, Instant.EPOCH);
+
+        assertThat(report.getStatus()).isEqualTo(ReportStatus.SUBMITTED);
+    }
+
+    @Test
+    void resubmittingAnAlreadySubmittedReportIsRejected() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+        report.reconcileLines(List.of(spec(null, "100.00", RATE_255)));
+        report.submit(OWNER, Instant.EPOCH);
+
+        assertThatThrownBy(() -> report.submit(OWNER, Instant.EPOCH))
+                .isInstanceOf(IllegalStateException.class);
+        // The illegal second transition does not append a spurious history entry.
+        assertThat(report.getStatusHistory()).hasSize(1);
+    }
+
+    @Test
+    void aSubmittedReportRejectsLineAndDetailEditsAndDelete() {
+        // The read-only-after-submit guards, now exercised end-to-end through a
+        // real submit() (Phase 2.4) rather than only via the enum.
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+        report.reconcileLines(List.of(spec(null, "100.00", RATE_255)));
+        report.submit(OWNER, Instant.EPOCH);
+
+        assertThatThrownBy(() -> report.reconcileLines(
+                List.of(spec(null, "50.00", RATE_255))))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> report.updateDetails(LocalDate.of(2026, 7, 11), "x"))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(report::assertDeletable)
+                .isInstanceOf(IllegalStateException.class);
     }
 
     private static ExpenseLineSpec spec(Long id, String amount, VatRate rate) {

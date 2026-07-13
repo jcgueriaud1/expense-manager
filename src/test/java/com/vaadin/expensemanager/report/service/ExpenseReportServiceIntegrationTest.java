@@ -261,6 +261,65 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    void submitMovesDraftToSubmittedAndRecordsAStatusChange() {
+        var type = firstActiveType();
+        var rate = rateByValue("25.5");
+        var id = service.create(dtoWithLines(null, LocalDate.of(2026, 7, 10), 0L,
+                List.of(newLine(type, rate, "100.00", "hotel"))));
+        var loaded = service.findMine(id);
+
+        var submitted = service.submit(id, loaded.version());
+
+        assertThat(submitted.status()).isEqualTo(ReportStatus.SUBMITTED);
+        // Round-trips through the DB as SUBMITTED with one status-change row.
+        var reloaded = reportRepository.findById(id).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo(ReportStatus.SUBMITTED);
+        assertThat(reloaded.getStatusHistory()).hasSize(1);
+        var change = reloaded.getStatusHistory().getFirst();
+        assertThat(change.getFromStatus()).isEqualTo(ReportStatus.DRAFT);
+        assertThat(change.getToStatus()).isEqualTo(ReportStatus.SUBMITTED);
+        assertThat(change.getActingUser().getEmail())
+                .isEqualTo(LocalUserSeeder.PLAIN_USER_EMAIL);
+    }
+
+    @Test
+    void submittingAReportWithNoLinesIsRejected() {
+        var id = service.create(draftDto(LocalDate.of(2026, 7, 10), "empty"));
+        var loaded = service.findMine(id);
+
+        assertThatThrownBy(() -> service.submit(id, loaded.version()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("at least one line");
+        assertThat(service.findMine(id).status()).isEqualTo(ReportStatus.DRAFT);
+    }
+
+    @Test
+    void aSubmittedReportCannotBeDeleted() {
+        var type = firstActiveType();
+        var rate = rateByValue("25.5");
+        var id = service.create(dtoWithLines(null, LocalDate.of(2026, 7, 10), 0L,
+                List.of(newLine(type, rate, "100.00", "hotel"))));
+        service.submit(id, service.findMine(id).version());
+
+        // The draft-only delete guard (ADR-0006) now exercised end-to-end: a
+        // SUBMITTED report rejects delete rather than being removed.
+        assertThatThrownBy(() -> service.delete(id))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(service.findMine(id).status()).isEqualTo(ReportStatus.SUBMITTED);
+    }
+
+    @Test
+    void submitWithAStaleVersionThrowsOptimisticLockFailure() {
+        var type = firstActiveType();
+        var rate = rateByValue("25.5");
+        var id = service.create(dtoWithLines(null, LocalDate.of(2026, 7, 10), 0L,
+                List.of(newLine(type, rate, "100.00", "hotel"))));
+
+        assertThatThrownBy(() -> service.submit(id, 999L))
+                .isInstanceOf(ObjectOptimisticLockingFailureException.class);
+    }
+
     private ExpenseType firstActiveType() {
         return expenseTypeRepository.findByActiveTrueOrderByDisplayOrderAscIdAsc()
                 .getFirst();

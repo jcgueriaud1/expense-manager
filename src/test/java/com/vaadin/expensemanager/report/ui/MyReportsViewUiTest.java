@@ -55,20 +55,24 @@ class MyReportsViewUiTest extends AbstractReportViewUiTest {
     }
 
     @Test
-    void statusFilterNarrowsTheGrid() {
-        seedReport(LocalDate.of(2026, 7, 1), "a");
-        seedReport(LocalDate.of(2026, 7, 2), "b");
+    void statusFilterDistinguishesDraftAndSubmitted() {
+        seedReport(LocalDate.of(2026, 7, 1), "still a draft");
+        seedSubmittedReport(LocalDate.of(2026, 7, 2), "50.00");
         navigate(MyReportsView.class);
 
-        // No report is SUBMITTED yet (submit lands in 2.4) → filter empties it.
+        // Filtering by SUBMITTED leaves only the submitted report.
         findComboBox(com.vaadin.expensemanager.report.domain.ReportStatus.class)
                 .withLabel("Status").selectItem("Submitted");
-        assertThat(findGrid(ReportSummaryDto.class).size()).isZero();
+        var submittedOnly = findGrid(ReportSummaryDto.class);
+        assertThat(submittedOnly.size()).isEqualTo(1);
+        assertThat(submittedOnly.getCellText(0, STATUS_COL)).isEqualTo("Submitted");
 
-        // Filtering by DRAFT brings both back.
+        // Filtering by DRAFT leaves only the draft.
         findComboBox(com.vaadin.expensemanager.report.domain.ReportStatus.class)
                 .withLabel("Status").selectItem("Draft");
-        assertThat(findGrid(ReportSummaryDto.class).size()).isEqualTo(2);
+        var draftOnly = findGrid(ReportSummaryDto.class);
+        assertThat(draftOnly.size()).isEqualTo(1);
+        assertThat(draftOnly.getCellText(0, STATUS_COL)).isEqualTo("Draft");
     }
 
     @Test
