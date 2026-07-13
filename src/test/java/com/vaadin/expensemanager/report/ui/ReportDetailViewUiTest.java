@@ -8,6 +8,7 @@ import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.VatRateDto;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
 import com.vaadin.flow.component.datepicker.DatePicker;
+import com.vaadin.flow.component.html.Image;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.test.context.support.WithUserDetails;
 
@@ -237,12 +238,56 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
                 "hotel.jpg");
         navigate(ReportDetailView.class, id);
 
-        // The summary is visible (read-only), but every mutation surface is gone:
-        // no Add expense to open the editor, so the receipt cannot be changed.
-        assertThat(getCurrentView().getElement().getTextRecursively())
-                .contains("hotel.jpg");
+        // The receipt is viewable (read path, ADR-0021): its image preview shows
+        // even on a read-only report. But every mutation surface is gone — no Add
+        // expense to open the editor, so the receipt cannot be changed.
+        assertThat(findButton().withAriaLabel("Preview receipt: hotel.jpg").exists())
+                .isTrue();
         assertThat(findButton().withText("Add expense").exists()).isFalse();
         assertThat(findButton().withAriaLabel("Remove line").exists()).isFalse();
+    }
+
+    @Test
+    void aSavedImageReceiptRendersAnEnlargeablePreview() {
+        // A persisted image receipt: the card shows a keyboard-operable thumbnail
+        // button (accessible name) that streams from the DB and enlarges in a
+        // dialog (ADR-0021 / ADR-0020) — visible even on a read-only report.
+        var id = seedSubmittedReportWithReceipt(LocalDate.of(2026, 7, 1), "50.00",
+                "hotel.jpg");
+        navigate(ReportDetailView.class, id);
+
+        assertThat(findButton().withAriaLabel("Preview receipt: hotel.jpg").exists())
+                .isTrue();
+        assertThat($(Image.class).exists()).isTrue();
+    }
+
+    @Test
+    void aSavedPdfReceiptOffersAnOpenAffordance() {
+        var id = seedReportWithReceipt(LocalDate.of(2026, 7, 1), "70.00",
+                "invoice.pdf", pdfBytes());
+        navigate(ReportDetailView.class, id);
+
+        // A PDF is not thumbnailed — it offers an "open" link (browser viewer).
+        assertThat(getCurrentView().getElement().getTextRecursively())
+                .contains("Open invoice.pdf");
+    }
+
+    @Test
+    void anUnsavedImageAttachmentPreviewsFromBufferedBytes() {
+        // Brand-new report, receipt attached but nothing saved yet: the editor
+        // previews the buffered bytes directly (no DB round-trip, no receipt id).
+        navigate(ReportDetailView.class);
+
+        findButton().withText("Add expense").click();
+        findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
+                .selectItem("Parking/supplies/goods");
+        findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
+        findBigDecimalField().setValue(new BigDecimal("100"));
+        findUpload().upload("taxi.jpg", "image/jpeg", jpegBytes());
+
+        // The preview affordance appears in the still-open dialog, before any save.
+        assertThat(findButton().withAriaLabel("Preview receipt: taxi.jpg").exists())
+                .isTrue();
     }
 
     @Test

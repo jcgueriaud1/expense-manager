@@ -282,7 +282,8 @@ public class ReportDetailView extends VerticalLayout
 
     private void addLine() {
         new LineEditorDialog(referenceData.activeExpenseTypes(),
-                referenceData.activeVatRates(), null, (dto, receipt) -> {
+                referenceData.activeVatRates(), null, service::receiptDownload,
+                (dto, receipt) -> {
                     var entry = lines.insertLast(dto);
                     if (receipt != null) {
                         pendingReceipts.put(entry, receipt);
@@ -292,7 +293,8 @@ public class ReportDetailView extends VerticalLayout
 
     private void openEditor(ValueSignal<ExpenseLineDto> entry) {
         new LineEditorDialog(referenceData.activeExpenseTypes(),
-                referenceData.activeVatRates(), entry.peek(), (dto, receipt) -> {
+                referenceData.activeVatRates(), entry.peek(), service::receiptDownload,
+                (dto, receipt) -> {
                     entry.set(dto);
                     if (receipt != null) {
                         pendingReceipts.put(entry, receipt);
@@ -389,14 +391,32 @@ public class ReportDetailView extends VerticalLayout
         subtitle.bindText(entry.map(ReportDetailView::subtitleOf));
         subtitle.getStyle().setColor("var(--vaadin-text-color-secondary)");
         subtitle.getStyle().setFontSize("var(--aura-font-size-s)");
-        // Receipt indicator (summary only — the read/preview path is a later
-        // slice); shows in every state so a submitted report still reads clearly.
-        var receipt = new Span();
-        receipt.bindText(entry.map(dto -> dto.hasReceipt()
-                ? "📎 " + dto.receiptFilename() : ""));
-        receipt.bindVisible(entry.map(ExpenseLineDto::hasReceipt));
-        receipt.getStyle().setColor("var(--vaadin-text-color-secondary)");
-        receipt.getStyle().setFontSize("var(--aura-font-size-xs)");
+        // Receipt read affordance (ADR-0021): a saved image shows a thumbnail
+        // that enlarges in a dialog, a saved PDF an "open" link — both streaming
+        // the bytes on demand via the owner-scoped DownloadHandler, so a submitted
+        // (read-only) report can still view its receipt. An unsaved buffered
+        // attachment has no stable id yet, so the card shows its filename until
+        // the first save (the editor previews the buffered bytes meanwhile).
+        var receipt = new Div();
+        receipt.getStyle().set("margin-top", "var(--vaadin-gap-s)");
+        Signal.effect(receipt, () -> {
+            ExpenseLineDto dto = entry.get();
+            receipt.removeAll();
+            if (!dto.hasReceipt()) {
+                return;
+            }
+            if (dto.receiptId() != null) {
+                Long receiptId = dto.receiptId();
+                receipt.add(ReceiptPreview.forReceipt(dto.receiptFilename(),
+                        dto.receiptContentType(),
+                        () -> service.receiptDownload(receiptId)));
+            } else {
+                var chip = new Span("📎 " + dto.receiptFilename());
+                chip.getStyle().setColor("var(--vaadin-text-color-secondary)");
+                chip.getStyle().setFontSize("var(--aura-font-size-xs)");
+                receipt.add(chip);
+            }
+        });
         var texts = new VerticalLayout(name, subtitle, receipt);
         texts.setPadding(false);
         texts.setSpacing(false);

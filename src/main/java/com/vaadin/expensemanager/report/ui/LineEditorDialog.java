@@ -1,8 +1,10 @@
 package com.vaadin.expensemanager.report.ui;
 
+import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiConsumer;
+import java.util.function.Function;
 
 import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.VatRateDto;
@@ -23,11 +25,14 @@ import com.vaadin.flow.component.html.UnorderedList;
 import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.notification.NotificationVariant;
+import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.textfield.BigDecimalField;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.component.upload.Upload;
 import com.vaadin.flow.data.binder.Binder;
 import com.vaadin.flow.data.binder.ValidationResult;
+import com.vaadin.flow.server.streams.DownloadHandler;
+import com.vaadin.flow.server.streams.DownloadResponse;
 import com.vaadin.flow.server.streams.UploadHandler;
 
 import static com.vaadin.expensemanager.report.ui.ReportViewSupport.formatPercent;
@@ -69,6 +74,7 @@ final class LineEditorDialog extends Dialog {
     // command) from an explicit attach/remove. When touched: pendingData == null
     // means remove; non-null means attach (with its sniffed type + size).
     private final ExpenseLineDto existing;
+    private final Function<Long, DownloadHandler> savedReceiptSource;
     private boolean receiptTouched;
     private byte[] pendingData;
     private String pendingFilename;
@@ -77,17 +83,25 @@ final class LineEditorDialog extends Dialog {
 
     private final Span receiptStatus = new Span();
     private final Button removeReceipt = new Button("Remove");
+    private final Div receiptPreview = new Div();
 
     /**
      * @param types    active expense types offered to new lines, in display order
      * @param rates    active VAT rates offered to new lines, in display order
-     * @param existing the line being edited, or {@code null} to add a new one
-     * @param onSave   receives the edited/created line and the buffered receipt
-     *                 mutation ({@code null} when the receipt was left unchanged)
+     * @param existing           the line being edited, or {@code null} to add a
+     *                           new one
+     * @param savedReceiptSource maps a persisted receipt id to a streaming
+     *                           {@link DownloadHandler} (the service's read path),
+     *                           so an already-saved receipt previews from the DB
+     * @param onSave             receives the edited/created line and the buffered
+     *                           receipt mutation ({@code null} when the receipt was
+     *                           left unchanged)
      */
     LineEditorDialog(List<ExpenseTypeDto> types, List<VatRateDto> rates,
-            ExpenseLineDto existing, BiConsumer<ExpenseLineDto, ReceiptUpload> onSave) {
+            ExpenseLineDto existing, Function<Long, DownloadHandler> savedReceiptSource,
+            BiConsumer<ExpenseLineDto, ReceiptUpload> onSave) {
         this.existing = existing;
+        this.savedReceiptSource = savedReceiptSource;
         setHeaderTitle(existing == null ? "Add expense" : "Edit expense");
         setWidth("28rem");
 
@@ -206,7 +220,7 @@ final class LineEditorDialog extends Dialog {
         statusRow.getStyle().set("display", "flex").set("align-items", "center")
                 .set("gap", "var(--vaadin-gap)");
 
-        var section = new Div(heading, statusRow, upload);
+        var section = new Div(heading, receiptPreview, statusRow, upload);
         section.getStyle().set("display", "flex").set("flex-direction", "column")
                 .set("gap", "var(--vaadin-gap-s)")
                 .set("margin-top", "var(--vaadin-gap)");
@@ -239,6 +253,45 @@ final class LineEditorDialog extends Dialog {
         boolean present = filename != null;
         receiptStatus.setText(present ? "📎 " + filename : "No receipt attached.");
         removeReceipt.setVisible(present);
+        refreshReceiptPreview();
+    }
+
+    /**
+     * Rebuilds the inline preview for the effective receipt (ADR-0021): a freshly
+     * buffered upload previews from its in-memory bytes; an untouched, already
+     * <em>saved</em> receipt previews from the DB stream. An existing but not-yet-
+     * saved buffered attachment reopened for edit has no bytes here (they live in
+     * the report's working copy), so only its filename shows until saved.
+     */
+    private void refreshReceiptPreview() {
+        receiptPreview.removeAll();
+        Component preview = receiptPreviewComponent();
+        if (preview != null) {
+            receiptPreview.add(preview);
+        }
+    }
+
+    private Component receiptPreviewComponent() {
+        if (receiptTouched) {
+            if (pendingData == null) {
+                return null;
+            }
+            // Buffered bytes: stream them straight from memory (no DB, no id yet).
+            byte[] data = pendingData;
+            String filename = pendingFilename;
+            String contentType = pendingContentType;
+            return ReceiptPreview.forReceipt(filename, contentType,
+                    () -> DownloadHandler.fromInputStream(event ->
+                            new DownloadResponse(new ByteArrayInputStream(data),
+                                    filename, contentType, data.length)).inline());
+        }
+        if (existing != null && existing.hasReceipt() && existing.receiptId() != null) {
+            Long receiptId = existing.receiptId();
+            return ReceiptPreview.forReceipt(existing.receiptFilename(),
+                    existing.receiptContentType(),
+                    () -> savedReceiptSource.apply(receiptId));
+        }
+        return null;
     }
 
     /** The filename that would apply on save, honouring any buffered change. */
