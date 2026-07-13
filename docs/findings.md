@@ -805,3 +805,70 @@ Deployment/Observability · UX-spec
   test-isolation nuance, not a framework gap.
 - Owner / next step: none — pattern captured; apply the same split to the Phase 5
   approve/reject guards.
+
+### F-025 — Buffered receipt bytes live on the Vaadin session heap until save
+- Date: 2026-07-13
+- Area: Deployment/Observability
+- Severity: Low
+- Task being attempted: Phase 3.1 (#40) — attaching a receipt on a report at any
+  time, including a brand-new never-saved one, with the bytes persisted only on
+  the whole-aggregate `create`/`update` (ADR-0021, overriding ADR-0019's
+  "save first").
+- Expected vs actual: expected (and got) a smooth "attach then save" flow with no
+  disabled control. The structural cost, as ADR-0021 called out: between attach
+  and save the received `byte[]` is held in the detail view's `pendingReceipts`
+  map on the Vaadin session (server heap), not the DB. Bounded by the 10 MB cap ×
+  lines with a pending upload per open editor session, but it is real per-user
+  heap that a page reload or session timeout silently discards (the Upload
+  component keeps no server-side file state across a reload either).
+- Workaround used: none needed for V1 — the cap bounds it and a single report has
+  few lines. Kept the bytes off the DTOs entirely: `ExpenseLineDto` carries only
+  a receipt *summary*, and buffered bytes ride a separate save-only `ReceiptUpload`
+  channel keyed by working-line entry, so the heap footprint is visible and local.
+- Evidence: `report/ui/ReportDetailView` (`pendingReceipts`,
+  `pendingReceiptsByLineIndex`), `report/ui/LineEditorDialog` (`pendingData`),
+  `report/service/ReceiptUpload`, ADR-0021 Consequences.
+- Impact: at real concurrency (many users each mid-edit with a large pending
+  receipt) this is heap pressure to watch; the migration path is a staging store
+  (temp file / object storage) for buffered bytes, deferred with ADR-0009's
+  object-storage move.
+- Suggested Vaadin/product improvement: a first-class "buffer to temp file, not
+  heap" `UploadHandler` (there is `TemporaryFileUploadHandler`, but wiring its
+  lifecycle to an unsaved-form working copy is manual) would make the safe choice
+  the easy one.
+- Owner / next step: none — logged per the acceptance criteria; revisit with the
+  object-storage decision if heap pressure shows up in staging.
+
+### F-026 — Vaadin `UploadHandler` + `maxFiles(1)` leaves the upload button disabled; legacy `SucceededEvent` doesn't fire
+- Date: 2026-07-13
+- Area: Vaadin
+- Severity: Low
+- Task being attempted: Phase 3.1 (#40) — an always-enabled receipt upload that
+  is replaceable (overwrite), i.e. still usable after one file (ADR-0020: never a
+  disabled control).
+- Expected vs actual: with `setMaxFiles(1)`, after one successful upload the
+  component's built-in file list keeps the file and the upload button goes
+  `disabled` (max-files reached) — a gated control, and a second display of the
+  filename redundant with our own status row. First fix attempt wired
+  `addSucceededListener(e -> clearFileList())` to reset the count; it never fired.
+  Under the new `UploadHandler` streaming API the upload lifecycle is delivered
+  through the `TransferProgressListener` model, and the legacy `SucceededEvent`
+  (and `FinishedEvent`) are not raised — so a handler-based Upload can't rely on
+  them for post-upload cleanup.
+- Workaround used: call `upload.clearFileList()` at the end of the
+  `UploadHandler.inMemory` callback itself (it runs on the UI thread on
+  completion). The native list is then always empty, our status row ("📎 filename
+  · Remove") is the single source of truth, and the button stays enabled for a
+  replacement. Verified live via Playwright (button enabled, no redundant list).
+- Evidence: `report/ui/LineEditorDialog` (`uploadRef`, `clearFileList()` inside
+  the inMemory callback); Vaadin 25.2 upload docs (progress-listener note); the
+  disabled-button screenshot from the first run.
+- Impact: a subtle trap — the intuitive `addSucceededListener` compiles and reads
+  correctly but is dead code with `UploadHandler`; and `maxFiles(1)` quietly
+  fights the "never disable" rule. Cost us one build/restart/verify cycle.
+- Suggested Vaadin/product improvement: either fire the legacy succeeded/finished
+  events from the `UploadHandler` path too, or deprecate them loudly; and document
+  that `maxFiles(1)` disables the add button (with the clear-to-replace pattern) on
+  the Upload page.
+- Owner / next step: none — pattern captured; reuse the callback-`clearFileList()`
+  shape for any future single-file upload.

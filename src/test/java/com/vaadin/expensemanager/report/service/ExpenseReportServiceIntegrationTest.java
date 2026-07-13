@@ -3,9 +3,11 @@ package com.vaadin.expensemanager.report.service;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 import com.vaadin.expensemanager.base.AbstractIntegrationTest;
 import com.vaadin.expensemanager.report.domain.ExpenseReport;
+import com.vaadin.expensemanager.report.domain.ReceiptRejectedException;
 import com.vaadin.expensemanager.report.domain.ReportStatus;
 import com.vaadin.expensemanager.reference.ExpenseType;
 import com.vaadin.expensemanager.reference.ExpenseTypeRepository;
@@ -14,6 +16,9 @@ import com.vaadin.expensemanager.reference.VatRateRepository;
 import com.vaadin.expensemanager.security.LocalUserDetailsService;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
 import com.vaadin.expensemanager.user.UserRepository;
+
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -65,6 +70,12 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private VatRateRepository vatRateRepository;
+
+    @Autowired
+    private ReceiptRepository receiptRepository;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     @Autowired
     private LocalUserDetailsService userDetailsService;
@@ -206,9 +217,9 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
         // Keep A (edit amount, same id), drop B (orphan-remove the middle line),
         // keep C, add a brand-new line (null id → insert).
         var edited = List.of(
-                new ExpenseLineDto(lineA.id(), type.getId(), type.getName(),
+                ExpenseLineDto.of(lineA.id(), type.getId(), type.getName(),
                         rate.getId(), rate.getValue(), new BigDecimal("11.00"), "A2"),
-                new ExpenseLineDto(lineC.id(), type.getId(), type.getName(),
+                ExpenseLineDto.of(lineC.id(), type.getId(), type.getName(),
                         rate.getId(), rate.getValue(), lineC.amount(), lineC.comment()),
                 newLine(type, rate, "40.00", "D"));
         service.update(id, dtoWithLines(id, LocalDate.of(2026, 7, 10),
@@ -240,7 +251,7 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
         var line = loaded.lines().getFirst();
         service.update(id, dtoWithLines(id, LocalDate.of(2026, 7, 10),
                 loaded.version(),
-                List.of(new ExpenseLineDto(line.id(), type.getId(), type.getName(),
+                List.of(ExpenseLineDto.of(line.id(), type.getId(), type.getName(),
                         rate.getId(), rate.getValue(), new BigDecimal("23.00"), "publication"))),
                 loaded.version());
 
@@ -320,6 +331,127 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
                 .isInstanceOf(ObjectOptimisticLockingFailureException.class);
     }
 
+    // --- Receipts (Phase 3.1, ADR-0021) ---
+
+    // Minimal magic-byte prefixes; padded so they read as small real files.
+    private static final byte[] JPEG = pad((byte) 0xFF, (byte) 0xD8, (byte) 0xFF);
+    private static final byte[] PNG = pad((byte) 0x89, (byte) 0x50, (byte) 0x4E,
+            (byte) 0x47);
+
+    @Test
+    void attachingAReceiptOnSavePersistsItAndReloadsASummaryWithoutBytes() {
+        var type = firstActiveType();
+        var rate = rateByValue("25.5");
+        var id = service.create(
+                dtoWithLines(null, LocalDate.of(2026, 7, 10), 0L,
+                        List.of(newLine(type, rate, "40.00", "taxi"))),
+                Map.of(0, new ReceiptUpload(JPEG, "taxi.jpg")));
+
+        var loaded = service.findMine(id);
+        var line = loaded.lines().getFirst();
+        assertThat(line.hasReceipt()).isTrue();
+        assertThat(line.receiptFilename()).isEqualTo("taxi.jpg");
+        // Stored content type is the SNIFFED signature, not a browser claim.
+        assertThat(line.receiptContentType()).isEqualTo("image/jpeg");
+        assertThat(line.receiptSizeBytes()).isEqualTo(JPEG.length);
+        assertThat(line.receiptId()).isNotNull();
+
+        // The bytes round-trip in the DB even though no DTO ever carried them.
+        var stored = receiptRepository.findByExpenseLineId(line.id()).orElseThrow();
+        assertThat(stored.getData()).isEqualTo(JPEG);
+    }
+
+    @Test
+    void replacingAReceiptOverwritesInPlaceWithNoHistory() {
+        var type = firstActiveType();
+        var rate = rateByValue("25.5");
+        var id = service.create(
+                dtoWithLines(null, LocalDate.of(2026, 7, 10), 0L,
+                        List.of(newLine(type, rate, "40.00", "taxi"))),
+                Map.of(0, new ReceiptUpload(JPEG, "taxi.jpg")));
+        var loaded = service.findMine(id);
+        var line = loaded.lines().getFirst();
+        var originalReceiptId = line.receiptId();
+
+        // Upload a PNG over the JPEG: same single receipt row, new bytes/type.
+        service.update(id, dtoWithLines(id, LocalDate.of(2026, 7, 10),
+                loaded.version(), List.of(line)), loaded.version(),
+                Map.of(0, new ReceiptUpload(PNG, "taxi.png")));
+
+        var reloaded = service.findMine(id).lines().getFirst();
+        assertThat(reloaded.receiptContentType()).isEqualTo("image/png");
+        assertThat(reloaded.receiptFilename()).isEqualTo("taxi.png");
+        // No history: exactly one receipt for the line, and it is the same row.
+        assertThat(receiptRepository.findByExpenseLineId(reloaded.id()).orElseThrow()
+                .getId()).isEqualTo(originalReceiptId);
+    }
+
+    @Test
+    void removingAReceiptClearsIt() {
+        var type = firstActiveType();
+        var rate = rateByValue("25.5");
+        var id = service.create(
+                dtoWithLines(null, LocalDate.of(2026, 7, 10), 0L,
+                        List.of(newLine(type, rate, "40.00", "taxi"))),
+                Map.of(0, new ReceiptUpload(JPEG, "taxi.jpg")));
+        var loaded = service.findMine(id);
+        var line = loaded.lines().getFirst();
+
+        service.update(id, dtoWithLines(id, LocalDate.of(2026, 7, 10),
+                loaded.version(), List.of(line)), loaded.version(),
+                Map.of(0, ReceiptUpload.REMOVE));
+
+        assertThat(service.findMine(id).lines().getFirst().hasReceipt()).isFalse();
+        assertThat(receiptRepository.findByExpenseLineId(line.id())).isEmpty();
+    }
+
+    @Test
+    void orphanRemovingALineAlsoRemovesItsReceipt() {
+        var type = firstActiveType();
+        var rate = rateByValue("25.5");
+        var id = service.create(
+                dtoWithLines(null, LocalDate.of(2026, 7, 10), 0L,
+                        List.of(newLine(type, rate, "40.00", "taxi"))),
+                Map.of(0, new ReceiptUpload(JPEG, "taxi.jpg")));
+        var loaded = service.findMine(id);
+        var lineId = loaded.lines().getFirst().id();
+        assertThat(receiptRepository.findByExpenseLineId(lineId)).isPresent();
+
+        // Detach everything so the update runs against a clean persistence context,
+        // as it would across a real request/transaction boundary (the rollback
+        // test otherwise keeps create()'s receipt managed — cf. F-024).
+        entityManager.clear();
+
+        // Reconcile the line away (empty line set); the FK cascade removes the
+        // receipt with its line — no dangling blob.
+        service.update(id, dtoWithLines(id, LocalDate.of(2026, 7, 10),
+                loaded.version(), List.of()), loaded.version());
+
+        assertThat(service.findMine(id).lines()).isEmpty();
+        assertThat(receiptRepository.findByExpenseLineId(lineId)).isEmpty();
+    }
+
+    @Test
+    void aMislabeledFileIsRejectedAtTheService() {
+        var type = firstActiveType();
+        var rate = rateByValue("25.5");
+        byte[] notAnImage = "totally not a jpeg".getBytes();
+
+        // Even bypassing the UI, the service re-sniffs and rejects: the stored
+        // type can only ever be a verified signature (ADR-0021).
+        assertThatThrownBy(() -> service.create(
+                dtoWithLines(null, LocalDate.of(2026, 7, 10), 0L,
+                        List.of(newLine(type, rate, "40.00", "taxi"))),
+                Map.of(0, new ReceiptUpload(notAnImage, "taxi.jpg"))))
+                .isInstanceOf(ReceiptRejectedException.class);
+    }
+
+    private static byte[] pad(byte... magic) {
+        byte[] file = new byte[magic.length + 6];
+        System.arraycopy(magic, 0, file, 0, magic.length);
+        return file;
+    }
+
     private ExpenseType firstActiveType() {
         return expenseTypeRepository.findByActiveTrueOrderByDisplayOrderAscIdAsc()
                 .getFirst();
@@ -333,7 +465,7 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
 
     private static ExpenseLineDto newLine(ExpenseType type, VatRate rate,
             String amount, String comment) {
-        return new ExpenseLineDto(null, type.getId(), type.getName(), rate.getId(),
+        return ExpenseLineDto.of(null, type.getId(), type.getName(), rate.getId(),
                 rate.getValue(), new BigDecimal(amount), comment);
     }
 
