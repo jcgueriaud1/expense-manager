@@ -5,7 +5,11 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import com.vaadin.expensemanager.base.AuditedEntity;
 import com.vaadin.expensemanager.user.User;
@@ -32,9 +36,9 @@ import jakarta.persistence.Version;
  * <p>Owns its report-level fields (a required user-entered {@link #reportDate}
  * defaulting to today in the UI, optional {@link #additionalInformation}, no
  * title), its lifecycle {@link #status} (starting {@link ReportStatus#DRAFT}),
- * and an ordered {@link StatusChange} log. The gross line collection and the
- * money it carries arrive in Phase 2.3; until then {@link #total()} is €0.00 —
- * the {@code // lines: Phase 2.3} comments mark the seam.
+ * its ordered {@link ExpenseLine} collection, and an ordered {@link StatusChange}
+ * log. The report total is derived from the lines, never stored — sum-per-line
+ * then total, to avoid rounding drift across mixed VAT rates (ADR-0010).
  *
  * <p><strong>Invariants live here, not in the service (ADR-0006).</strong> The
  * aggregate owns the delete guard — {@link #assertDeletable()} rejects deleting
@@ -72,6 +76,19 @@ public class ExpenseReport extends AuditedEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private ReportStatus status = ReportStatus.DRAFT;
+
+    /**
+     * The report's expense lines in insertion order, owned by the aggregate
+     * (cascade + orphan removal, order persisted via {@link OrderColumn}). As
+     * with {@link #statusHistory}, the collection is the <strong>owning</strong>
+     * side — it maps the {@code report_id} FK and the {@code line_index} order
+     * column — so Hibernate populates {@code line_index} on insert. Mutated only
+     * through {@link #reconcileLines} (ADR-0006, ADR-0019).
+     */
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
+    @JoinColumn(name = "report_id", nullable = false)
+    @OrderColumn(name = "line_index")
+    private List<ExpenseLine> lines = new ArrayList<>();
 
     /**
      * Ordered status-history log, owned by the aggregate (cascade + orphan
@@ -148,12 +165,82 @@ public class ExpenseReport extends AuditedEntity {
     }
 
     /**
-     * The derived report total — never stored (ADR-0010, ADR-0019). Sums the
-     * gross line amounts; with no lines yet (Phase 2.3) this is {@code 0.00}.
+     * Reconciles the line collection against the desired set (ADR-0019). Matches
+     * each spec on its nullable line id — non-null updates the existing line,
+     * {@code null} inserts a new one — and orphan-removes any existing line whose
+     * id is absent from {@code specs}. The resulting collection order follows the
+     * spec order (the {@link OrderColumn} is rewritten to match).
+     *
+     * <p>Editable only while the report is a {@code DRAFT}/{@code REJECTED}
+     * (ADR-0006); a locked report rejects the change. Per-line invariants
+     * (required type/rate, non-zero amount) are enforced by {@link ExpenseLine}.
+     *
+     * @throws IllegalStateException    if the report is not editable
+     * @throws IllegalArgumentException if a spec references a line id not on this
+     *                                  report
+     */
+    public void reconcileLines(List<ExpenseLineSpec> specs) {
+        if (!status.isEditable()) {
+            throw new IllegalStateException(
+                    "Report " + id + " is " + status + " and its lines cannot be edited");
+        }
+        Map<Long, ExpenseLine> existingById = lines.stream()
+                .filter(line -> line.getId() != null)
+                .collect(Collectors.toMap(ExpenseLine::getId, Function.identity()));
+
+        List<ExpenseLine> desired = new ArrayList<>(specs.size());
+        for (ExpenseLineSpec spec : specs) {
+            if (spec.id() != null) {
+                ExpenseLine line = existingById.get(spec.id());
+                if (line == null) {
+                    throw new IllegalArgumentException(
+                            "No line with id " + spec.id() + " on report " + id);
+                }
+                line.update(spec.expenseType(), spec.amount(), spec.vatRate(),
+                        spec.comment());
+                desired.add(line);
+            } else {
+                desired.add(new ExpenseLine(spec.expenseType(), spec.amount(),
+                        spec.vatRate(), spec.comment()));
+            }
+        }
+        // Orphan-remove existing lines absent from the desired set (identity
+        // match — ExpenseLine has no value equality), then append the new ones,
+        // then reorder in place so line_index follows the spec order.
+        lines.removeIf(line -> !desired.contains(line));
+        for (ExpenseLine line : desired) {
+            if (!lines.contains(line)) {
+                lines.add(line);
+            }
+        }
+        lines.sort(Comparator.comparingInt(desired::indexOf));
+    }
+
+    /**
+     * The derived report total (gross) — never stored (ADR-0010, ADR-0019). Sums
+     * each line's gross; {@code 0.00} with no lines.
      */
     public BigDecimal total() {
-        // lines: Phase 2.3 — sum ExpenseLine gross amounts here.
-        return BigDecimal.ZERO.setScale(2);
+        return totals().gross();
+    }
+
+    /** The derived report net total (sum of per-line net), scale 2. */
+    public BigDecimal netTotal() {
+        return totals().net();
+    }
+
+    /** The derived report VAT total (sum of per-line VAT), scale 2. */
+    public BigDecimal vatTotal() {
+        return totals().vat();
+    }
+
+    /**
+     * The report's derived net/VAT/gross figures — sum-per-line then total, so a
+     * report with mixed VAT rates carries no rounding drift (ADR-0010).
+     */
+    public LineAmounts totals() {
+        return lines.stream().map(ExpenseLine::amounts)
+                .reduce(LineAmounts.zero(), LineAmounts::add);
     }
 
     public Long getId() {
@@ -183,6 +270,11 @@ public class ExpenseReport extends AuditedEntity {
     /** Unmodifiable view of the status history in insertion order. */
     public List<StatusChange> getStatusHistory() {
         return Collections.unmodifiableList(statusHistory);
+    }
+
+    /** Unmodifiable view of the expense lines in insertion order. */
+    public List<ExpenseLine> getLines() {
+        return Collections.unmodifiableList(lines);
     }
 
     private static LocalDate requireDate(LocalDate reportDate) {

@@ -1,14 +1,20 @@
 package com.vaadin.expensemanager.report.ui;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 import com.vaadin.browserless.SpringBrowserlessTest;
 import com.vaadin.browserless.locator.Locators;
 import com.vaadin.expensemanager.report.domain.ExpenseReport;
 import com.vaadin.expensemanager.report.domain.ReportStatus;
+import com.vaadin.expensemanager.report.service.ExpenseLineDto;
 import com.vaadin.expensemanager.report.service.ExpenseReportRepository;
 import com.vaadin.expensemanager.report.service.ExpenseReportService;
 import com.vaadin.expensemanager.report.service.ReportDetailDto;
+import com.vaadin.expensemanager.reference.ExpenseTypeDto;
+import com.vaadin.expensemanager.reference.ReferenceDataService;
+import com.vaadin.expensemanager.reference.VatRateDto;
 import com.vaadin.expensemanager.user.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -52,10 +58,34 @@ abstract class AbstractReportViewUiTest extends SpringBrowserlessTest
     @Autowired
     protected UserRepository userRepository;
 
+    @Autowired
+    protected ReferenceDataService referenceData;
+
     /** Seeds one DRAFT report owned by the current user; returns its id. */
     protected Long seedReport(LocalDate date, String info) {
+        var zero = BigDecimal.ZERO.setScale(2);
         return service.create(new ReportDetailDto(null, date, info,
-                ReportStatus.DRAFT, 0L, null));
+                ReportStatus.DRAFT, 0L, List.of(), zero, zero, zero));
+    }
+
+    /** Seeds one DRAFT report owned by the current user with a single line. */
+    protected Long seedReportWithLine(LocalDate date, String amount) {
+        var type = referenceData.activeExpenseTypes().getFirst();
+        var rate = referenceData.activeVatRates().getFirst();
+        var line = new ExpenseLineDto(null, type.id(), type.name(), rate.id(),
+                rate.value(), new BigDecimal(amount), null);
+        var zero = BigDecimal.ZERO.setScale(2);
+        return service.create(new ReportDetailDto(null, date, "seed",
+                ReportStatus.DRAFT, 0L, List.of(line), zero, zero, zero));
+    }
+
+    /** The first active expense type / VAT rate, for driving the line editor. */
+    protected ExpenseTypeDto firstActiveType() {
+        return referenceData.activeExpenseTypes().getFirst();
+    }
+
+    protected VatRateDto firstActiveRate() {
+        return referenceData.activeVatRates().getFirst();
     }
 
     /**

@@ -27,4 +27,9 @@ final class ReportViewSupport {
     static String formatEur(BigDecimal amount) {
         return "€" + amount.setScale(2, RoundingMode.HALF_UP).toPlainString();
     }
+
+    /** VAT rate percent without trailing zeros, e.g. {@code "25.5 %"}. */
+    static String formatPercent(BigDecimal percent) {
+        return percent.stripTrailingZeros().toPlainString() + " %";
+    }
 }

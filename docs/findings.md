@@ -170,25 +170,40 @@ Deployment/Observability · UX-spec
 - Owner / next step: none — resolved in Phase 0.3. Watch for the same fail-open
   pattern when later phases add tech that needs its own `spring-boot-*` module.
 
-### F-004 — Inline Grid row editor + ComboBox + Binder + Signals (provisional)
-- Date: 2026-07-09
+### F-004 — Report line editor: inline Grid dropped for variant-C cards + modal dialog
+- Date: 2026-07-13 (design 2026-07-09; built in #24)
 - Area: Vaadin
-- Severity: Low (provisional — confirm on implementation)
-- Task being attempted: Designing the line editor for the report detail view
-  (Phase 2.6, ADR-0015/0019).
-- Expected vs actual: Chose an inline Grid row editor (edit in place) with
-  `ComboBox` columns for expense type / VAT rate, Binder validation, and Signals
-  for live net/VAT/gross totals. This is the fiddliest Vaadin 25 combination
-  (Grid editor + editor-component binding + per-row validation + reactive totals)
-  and is expected to surface friction.
-- Expected vs actual: TBD — to be filled from real implementation experience.
-- Workaround used: TBD.
-- Evidence: design decision; ADR-0019.
-- Impact: TBD; may motivate falling back to a dialog/master-detail editor if the
-  inline approach proves too costly.
-- Suggested Vaadin/product improvement: TBD from findings during build.
-- Owner / next step: capture concrete friction (prompts, code, docs gaps) while
-  implementing 2.6.
+- Severity: Low
+- Task being attempted: The line editor for the report detail view (Phase 2.3,
+  #24; ADR-0015/0019). Originally provisionally an inline Grid row editor with
+  `ComboBox` columns, Binder validation, and Signals for live totals.
+- Expected vs actual: The inline-Grid combination was **not** built. Prototyping
+  four variants (see the retired `report/prototype/NOTES.md`) confirmed the
+  provisional worry: the Grid editor collapsed to zero height in flex splits, its
+  footer totals were imperative (Signals don't reach Grid footer cells out of the
+  box), and per-row editor-component binding was the fiddliest option. Variant C
+  (receipt-style cards + a focused modal `Dialog`) was chosen and built instead.
+  Building it, the remaining friction was: (a) the expense-type → default-VAT-rate
+  pre-fill can't be expressed declaratively in Binder — it needs an imperative
+  `ComboBox` value-change listener guarded by `isFromClient()` so
+  `binder.readBean` doesn't clobber a loaded rate; (b) making the whole card
+  clickable *and* carrying a trash button means both fire on a trash click (DOM
+  click bubbling).
+- Workaround used: (a) the guarded value-change listener in `LineEditorDialog`;
+  (b) the trash button lives *outside* the clickable card body (siblings, not
+  nested), so no `stopPropagation` hack is needed. Live totals moved off the Grid
+  footer entirely and onto plain `Span`s bound to a `Signal.computed` over a
+  `ListSignal` of working lines — which worked cleanly (see F-023).
+- Evidence: `report/ui/ReportDetailView`, `report/ui/LineEditorDialog`; the
+  deleted `report/prototype/` package; ADR-0019.
+- Impact: The cards+dialog editor is lower-density and mobile-friendly, and keeps
+  totals off the Grid footer where Signals bind naturally. The type→rate default
+  staying imperative is a small, well-contained exception to the Binder-declarative
+  ideal.
+- Suggested Vaadin/product improvement: a Binder affordance for cross-field
+  defaults (set field B's value from field A on user change, without a manual
+  `isFromClient` listener) would remove the one imperative seam.
+- Owner / next step: none — variant C is the real view; prototype deleted.
 
 ### F-008 — Auto-menu shell was smooth; UI unit test couldn't reuse the integration base
 - Date: 2026-07-09
@@ -698,3 +713,58 @@ Deployment/Observability · UX-spec
   required field" (e.g. `clear()` on the value testers) would let validation-path
   tests stay on the tester API.
 - Owner / next step: none — pattern captured for later required-field forms.
+
+### F-022 — ComboBox won't show a now-inactive historical option unless it's in the item set
+- Date: 2026-07-13
+- Area: Vaadin
+- Severity: Low
+- Task being attempted: Phase 2.3 (#24) — the line editor offers only *active*
+  expense types / VAT rates for new lines (ADR-0018), but editing a historical
+  line whose type or rate has since been deactivated must still display it.
+- Expected vs actual: Expected setting the `ComboBox` value to the line's stored
+  type/rate to render it even if it isn't among `setItems(...)`. Actual: a
+  `ComboBox` value that isn't in the item set has no matching option to display —
+  the field renders empty, silently dropping the historical classification.
+- Workaround used: when opening the editor for an existing line, inject the
+  line's type/rate into that ComboBox's item list (labelled "(inactive)") if the
+  active list doesn't already contain it, then select that instance —
+  `LineEditorDialog.withHistoricalType/withHistoricalRate`. The active-only lists
+  still drive *new* lines.
+- Evidence: `report/ui/LineEditorDialog`; ADR-0018 (rates preserved by `active`
+  flag, never deleted).
+- Impact: The active/inactive split needs the editor to reconcile the item set
+  per opened line, not just call the "active options" service method once. Easy to
+  miss — the failure is a silently blank field, not an error.
+- Suggested Vaadin/product improvement: a `ComboBox` mode that renders an
+  out-of-set current value (with the item-label generator applied) would remove
+  this per-open reconciliation for history-preserving reference data.
+- Owner / next step: none — pattern captured for the receipt/approval editors.
+
+### F-023 — Signals (ListSignal + computed + bindText) fit live report totals cleanly
+- Date: 2026-07-13
+- Area: Vaadin
+- Severity: Low
+- Task being attempted: Phase 2.3 (#24) — live net/VAT/gross totals that update
+  as lines are added/edited/removed (ADR-0015), replacing the prototype's
+  imperative `refreshTotals()`.
+- Expected vs actual: This was the smooth part. A `ListSignal<ExpenseLineDto>` of
+  working lines drives both the card list (`VerticalLayout.bindChildren`) and the
+  total bar (`Span.bindText(Signal.computed(() -> ...))`). Adding/removing a line
+  (list-structure change) and editing one (`entry.set(...)`, per-entry change)
+  both re-fire the computed totals with no manual wiring — exactly the reactive
+  model ADR-0015 wanted, and the reason totals moved off the Grid footer (F-004).
+- Workaround used: none needed. Two API notes worth recording: (1) `get()` may
+  only be called inside a reactive context (effect/computed) — use `peek()` in
+  click listeners and for the save snapshot, or it throws `IllegalStateException`;
+  (2) `bindChildren` manages *all* default-slot children, so the empty-state
+  placeholder must be a sibling of the bound container (with `bindVisible`), not
+  a child of it.
+- Evidence: `report/ui/ReportDetailView` (`lines` ListSignal, `currentTotals`,
+  `totalsBar`, `card`).
+- Impact: Confirms ADR-0015's Binder-for-validation / Signals-for-dynamic-state
+  split works in practice; the get()/peek() context rule is the main thing to
+  teach.
+- Suggested Vaadin/product improvement: none — the docs cover it; the get()/peek()
+  distinction could be more prominent given how easy it is to hit.
+- Owner / next step: none — reuse this shape for other live-total surfaces
+  (allowance calculator, export preview).

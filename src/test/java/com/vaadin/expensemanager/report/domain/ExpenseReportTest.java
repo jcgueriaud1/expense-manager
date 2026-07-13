@@ -1,8 +1,12 @@
 package com.vaadin.expensemanager.report.domain;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Set;
 
+import com.vaadin.expensemanager.reference.ExpenseType;
+import com.vaadin.expensemanager.reference.VatRate;
 import com.vaadin.expensemanager.user.Role;
 import com.vaadin.expensemanager.user.User;
 
@@ -26,6 +30,11 @@ class ExpenseReportTest {
 
     private static final User OWNER =
             new User("owner@vaadin.com", "Report Owner", Set.of(Role.USER));
+
+    private static final VatRate RATE_255 = new VatRate(new BigDecimal("25.50"), 0);
+    private static final VatRate RATE_135 = new VatRate(new BigDecimal("13.50"), 1);
+    private static final VatRate RATE_0 = new VatRate(new BigDecimal("0.00"), 2);
+    private static final ExpenseType TYPE = new ExpenseType("Parking", 0, RATE_255);
 
     @Test
     void newReportStartsAsEmptyDraftWithZeroTotal() {
@@ -81,5 +90,78 @@ class ExpenseReportTest {
         assertThat(ReportStatus.REJECTED.isEditable()).isTrue();
         assertThat(ReportStatus.SUBMITTED.isEditable()).isFalse();
         assertThat(ReportStatus.APPROVED.isEditable()).isFalse();
+    }
+
+    @Test
+    void reconcileInsertsLinesAndDerivesMixedRateTotals() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+
+        report.reconcileLines(List.of(
+                spec(null, "100.00", RATE_255),
+                spec(null, "50.00", RATE_135)));
+
+        assertThat(report.getLines()).hasSize(2);
+        // Sum-per-line then total (ADR-0010).
+        assertThat(report.total()).isEqualByComparingTo("150.00");
+        assertThat(report.netTotal()).isEqualByComparingTo("123.73");
+        assertThat(report.vatTotal()).isEqualByComparingTo("26.27");
+    }
+
+    @Test
+    void lineKeepsAnOverriddenRateRatherThanTheTypeDefault() {
+        // The type defaults to 25.5% but the line is filed at 13.5% — the domain
+        // stores what it is given; the default lives in the UI (ADR-0018).
+        assertThat(TYPE.getDefaultVatRate()).isSameAs(RATE_255);
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+
+        report.reconcileLines(List.of(spec(null, "50.00", RATE_135)));
+
+        assertThat(report.getLines().getFirst().getVatRate()).isSameAs(RATE_135);
+    }
+
+    @Test
+    void reconcileRejectsAZeroAmount() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+
+        assertThatThrownBy(() -> report.reconcileLines(
+                List.of(spec(null, "0.00", RATE_255))))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void negativeLinesAreAcceptedAndReflectedInTotals() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+
+        report.reconcileLines(List.of(
+                spec(null, "100.00", RATE_0),
+                spec(null, "-30.00", RATE_0)));
+
+        assertThat(report.total()).isEqualByComparingTo("70.00");
+    }
+
+    @Test
+    void reconcileReplacesUnmatchedLinesOnRepeatedCall() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+        report.reconcileLines(List.of(spec(null, "100.00", RATE_255)));
+
+        // A second reconcile with an entirely new (null-id) set replaces the old
+        // lines — the first line has no persistent id to match, so it is dropped.
+        report.reconcileLines(List.of(spec(null, "40.00", RATE_255)));
+
+        assertThat(report.getLines()).hasSize(1);
+        assertThat(report.total()).isEqualByComparingTo("40.00");
+    }
+
+    @Test
+    void reconcileWithAnUnknownLineIdIsRejected() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+
+        assertThatThrownBy(() -> report.reconcileLines(
+                List.of(spec(999L, "10.00", RATE_255))))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    private static ExpenseLineSpec spec(Long id, String amount, VatRate rate) {
+        return new ExpenseLineSpec(id, TYPE, new BigDecimal(amount), rate, null);
     }
 }

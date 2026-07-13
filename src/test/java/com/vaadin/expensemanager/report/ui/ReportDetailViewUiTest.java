@@ -1,7 +1,10 @@
 package com.vaadin.expensemanager.report.ui;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
+import com.vaadin.expensemanager.reference.ExpenseTypeDto;
+import com.vaadin.expensemanager.reference.VatRateDto;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
 import com.vaadin.flow.component.datepicker.DatePicker;
 import org.junit.jupiter.api.Test;
@@ -85,5 +88,59 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
 
         // Delete is hidden until the report is a persisted DRAFT.
         assertThat(findButton().withText("Delete").exists()).isFalse();
+    }
+
+    @Test
+    void addingALineViaTheDialogUpdatesLiveTotalsAndPersistsOnSave() {
+        var id = seedReport(LocalDate.of(2026, 7, 1), "trip");
+        navigate(ReportDetailView.class, id);
+
+        findButton().withText("Add expense").click();
+        findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
+                .selectItem("Parking/supplies/goods");
+        findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
+        findBigDecimalField().setValue(new BigDecimal("100"));
+        findButton().withText("Save expense").click();
+
+        // Live total bar reflects the added line before the report is saved.
+        assertThat(getCurrentView().getElement().getTextRecursively()).contains("€100.00");
+
+        findButton().withText("Save").click();
+
+        var reloaded = service.findMine(id);
+        assertThat(reloaded.lines()).hasSize(1);
+        assertThat(reloaded.lines().getFirst().amount()).isEqualByComparingTo("100.00");
+        assertThat(reloaded.total()).isEqualByComparingTo("100.00");
+    }
+
+    @Test
+    void lineEditorKeepsSaveEnabledAndBlocksAnEmptyLine() {
+        var id = seedReport(LocalDate.of(2026, 7, 1), "trip");
+        navigate(ReportDetailView.class, id);
+
+        findButton().withText("Add expense").click();
+        // Always-enabled Save (ADR-0020): clicking it with nothing filled must
+        // not add a line — validation blocks it and the dialog stays open.
+        findButton().withText("Save expense").click();
+
+        // Dialog is still open (validation blocked the save) …
+        assertThat(findButton().withText("Save expense").exists()).isTrue();
+        // … and no line was added: the empty state still shows, nothing persisted.
+        assertThat(getCurrentView().getElement().getTextRecursively())
+                .contains("No expenses yet");
+        assertThat(service.findMine(id).lines()).isEmpty();
+    }
+
+    @Test
+    void removingALinePersistsOnSave() {
+        var id = seedReportWithLine(LocalDate.of(2026, 7, 1), "60.00");
+        navigate(ReportDetailView.class, id);
+
+        assertThat(getCurrentView().getElement().getTextRecursively()).contains("€60.00");
+
+        findButton().withAriaLabel("Remove line").click();
+        findButton().withText("Save").click();
+
+        assertThat(service.findMine(id).lines()).isEmpty();
     }
 }
