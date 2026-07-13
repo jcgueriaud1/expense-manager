@@ -6,7 +6,9 @@ import java.util.List;
 import java.util.Map;
 
 import com.vaadin.expensemanager.base.AbstractIntegrationTest;
+import com.vaadin.expensemanager.report.domain.ExpenseLineSpec;
 import com.vaadin.expensemanager.report.domain.ExpenseReport;
+import com.vaadin.expensemanager.report.domain.Receipt;
 import com.vaadin.expensemanager.report.domain.ReceiptRejectedException;
 import com.vaadin.expensemanager.report.domain.ReportStatus;
 import com.vaadin.expensemanager.reference.ExpenseType;
@@ -444,6 +446,52 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
                         List.of(newLine(type, rate, "40.00", "taxi"))),
                 Map.of(0, new ReceiptUpload(notAnImage, "taxi.jpg"))))
                 .isInstanceOf(ReceiptRejectedException.class);
+    }
+
+    // --- Receipt read path (Phase 3.2, ADR-0021 / ADR-0008) ---
+
+    @Test
+    void receiptForDownloadReturnsTheBytesForTheOwner() {
+        var type = firstActiveType();
+        var rate = rateByValue("25.5");
+        var id = service.create(
+                dtoWithLines(null, LocalDate.of(2026, 7, 10), 0L,
+                        List.of(newLine(type, rate, "40.00", "taxi"))),
+                Map.of(0, new ReceiptUpload(JPEG, "taxi.jpg")));
+        var receiptId = service.findMine(id).lines().getFirst().receiptId();
+
+        var content = service.receiptForDownload(receiptId);
+
+        // The dedicated download projection materializes the bytea (the one query
+        // that does), with the stored sniffed content type and filename.
+        assertThat(content).isPresent();
+        assertThat(content.get().data()).isEqualTo(JPEG);
+        assertThat(content.get().filename()).isEqualTo("taxi.jpg");
+        assertThat(content.get().contentType()).isEqualTo("image/jpeg");
+    }
+
+    @Test
+    void receiptForDownloadDeniesANonOwner() {
+        // A receipt on another user's report, seeded past the owner-scoped service.
+        var admin = userRepository.findByEmail("admin@vaadin.com").orElseThrow();
+        var report = new ExpenseReport(admin, LocalDate.of(2026, 8, 1), "admin's");
+        report.reconcileLines(List.of(new ExpenseLineSpec(null, firstActiveType(),
+                new BigDecimal("10.00"), rateByValue("25.5"), "x")));
+        reportRepository.save(report);
+        reportRepository.flush();
+        var adminLine = report.getLines().getFirst();
+        var adminReceiptId = receiptRepository
+                .save(new Receipt(adminLine, JPEG, "admin.jpg", "image/jpeg")).getId();
+        receiptRepository.flush();
+
+        // The current user is the plain user: the owner check in the query returns
+        // nothing — a non-owner's receipt is never streamed (ADR-0008).
+        assertThat(service.receiptForDownload(adminReceiptId)).isEmpty();
+    }
+
+    @Test
+    void receiptForDownloadIsEmptyForAMissingId() {
+        assertThat(service.receiptForDownload(-1L)).isEmpty();
     }
 
     private static byte[] pad(byte... magic) {

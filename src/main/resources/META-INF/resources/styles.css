@@ -1,1 +1,26 @@
 /* Add your styles here */
+
+/*
+ * Receipt preview dialog (Phase 3.2, ADR-0021 + ADR-0020): a comfortable
+ * floating overlay on a laptop, but a full-screen sheet on a phone-sized
+ * viewport so an enlarged receipt is readable edge-to-edge rather than cramped
+ * inside a small floating box.
+ *
+ * The `receipt-preview-dialog` class is set on the `<vaadin-dialog>` host (via
+ * Dialog#addClassName). Vaadin 25 renders the overlay inside that host's shadow
+ * root and re-exposes it with `exportparts`, so the overlay is reachable as
+ * `::part(overlay)` directly on the host element.
+ */
+vaadin-dialog.receipt-preview-dialog::part(overlay) {
+    max-width: min(92vw, 52rem);
+}
+
+@media (max-width: 450px) {
+    vaadin-dialog.receipt-preview-dialog::part(overlay) {
+        width: 100vw;
+        height: 100vh;
+        max-width: 100vw;
+        max-height: 100vh;
+        border-radius: 0;
+    }
+}

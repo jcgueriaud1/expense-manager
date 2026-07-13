@@ -872,3 +872,66 @@ Deployment/Observability · UX-spec
   the Upload page.
 - Owner / next step: none — pattern captured; reuse the callback-`clearFileList()`
   shape for any future single-file upload.
+
+### F-027 — Vaadin 25 `Dialog` overlay is styled via `vaadin-dialog::part(overlay)`, not `vaadin-dialog-overlay`
+- Date: 2026-07-13
+- Area: Vaadin
+- Severity: Low
+- Task being attempted: Phase 3.2 (#41) — the receipt preview dialog degrades to
+  a full-screen sheet on a phone-sized viewport (ADR-0020), styled from the app's
+  global `styles.css`.
+- Expected vs actual: Pre-25 guidance (and much of the web) says a `Dialog`'s
+  overlay is a top-level `<vaadin-dialog-overlay>` element carrying the dialog's
+  class, targetable as `vaadin-dialog-overlay.my-class::part(overlay)`. In Vaadin
+  25 that element does not exist at the document top level: `Dialog#addClassName`
+  puts the class on the `<vaadin-dialog>` host, and the overlay is rendered
+  *inside that host's shadow root* (`<vaadin-dialog-overlay id="overlay"
+  exportparts="backdrop, overlay, header, …">`). The old selector matched nothing
+  and the media query silently did nothing.
+- Workaround used: target the exported part on the host directly —
+  `vaadin-dialog.receipt-preview-dialog::part(overlay)`. Confirmed live: the
+  overlay fills the 360-px viewport (100vw/100vh, radius 0) under the media query
+  and stays a centered `min(92vw, 52rem)` box on desktop.
+- Evidence: `resources/META-INF/resources/styles.css`; DOM probe of the dialog
+  shadow root (`exportparts` list) via Playwright; `report/ui/ReceiptPreview`
+  (`addClassName("receipt-preview-dialog")`).
+- Impact: a stale-but-plausible styling recipe that fails silently (no error, no
+  visual change) — easy to lose time to. Cost one probe/fix/verify cycle.
+- Suggested Vaadin/product improvement: document the `vaadin-dialog::part(...)`
+  hooks (overlay/header/content/footer via `exportparts`) on the Dialog styling
+  page, and call out the change from the `vaadin-dialog-overlay` top-level element.
+- Owner / next step: none — reuse the `::part(overlay)` selector for any future
+  responsive dialog.
+
+### F-028 — A clickable component nested in a clickable card fires both listeners (needs explicit stopPropagation)
+- Date: 2026-07-13
+- Area: Vaadin
+- Severity: Low
+- Task being attempted: Phase 3.2 (#41) — a receipt thumbnail on a line card that
+  enlarges the image on click, where the whole card is itself clickable to open
+  the line editor (variant-C detail editor).
+- Expected vs actual: Expected clicking the thumbnail button to only open the
+  preview. Actual: the DOM `click` bubbled from the button to the card body's
+  click listener, so on an editable report the thumbnail *also* opened the line
+  editor (the editor won, hiding the preview). Vaadin `ClickNotifier` registers a
+  DOM listener per component and relies on native bubbling — there is no
+  server-side "stop the parent listener" for a nested `ClickEvent`.
+- Workaround used: on the preview affordance, add a client-side listener that
+  stops propagation —
+  `getElement().executeJs("this.addEventListener('click', e => e.stopPropagation())")`.
+  The button's own listener still runs (stopPropagation doesn't cancel the
+  element's own handlers), only the ancestor card is spared. Verified live: the
+  card thumbnail now opens the preview, and the rest of the card still opens the
+  editor. (The existing trash button sidesteps this by living *outside* the
+  clickable body — the other valid pattern.)
+- Evidence: `report/ui/ReceiptPreview#forReceipt`; `report/ui/ReportDetailView`
+  (card body click → `openEditor`); first-run screenshot showing the editor
+  opening on a thumbnail click.
+- Impact: an easy-to-miss interaction bug that automated view tests (which assert
+  presence, not click routing) don't catch — found only in manual Playwright
+  verification. Reinforces that nested interactive elements need either isolation
+  or explicit propagation control.
+- Suggested Vaadin/product improvement: a helper on `ClickNotifier` (e.g.
+  `addClickListener(listener).stopPropagation()`) would make this a one-liner
+  without hand-written JS.
+- Owner / next step: none — pattern captured for future nested-click affordances.

@@ -1,9 +1,11 @@
 package com.vaadin.expensemanager.report.service;
 
+import java.io.ByteArrayInputStream;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -20,6 +22,9 @@ import com.vaadin.expensemanager.reference.VatRateRepository;
 import com.vaadin.expensemanager.security.CurrentUserProvider;
 import com.vaadin.expensemanager.user.User;
 import com.vaadin.expensemanager.user.UserRepository;
+
+import com.vaadin.flow.server.streams.DownloadHandler;
+import com.vaadin.flow.server.streams.DownloadResponse;
 
 import jakarta.annotation.security.RolesAllowed;
 
@@ -98,6 +103,56 @@ public class ExpenseReportService {
     @Transactional(readOnly = true)
     public ReportDetailDto findMine(Long id) {
         return toDetail(requireOwned(id));
+    }
+
+    /**
+     * Resolves one receipt's bytes for the read path (ADR-0021), owner-scoped
+     * (ADR-0008): empty unless the receipt exists <em>and</em> belongs to the
+     * current user. The bytea is read here and nowhere else — through the
+     * dedicated download projection, never the aggregate load path — and copied
+     * into a detached {@link ReceiptContent} so nothing lazy is touched while
+     * streaming.
+     *
+     * <p>This is the authorization + fetch seam behind {@link #receiptDownload};
+     * exposed on its own so the owner-scoping contract is directly testable
+     * (ADR-0012 layer 2) without driving an HTTP download.
+     */
+    @RolesAllowed("USER")
+    @Transactional(readOnly = true)
+    public Optional<ReceiptContent> receiptForDownload(Long receiptId) {
+        return receiptRepository.findDownloadByIdAndOwnerId(receiptId, currentUserId())
+                .map(ReceiptContent::from);
+    }
+
+    /**
+     * A {@link DownloadHandler} that streams one receipt to the browser (ADR-0021,
+     * read-path slice). The current user's id is captured <strong>now</strong>, on
+     * the UI thread where the security context is present, and threaded into the
+     * owner-scoped projection — so the later resource request streams only a
+     * receipt this user owns, without depending on the security context being
+     * populated on the download thread (ADR-0008).
+     *
+     * <p>Served <em>inline</em> (images render in an {@code <img>}, PDFs open in
+     * the browser viewer) with the stored, magic-byte-verified content type and a
+     * {@code Content-Disposition} filename; {@code X-Content-Type-Options: nosniff}
+     * stops the browser second-guessing that type. A receipt that is missing or
+     * not the caller's yields {@code 404} — never another user's bytes.
+     */
+    @RolesAllowed("USER")
+    public DownloadHandler receiptDownload(Long receiptId) {
+        Long ownerId = currentUserId();
+        return DownloadHandler.fromInputStream(event -> {
+            Optional<ReceiptContent> content = receiptRepository
+                    .findDownloadByIdAndOwnerId(receiptId, ownerId)
+                    .map(ReceiptContent::from);
+            if (content.isEmpty()) {
+                return DownloadResponse.error(404);
+            }
+            ReceiptContent receipt = content.get();
+            event.getResponse().setHeader("X-Content-Type-Options", "nosniff");
+            return new DownloadResponse(new ByteArrayInputStream(receipt.data()),
+                    receipt.filename(), receipt.contentType(), receipt.data().length);
+        }).inline();
     }
 
     /**

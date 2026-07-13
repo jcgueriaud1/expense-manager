@@ -100,9 +100,25 @@ abstract class AbstractReportViewUiTest extends SpringBrowserlessTest
         return file;
     }
 
-    /** Seeds a DRAFT report with one line carrying a receipt; returns its id. */
+    /** A minimal but valid PDF (magic bytes {@code 25 50 44 46} — {@code %PDF}). */
+    protected static byte[] pdfBytes() {
+        byte[] file = new byte[16];
+        file[0] = (byte) 0x25;
+        file[1] = (byte) 0x50;
+        file[2] = (byte) 0x44;
+        file[3] = (byte) 0x46;
+        return file;
+    }
+
+    /** Seeds a DRAFT report with one line carrying a JPEG receipt; returns its id. */
     protected Long seedReportWithReceipt(LocalDate date, String amount,
             String filename) {
+        return seedReportWithReceipt(date, amount, filename, jpegBytes());
+    }
+
+    /** Seeds a DRAFT report with one line carrying the given receipt bytes. */
+    protected Long seedReportWithReceipt(LocalDate date, String amount,
+            String filename, byte[] bytes) {
         var type = referenceData.activeExpenseTypes().getFirst();
         var rate = referenceData.activeVatRates().getFirst();
         var line = ExpenseLineDto.of(null, type.id(), type.name(), rate.id(),
@@ -110,7 +126,7 @@ abstract class AbstractReportViewUiTest extends SpringBrowserlessTest
         var zero = BigDecimal.ZERO.setScale(2);
         return service.create(new ReportDetailDto(null, date, "seed",
                 ReportStatus.DRAFT, 0L, List.of(line), zero, zero, zero),
-                Map.of(0, new ReceiptUpload(jpegBytes(), filename)));
+                Map.of(0, new ReceiptUpload(bytes, filename)));
     }
 
     /** Seeds a SUBMITTED report whose single line carries a receipt. */
