@@ -625,3 +625,76 @@ Deployment/Observability · UX-spec
   clearly flag HEIC would save every mobile-first app this same rejection.
 - Owner / next step: revisit if the demo/real usage surfaces HEIC rejections;
   candidate for a transcoding step or a documented "shoot in JPEG" note.
+
+### F-020 — `@WithUserDetails` invisible to a service that resolves the user via `AuthenticationContext`, once a browserless context has run
+- Date: 2026-07-10
+- Area: Verification
+- Severity: Medium
+- Task being attempted: Phase 2.2 (#23) — a layer-2 integration test for
+  `ExpenseReportService`, which resolves the report owner through
+  `CurrentUserProvider` → Vaadin's `AuthenticationContext`. Authenticated the
+  test with `@WithUserDetails("user@vaadin.com")`, as the reference-data view
+  tests do.
+- Expected vs actual: In isolation the test passed. In the **full suite** it
+  failed — first with "No authenticated user in the current security context"
+  (`CurrentUserProvider.require()`), then, after a first fix attempt, with
+  `AuthenticationCredentialsNotFoundException` from the `@RolesAllowed` method
+  interceptor. The authentication set by `@WithUserDetails` was simply not
+  visible to the service, but only when a browserless (`SpringBrowserlessTest`)
+  context had booted earlier in the same JVM.
+- Root cause: Vaadin installs a `VaadinAwareSecurityContextHolderStrategy` **both
+  as a bean and as the global `SecurityContextHolder` static**. In a single-app
+  process these are the same instance, so everything agrees. In a multi-context
+  test JVM, **each** `@SpringBootTest` context installs its *own* strategy
+  instance as the global static, last-boot-wins. Meanwhile Spring Security 6
+  method security injects *this context's* `SecurityContextHolderStrategy`
+  **bean**. So three readers can diverge: `@WithUserDetails`/`TestSecurityContextHolder`
+  writes to one instance, the method interceptor reads this-context's bean, and
+  `AuthenticationContext` reads the global static — different instances → the
+  principal is invisible.
+- Workaround used: Authenticate in a JUnit `@BeforeEach` (same lifecycle/thread
+  as the body), and **pin the static to this context's bean** before writing:
+  `SecurityContextHolder.setContextHolderStrategy(strategyBean)`, then build an
+  `AppUserDetails` via `LocalUserDetailsService` and set it through that same
+  bean. All three readers then agree, order-independently. (Browserless view
+  tests are unaffected: they store the context in the `VaadinSession`, which the
+  strategy reads first.)
+- Evidence: `report/service/ExpenseReportServiceIntegrationTest` (6 green in the
+  full 90-test suite, previously 5 errors + 1 failure only under suite ordering).
+- Impact: Any **headless** (`@SpringBootTest`, non-browserless) test that drives
+  code resolving the user via `AuthenticationContext`/`SecurityContextHolder`
+  must not rely on `@WithUserDetails`/`@WithMockUser` alone — they can write to a
+  strategy instance the app never reads once a browserless context has run.
+  Production is unaffected (single context; bean == static).
+- Suggested Vaadin/product improvement: a small test utility (or doc note) for
+  authenticating headless integration tests against Vaadin's session-aware
+  strategy — e.g. a `@WithVaadinUser` that writes through the active bean — would
+  remove this footgun.
+- Owner / next step: reuse the `@BeforeEach` strategy-pinning pattern for future
+  owner-scoped service tests (approval queue, export).
+
+### F-021 — Browserless `DatePickerTester.setValue` refuses an invalid (null-on-required) value
+- Date: 2026-07-10
+- Area: Verification
+- Severity: Low
+- Task being attempted: Phase 2.2 (#23) — a layer-3 test proving the report form
+  keeps Save always enabled and shows a top-of-form error summary when the
+  required report date is empty (ADR-0020, no disabled-submit gating).
+- Expected vs actual: Expected `findDatePicker().setValue(null)` to model a user
+  clearing the field. Actual: the tester threw `IllegalArgumentException: Given
+  date is not a valid value` — by design it calls the field's default validator
+  and refuses to *set* a value it considers invalid (null on a required picker),
+  so the "cleared → validation fails → summary shows" path can't be driven
+  through the tester.
+- Workaround used: clear the value straight on the component —
+  `$(DatePicker.class).first().clear()` — then click Save; the Binder's
+  `asRequired` fires and the error summary renders. (Setting a *valid* date is
+  fine through `findDatePicker().setValue(date)`.)
+- Evidence: `report/ui/ReportDetailViewUiTest.missingRequiredDateShowsErrorSummaryAndPersistsNothing`.
+- Impact: To test required-field validation UX at the browserless tier, reach
+  past the typed tester to the component's `HasValue.clear()`/`setValue(null)` for
+  the deliberately-invalid state; the tester is for valid user input only.
+- Suggested Vaadin/product improvement: a tester affordance for "user cleared a
+  required field" (e.g. `clear()` on the value testers) would let validation-path
+  tests stay on the tester API.
+- Owner / next step: none — pattern captured for later required-field forms.
