@@ -42,24 +42,25 @@ Then log in (`user@vaadin.com` / `expense`) and open:
 The route is hidden when `vaadin.productionMode=true`, so a stray merge can't
 ship it.
 
-## Verdict — DECIDED (2026-07-10)
+## Verdict — DECIDED (2026-07-13, revised)
 
-> **Winner: variant D — Cards + persistent side panel.**
-> Chosen by the user: liked variant C's receipt-style card layout combined with
-> variant B's always-present right-hand form panel (not a modal dialog). The
-> editor never covers the list, the receipt stays scannable, and the persistent
-> panel gives Phase 3 receipt upload an obvious home.
+> **Winner: variant C — Stacked cards + modal dialog editor.**
+> Chosen by the user (2026-07-13), superseding the earlier variant-D pick
+> (2026-07-10). Receipt-style cards with per-line net/VAT breakdown and a sticky
+> total bar; editing a line opens a focused modal `Dialog` rather than a
+> persistent side panel. Lowest density, mobile-friendly, keeps the scannable
+> receipt feel.
 >
 > **Not yet built as the real view** — the user asked to stop at the prototype;
-> do not create `report/ReportDetailView` yet. When picked up later, rebuild D
+> do not create `report/ReportDetailView` yet. When picked up later, rebuild C
 > *properly* per the note below.
 
 Once decided: delete the three losing variant classes + `PrototypeSwitcher` +
 this package, and rebuild the winner *properly* (Binder validation, domain
 guards, optimistic-lock UX, real service) in `report/ReportDetailView`.
 
-> Early steer from the user: liked **C's card layout** + **B's right-hand
-> panel** (not a dialog) → that combination is variant **D**.
+> Prior pick (2026-07-10): variant **D** (C's cards + B's persistent right-hand
+> panel). Reversed 2026-07-13 in favour of the modal editor. See issue #24.
 
 ## F-004 friction log (first-class deliverable — copy into `docs/findings.md`)
 

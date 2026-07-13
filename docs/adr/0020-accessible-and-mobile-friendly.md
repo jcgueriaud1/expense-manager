@@ -34,8 +34,9 @@ the base UI shell (ADR-0017) and the Binder/Signals form conventions (ADR-0015).
   requiring horizontal scroll, tables/grids degrade gracefully (wide content
   scrolls within its own container, or switches to a card/stacked presentation),
   and touch targets are adequately sized. The Phase 2 report-detail editor
-  (variant D — receipt cards + side panel) reflows the side panel below the cards
-  on narrow screens rather than crowding them side by side.
+  (variant C — receipt cards + a modal dialog editor) stacks the cards in a single
+  column on narrow screens, and the edit dialog expands to a full-screen sheet
+  rather than a cramped floating overlay.
 - **Prefer the framework's accessible components over hand-rolled markup.** Vaadin
   components ship accessible behaviour; custom compositions must preserve it
   (roles, labels, keyboard handling) rather than reintroduce gaps.
