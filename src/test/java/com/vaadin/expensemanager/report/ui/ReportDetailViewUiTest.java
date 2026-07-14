@@ -311,7 +311,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         // step (11 h → one full day €54). The preview lives in the dialog overlay
         // (attached to the UI, not the view), so assert against the whole UI tree.
         assertThat(UI.getCurrent().getElement().getTextRecursively())
-                .contains("Per diem: €54.00");
+                .contains("Per diem allowance: €54.00");
 
         findButton().withText("Save trip").click();
 
@@ -348,7 +348,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
 
         // Every output previews live in the dialog (120 km × €0.59 = €70.80, etc.).
         assertThat(UI.getCurrent().getElement().getTextRecursively()).contains(
-                "Per diem: €54.00", "Kilometre allowance: €70.80",
+                "Per diem allowance: €54.00", "Kilometre allowance: €70.80",
                 "Meal allowance: €13.50", "Parking: €12.00");
 
         findButton().withText("Save trip").click();
@@ -379,6 +379,36 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         assertThat(findSpan().withText("Per diem allowance").exists()).isTrue();
         assertThat(findSpan().withText("Kilometre allowance").exists()).isFalse();
         assertThat(findSpan().withText("Meal allowance").exists()).isFalse();
+    }
+
+    @Test
+    void aTripListsItsGeneratedLinesAndAReceiptCanBeAttachedToOne() {
+        var id = seedReportWithFullTravel(LocalDate.of(2026, 7, 10), DEP,
+                DEP.plusHours(11), new BigDecimal("120"), true, new BigDecimal("12.00"));
+        navigate(ReportDetailView.class, id);
+
+        // Each earned line is listed under the trip with an attach affordance.
+        assertThat(findButton().withAriaLabel("Add receipt: Per diem allowance")
+                .exists()).isTrue();
+        assertThat(findButton().withAriaLabel("Add receipt: Parking").exists()).isTrue();
+
+        // Attach a receipt to the parking line via its focused editor.
+        findButton().withAriaLabel("Add receipt: Parking").click();
+        findUpload().upload("parking.jpg", "image/jpeg", jpegBytes());
+        findButton().withText("Save receipt").click();
+
+        // The buffered filename shows on the row before the report is even saved.
+        assertThat(getCurrentView().getElement().getTextRecursively())
+                .contains("parking.jpg");
+
+        findButton().withText("Save").click();
+
+        var parking = service.findMine(id).travels().getFirst()
+                .generatedLine(com.vaadin.expensemanager.report.domain.GeneratedLineKind
+                        .PARKING).orElseThrow();
+        assertThat(parking.hasReceipt()).isTrue();
+        assertThat(parking.receiptFilename()).isEqualTo("parking.jpg");
+        assertThat(parking.receiptId()).isNotNull();
     }
 
     @Test

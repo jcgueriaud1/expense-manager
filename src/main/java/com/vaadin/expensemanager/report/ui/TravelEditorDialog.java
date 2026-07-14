@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
 
-import com.vaadin.expensemanager.report.service.TravelAllowances;
+import com.vaadin.expensemanager.report.service.GeneratedLineView;
 import com.vaadin.expensemanager.report.service.TravelDto;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
@@ -25,6 +25,7 @@ import com.vaadin.flow.data.binder.Binder;
 import com.vaadin.flow.data.binder.ValidationResult;
 
 import static com.vaadin.expensemanager.report.ui.ReportViewSupport.formatEur;
+import static com.vaadin.expensemanager.report.ui.ReportViewSupport.generatedLineLabel;
 
 /**
  * The focused modal editor for one trip (glossary: Travel Calculator, Phase
@@ -250,8 +251,9 @@ final class TravelEditorDialog extends Dialog {
      */
     private void renderPreview(TravelDto trip) {
         preview.removeAll();
-        TravelAllowances a = trip.allowances();
-        BigDecimal total = a.taxFreeTotal().add(a.parking());
+        BigDecimal total = trip.generatedLines().stream()
+                .map(GeneratedLineView::amount)
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
 
         var heading = new Span(total.signum() == 0
                 ? "No allowances for this trip"
@@ -259,18 +261,13 @@ final class TravelEditorDialog extends Dialog {
         heading.addClassName("travel-preview-amount");
         preview.add(heading);
 
-        addPreviewLine("Per diem", a.perDiem(), a.perDiemExplanation());
-        addPreviewLine("Kilometre allowance", a.kilometre(), a.kilometreExplanation());
-        addPreviewLine("Meal allowance", a.meal(), a.mealExplanation());
-        addPreviewLine("Parking", a.parking(), a.parkingExplanation());
+        trip.generatedLines().forEach(line -> addPreviewLine(
+                generatedLineLabel(line.kind()), line.amount(), line.comment()));
         preview.setVisible(true);
     }
 
-    /** Adds one "label — amount / explanation" preview line when the amount is non-zero. */
+    /** Adds one "label — amount / explanation" preview line. */
     private void addPreviewLine(String label, BigDecimal amount, String explanation) {
-        if (amount == null || amount.signum() == 0) {
-            return;
-        }
         var line = new Span(label + ": " + formatEur(amount));
         line.addClassName("travel-preview-line");
         preview.add(line);

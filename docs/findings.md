@@ -1211,3 +1211,31 @@ Deployment/Observability · UX-spec
   framework gap).
 - Owner / next step: when the foreign-trip slice (Slice 4) lands, the same
   `GeneratedLineSpec` list absorbs a foreign per-diem kind with no further reshape.
+
+### F-038 — Receipts on generated lines: a shared persistence context resurrects the cascade-deleted receipt in a rollback test
+- Date: 2026-07-14
+- Area: Testing
+- Severity: Low
+- Task being attempted: letting a receipt be attached to a travel-generated line
+  (per-diem/kilometre/meal/parking) and verifying that clearing an input (e.g.
+  parking fee → 0) orphan-removes the line and its receipt.
+- Expected vs actual: in production this is clean — the receipt table's FK is
+  {@code ON DELETE CASCADE} (V6) and receipts are not part of the aggregate, so an
+  {@code update()} loads the report without the receipt in its session, removes the
+  line, and the DB cascades the receipt away. But the layer-2 test is
+  {@code @Transactional} (rollback), so {@code create()} and {@code update()} share
+  one Hibernate session: the just-created {@code Receipt} lingered, still pointing at
+  the now-orphan-removed {@code ExpenseLine}, and the flush threw
+  {@code TransientPropertyValueException} ("references an unsaved transient instance").
+- Workaround used: {@code entityManager.clear()} between the create and the update
+  in the test, modelling the separate-request reality (the same trick
+  {@code deletingATripRemovesItsGeneratedLine} already uses). Production code is
+  unchanged and correct.
+- Evidence: {@code ExpenseReportServiceIntegrationTest.removingAGeneratedLineKindCascadesItsReceipt};
+  {@code ExpenseReportService.applyTravelReceipts}; V6 {@code receipt} FK cascade.
+- Impact: a test-only artifact of the shared-session pattern, but a sharp one — the
+  exception points at "persist the transient instance", which misleads toward a
+  production bug that isn't there. The tell is that it only fires when a
+  receipt-carrying line is removed within the same transaction it was created in.
+- Suggested Vaadin/product improvement: none (JPA session semantics).
+- Owner / next step: none.

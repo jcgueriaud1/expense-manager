@@ -10,13 +10,15 @@ import java.util.Map;
 import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.ReferenceDataService;
 import com.vaadin.expensemanager.reference.VatRateDto;
+import com.vaadin.expensemanager.report.domain.GeneratedLineKind;
 import com.vaadin.expensemanager.report.domain.LineAmounts;
 import com.vaadin.expensemanager.report.domain.ReportStatus;
 import com.vaadin.expensemanager.report.service.ExpenseLineDto;
 import com.vaadin.expensemanager.report.service.ExpenseReportService;
+import com.vaadin.expensemanager.report.service.GeneratedLineRef;
+import com.vaadin.expensemanager.report.service.GeneratedLineView;
 import com.vaadin.expensemanager.report.service.ReceiptUpload;
 import com.vaadin.expensemanager.report.service.ReportDetailDto;
-import com.vaadin.expensemanager.report.service.TravelAllowances;
 import com.vaadin.expensemanager.report.service.TravelDto;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
@@ -135,6 +137,20 @@ public class ReportDetailView extends VerticalLayout
     private final transient Map<ValueSignal<ExpenseLineDto>, ReceiptUpload> pendingReceipts =
             new HashMap<>();
 
+    /**
+     * Buffered receipt mutations for a trip's generated lines (Phase 4.3), keyed by
+     * the trip's working entry and the line kind. Like {@link #pendingReceipts} the
+     * bytes live here until the next save, when they are translated to
+     * {@link GeneratedLineRef}s (trip position + kind) for the service. Cleared on
+     * (re)load.
+     */
+    private final transient Map<TravelReceiptKey, ReceiptUpload> pendingTravelReceipts =
+            new HashMap<>();
+
+    /** Buffer key: which working trip entry + which generated-line kind. */
+    private record TravelReceiptKey(ValueSignal<TravelDto> travel, GeneratedLineKind kind) {
+    }
+
     /** The current working copy (transient for a new report until first save). */
     private transient ReportDetailDto working;
 
@@ -241,6 +257,7 @@ public class ReportDetailView extends VerticalLayout
         delete.setVisible(dto.isPersisted() && dto.status().isDeletable());
 
         pendingReceipts.clear();
+        pendingTravelReceipts.clear();
         lines.clear();
         if (!dto.lines().isEmpty()) {
             lines.insertAllLast(dto.lines());
@@ -264,14 +281,16 @@ public class ReportDetailView extends VerticalLayout
                 working.netTotal(), working.vatTotal(), working.perDiemTotal(),
                 working.kilometreTotal(), working.mealTotal());
         var receipts = pendingReceiptsByLineIndex();
+        var travelReceipts = pendingTravelReceiptsByRef();
         try {
             if (!working.isPersisted()) {
-                Long newId = service.create(edited, receipts);
+                Long newId = service.create(edited, receipts, travelReceipts);
                 Notification.show("Report saved.");
                 // First save routes /report → /report/{id} (ADR-0019).
                 getUI().ifPresent(ui -> ui.navigate(ReportDetailView.class, newId));
             } else {
-                load(service.update(working.id(), edited, working.version(), receipts));
+                load(service.update(working.id(), edited, working.version(), receipts,
+                        travelReceipts));
                 Notification.show("Report saved.");
             }
         } catch (ObjectOptimisticLockingFailureException stale) {
@@ -330,6 +349,29 @@ public class ReportDetailView extends VerticalLayout
         return byIndex;
     }
 
+    /**
+     * Translates each buffered generated-line receipt to a {@link GeneratedLineRef}
+     * (trip position + kind, ADR-0021). The trip's position in {@code travels.peek()}
+     * matches its position in {@link #currentTravels()} — and thus in the saved
+     * {@code dto.travels()} the service reconciles — so the service resolves the ref
+     * to the right persisted line. A buffered receipt for a trip since removed
+     * (entry no longer in the list) is dropped.
+     */
+    private Map<GeneratedLineRef, ReceiptUpload> pendingTravelReceiptsByRef() {
+        if (pendingTravelReceipts.isEmpty()) {
+            return Map.of();
+        }
+        var entries = travels.peek();
+        Map<GeneratedLineRef, ReceiptUpload> byRef = new HashMap<>();
+        pendingTravelReceipts.forEach((key, upload) -> {
+            int index = entries.indexOf(key.travel());
+            if (index >= 0) {
+                byRef.put(new GeneratedLineRef(index, key.kind()), upload);
+            }
+        });
+        return byRef;
+    }
+
     private void addLine() {
         new LineEditorDialog(referenceData.activeExpenseTypes(),
                 referenceData.activeVatRates(), null, service::receiptDownload,
@@ -347,10 +389,48 @@ public class ReportDetailView extends VerticalLayout
                 travels::insertLast).open();
     }
 
-    /** Re-opens the trip editor pre-filled; a save regenerates the per-diem line. */
+    /**
+     * Re-opens the trip editor pre-filled; a save recomputes the generated lines.
+     * The recomputed preview carries no receipt info, so any receipt already
+     * attached (persisted or buffered) is carried across by kind, and buffered
+     * receipts for a kind the trip no longer earns are pruned.
+     */
     private void openTravelEditor(ValueSignal<TravelDto> entry) {
-        new TravelEditorDialog(entry.peek(), service::previewDomesticTravel,
-                entry::set).open();
+        var before = entry.peek();
+        new TravelEditorDialog(before, service::previewDomesticTravel, updated -> {
+            entry.set(mergeReceipts(before, updated));
+            var kinds = updated.generatedLines().stream()
+                    .map(GeneratedLineView::kind).toList();
+            pendingTravelReceipts.keySet().removeIf(
+                    key -> key.travel().equals(entry) && !kinds.contains(key.kind()));
+        }).open();
+    }
+
+    /** Carries each still-present kind's receipt summary from {@code before} onto {@code updated}. */
+    private static TravelDto mergeReceipts(TravelDto before, TravelDto updated) {
+        var merged = updated.generatedLines().stream()
+                .map(line -> before.generatedLine(line.kind())
+                        .filter(GeneratedLineView::hasReceipt)
+                        .map(old -> line.withReceipt(old.receiptId(), old.receiptFilename(),
+                                old.receiptContentType(), old.receiptSizeBytes()))
+                        .orElse(line))
+                .toList();
+        return updated.withGeneratedLines(merged);
+    }
+
+    /** Opens the receipt editor for one of a trip's generated lines (Phase 4.3). */
+    private void openTravelLineReceipt(ValueSignal<TravelDto> entry,
+            GeneratedLineView line) {
+        new TravelLineReceiptDialog(line, service::receiptDownload, (updated, receipt) -> {
+            var trip = entry.peek();
+            var newLines = trip.generatedLines().stream()
+                    .map(l -> l.kind() == updated.kind() ? updated : l).toList();
+            entry.set(trip.withGeneratedLines(newLines));
+            if (receipt != null) {
+                pendingTravelReceipts.put(new TravelReceiptKey(entry, updated.kind()),
+                        receipt);
+            }
+        }).open();
     }
 
     private void openEditor(ValueSignal<ExpenseLineDto> entry) {
@@ -556,13 +636,92 @@ public class ReportDetailView extends VerticalLayout
         if (editable) {
             var edit = new Button("Edit", event -> openTravelEditor(entry));
             edit.addThemeVariants(ButtonVariant.TERTIARY);
-            var trash = new Button(VaadinIcon.TRASH.create(),
-                    event -> travels.remove(entry));
+            var trash = new Button(VaadinIcon.TRASH.create(), event -> {
+                pendingTravelReceipts.keySet().removeIf(k -> k.travel().equals(entry));
+                travels.remove(entry);
+            });
             trash.addThemeVariants(ButtonVariant.TERTIARY, ButtonVariant.ERROR);
             trash.getElement().setAttribute("aria-label", "Remove trip");
             card.add(edit, trash);
         }
-        return card;
+
+        // The trip's generated lines (per-diem, kilometre, meal, parking) as
+        // read-only rows nested under it; each can carry a receipt (Phase 4.3). The
+        // list rebuilds whenever the trip is re-costed or a receipt is attached.
+        var generatedList = new Div();
+        generatedList.addClassName("travel-lines");
+        generatedList.setWidthFull();
+        Signal.effect(generatedList, () -> {
+            TravelDto trip = entry.get();
+            generatedList.removeAll();
+            trip.generatedLines()
+                    .forEach(line -> generatedList.add(generatedLineRow(entry, line)));
+        });
+
+        var group = new VerticalLayout(card, generatedList);
+        group.setPadding(false);
+        group.setSpacing(false);
+        group.setWidthFull();
+        group.addClassName("travel-group");
+        return group;
+    }
+
+    /**
+     * One read-only generated-line row nested under a trip: its label, computed
+     * amount, and read-only explanation, plus the receipt it carries and (while
+     * editable) an attach/edit-receipt affordance (Phase 4.3).
+     */
+    private Component generatedLineRow(ValueSignal<TravelDto> entry,
+            GeneratedLineView line) {
+        var name = new Span(ReportViewSupport.generatedLineLabel(line.kind()));
+        name.addClassName("line-name");
+        var comment = new Span(line.comment() == null ? "" : line.comment());
+        comment.addClassName("muted-xs");
+        var texts = new VerticalLayout(name, comment);
+        texts.setPadding(false);
+        texts.setSpacing(false);
+
+        var amount = new Span(formatEur(line.amount()));
+        amount.addClassName("line-amount");
+        var receipt = new Div();
+        receipt.addClassName("line-receipt");
+        if (line.hasReceipt() && line.receiptId() != null) {
+            Long receiptId = line.receiptId();
+            receipt.add(ReceiptPreview.forReceipt(line.receiptFilename(),
+                    line.receiptContentType(), () -> service.receiptDownload(receiptId)));
+        } else if (line.hasReceipt()) {
+            var chip = new Span("📎 " + line.receiptFilename());
+            chip.addClassName("muted-xs");
+            receipt.add(chip);
+        }
+        var amounts = new VerticalLayout(amount, receipt);
+        amounts.setPadding(false);
+        amounts.setSpacing(false);
+        amounts.setAlignItems(FlexComponent.Alignment.END);
+
+        var body = new HorizontalLayout(texts, amounts);
+        body.setWidthFull();
+        body.setAlignItems(FlexComponent.Alignment.CENTER);
+        body.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
+        body.expand(texts);
+
+        var row = new HorizontalLayout(body);
+        row.setWidthFull();
+        row.setAlignItems(FlexComponent.Alignment.CENTER);
+        row.expand(body);
+        row.addClassName("line-card");
+        row.addClassName("travel-line-row");
+        if (editable) {
+            var attach = new Button(line.hasReceipt() ? "Receipt" : "Add receipt",
+                    VaadinIcon.PAPERCLIP.create());
+            attach.addThemeVariants(ButtonVariant.TERTIARY, ButtonVariant.SMALL);
+            attach.addClickListener(event -> openTravelLineReceipt(entry, line));
+            attach.getElement().setAttribute("aria-label",
+                    (line.hasReceipt() ? "Edit receipt: " : "Add receipt: ")
+                            + ReportViewSupport.generatedLineLabel(line.kind()));
+            row.add(attach);
+        }
+        return row;
     }
 
     /** "destinations, country" for a trip card — the trip's where-line. */
@@ -692,30 +851,30 @@ public class ReportDetailView extends VerticalLayout
                 .filter(dto -> dto.amount() != null && dto.vatRatePercent() != null)
                 .map(dto -> LineAmounts.of(dto.amount(), dto.vatRatePercent()))
                 .reduce(LineAmounts.zero(), LineAmounts::add);
+        // Each trip's VAT-bearing generated lines (parking) fold into Net/VAT too.
         return travels.get().stream().map(ValueSignal::get)
-                .map(TravelDto::allowances)
-                .filter(a -> a.parking().signum() != 0)
-                .map(a -> LineAmounts.of(a.parking(), a.parkingVatPercent()))
+                .flatMap(t -> t.generatedLines().stream())
+                .filter(line -> !line.isTaxFreeAllowance())
+                .map(line -> LineAmounts.of(line.amount(), line.vatRatePercent()))
                 .reduce(manual, LineAmounts::add);
     }
 
     private BigDecimal currentPerDiem() {
-        return sumTravels(a -> a.perDiem());
+        return sumKind(GeneratedLineKind.PER_DIEM);
     }
 
     private BigDecimal currentKilometre() {
-        return sumTravels(a -> a.kilometre());
+        return sumKind(GeneratedLineKind.KILOMETRE);
     }
 
     private BigDecimal currentMeal() {
-        return sumTravels(a -> a.meal());
+        return sumKind(GeneratedLineKind.MEAL);
     }
 
-    /** Sums one tax-free allowance amount live across the working trips (Phase 4.3). */
-    private BigDecimal sumTravels(
-            java.util.function.Function<TravelAllowances, BigDecimal> amount) {
+    /** Sums one generated-line kind's amount live across the working trips (Phase 4.3). */
+    private BigDecimal sumKind(GeneratedLineKind kind) {
         return travels.get().stream().map(ValueSignal::get)
-                .map(t -> amount.apply(t.allowances()))
+                .map(t -> t.amountOf(kind))
                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
