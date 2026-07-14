@@ -503,7 +503,7 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
     @Test
     void previewComputesTheServerAuthoritativePerDiemWithoutPersisting() {
         // 11 h (> 10 h) → one full day at the seeded 2026 rate (€54.00).
-        var preview = service.previewDomesticTravel(
+        var preview = service.previewTravel(
                 domesticTravel(null, DEP, DEP.plusHours(11), false, false));
 
         assertThat(preview.amountOf(GeneratedLineKind.PER_DIEM))
@@ -615,7 +615,7 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
     void previewComputesEveryTripOutputServerSide() {
         // 11 h → €54.00 per-diem; 120 km × €0.59 = €70.80; meal €13.50;
         // parking €12.00 (VAT-bearing, at the parking type's 25.5 %).
-        var preview = service.previewDomesticTravel(domesticTravel(null, DEP,
+        var preview = service.previewTravel(domesticTravel(null, DEP,
                 DEP.plusHours(11), new BigDecimal("120"), true, new BigDecimal("12.00")));
 
         assertThat(preview.amountOf(GeneratedLineKind.PER_DIEM))
@@ -754,12 +754,81 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
         assertThat(receiptRepository.findByExpenseLineId(parkingLineId)).isEmpty();
     }
 
+    // --- Foreign per-diem via the destination-country picker (Phase 4.2) ---
+
+    @Test
+    void foreignDestinationsListsTheCountriesWithARateForTheYearNotFinland() {
+        var destinations = service.foreignDestinations(2026);
+        // The 12 seeded 2026 countries, in country order; Finland is not among them
+        // (it is the domestic option, added separately by the dialog).
+        assertThat(destinations).hasSize(12).contains("Germany", "Sweden")
+                .doesNotContain("Finland").isSorted();
+    }
+
+    @Test
+    void previewCostsAForeignTripAgainstTheDestinationCountryRate() {
+        // Germany 2026 = €71.00/day; 11 h → 1 allowance day → €71.00 (not the
+        // domestic €54.00 — the ProCountor payoff).
+        var preview = service.previewTravel(
+                foreignTravel(null, DEP, DEP.plusHours(11), "Germany", false));
+
+        assertThat(preview.amountOf(GeneratedLineKind.PER_DIEM))
+                .isEqualByComparingTo("71.00");
+        assertThat(preview.generatedLine(GeneratedLineKind.PER_DIEM).orElseThrow()
+                .comment()).contains("Germany");
+        assertThat(service.listMine()).isEmpty();
+    }
+
+    @Test
+    void createWithAForeignTripPersistsTheCountryAndForeignPerDiem() {
+        // 24 h + 7 h leftover → 2 allowance days × €71.00 = €142.00.
+        var id = service.create(dtoWithTravels(LocalDate.of(2026, 7, 10),
+                List.of(foreignTravel(null, DEP, DEP.plusHours(31), "Germany", false))));
+
+        var loaded = service.findMine(id);
+        var trip = loaded.travels().getFirst();
+        assertThat(trip.country()).isEqualTo("Germany");
+        assertThat(trip.amountOf(GeneratedLineKind.PER_DIEM))
+                .isEqualByComparingTo("142.00");
+        assertThat(loaded.perDiemTotal()).isEqualByComparingTo("142.00");
+        assertThat(loaded.total()).isEqualByComparingTo("142.00");
+    }
+
+    @Test
+    void aForeignCountryWithNoRateForTheYearFailsClearlyNotSilentlyDomestic() {
+        // Japan has no seeded 2026 rate: the trip must fail with a clear message,
+        // never fall back to the Finnish per-diem.
+        assertThatThrownBy(() -> service.create(dtoWithTravels(LocalDate.of(2026, 7, 10),
+                List.of(foreignTravel(null, DEP, DEP.plusHours(11), "Japan", false)))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Japan")
+                .hasMessageContaining("2026");
+        // Nothing was persisted — no silent Finnish default slipped through.
+        assertThat(service.listMine()).isEmpty();
+    }
+
+    @Test
+    void aDomesticTripStillUsesTheFinnishPerDiemAlongsideForeignSupport() {
+        // Same 11 h trip, domestic → €54.00 (the Finnish rate), proving the branch.
+        var preview = service.previewTravel(
+                domesticTravel(null, DEP, DEP.plusHours(11), false, false));
+        assertThat(preview.amountOf(GeneratedLineKind.PER_DIEM))
+                .isEqualByComparingTo("54.00");
+    }
+
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);
 
     private static TravelDto domesticTravel(Long id, LocalDateTime departure,
             LocalDateTime returnAt, boolean notEligible, boolean freeLunch) {
         return TravelDto.domestic(id, departure, returnAt, "Helsinki", "Client visit",
                 notEligible, freeLunch, false, ZERO, false, ZERO);
+    }
+
+    /** A foreign trip to the given destination country (no km/meal/parking). */
+    private static TravelDto foreignTravel(Long id, LocalDateTime departure,
+            LocalDateTime returnAt, String country, boolean notEligible) {
+        return TravelDto.of(id, departure, returnAt, "Berlin", "Conference", country,
+                notEligible, false, false, ZERO, false, ZERO);
     }
 
     /** A domestic trip with the Phase 4.3 km / meal / parking inputs set. */

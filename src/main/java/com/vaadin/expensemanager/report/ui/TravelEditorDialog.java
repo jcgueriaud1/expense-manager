@@ -3,8 +3,11 @@ package com.vaadin.expensemanager.report.ui;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.Year;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.IntFunction;
 import java.util.function.UnaryOperator;
 
 import com.vaadin.expensemanager.report.service.GeneratedLineView;
@@ -12,6 +15,7 @@ import com.vaadin.expensemanager.report.service.TravelDto;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.checkbox.Checkbox;
+import com.vaadin.flow.component.combobox.ComboBox;
 import com.vaadin.flow.component.datetimepicker.DateTimePicker;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
@@ -43,8 +47,11 @@ import static com.vaadin.expensemanager.report.ui.ReportViewSupport.generatedLin
  * top-of-dialog error summary and generates nothing. New lines the trip produces
  * are read-only and regenerated whenever the trip is edited.
  *
- * <p>The foreign country picker and per-diem are Slice 4; this dialog is domestic
- * only (country fixed to Finland).
+ * <p>The <strong>destination-country picker</strong> (Phase 4.2) lists Finland
+ * (domestic) plus every country that has a foreign per-diem rate for the trip's
+ * year. Picking Finland keeps the domestic per-diem; picking a foreign country
+ * costs the per-diem against that country's rate. The list is year-dependent, so it
+ * refreshes whenever the departure's year changes.
  */
 final class TravelEditorDialog extends Dialog {
 
@@ -57,13 +64,17 @@ final class TravelEditorDialog extends Dialog {
     private final UnaryOperator<TravelDto> costPreview;
 
     /**
-     * @param existing    the trip being edited, or {@code null} to add a new one
-     * @param costPreview computes the server-authoritative per-diem for a trip's
-     *                    inputs (the service preview); may throw
-     *                    {@link IllegalArgumentException} for invalid input
-     * @param onSave      receives the committed trip (with its computed per-diem)
+     * @param existing               the trip being edited, or {@code null} to add one
+     * @param costPreview            computes the server-authoritative trip outputs for
+     *                               a trip's inputs (the service preview); may throw
+     *                               {@link IllegalArgumentException} for invalid input
+     *                               (including a foreign country with no rate)
+     * @param foreignCountriesForYear the destination countries with a foreign rate for
+     *                               a given year (listed after Finland in the picker)
+     * @param onSave                 receives the committed trip (with its computed outputs)
      */
     TravelEditorDialog(TravelDto existing, UnaryOperator<TravelDto> costPreview,
+            IntFunction<List<String>> foreignCountriesForYear,
             Consumer<TravelDto> onSave) {
         this.existing = existing;
         this.costPreview = costPreview;
@@ -85,6 +96,31 @@ final class TravelEditorDialog extends Dialog {
         // Registered before readBean so an edited trip's values initialise them.
         departure.addValueChangeListener(event -> returnAt.setMin(event.getValue()));
         returnAt.addValueChangeListener(event -> departure.setMax(event.getValue()));
+
+        // Destination country: Finland (domestic) + every country with a foreign
+        // rate for the trip's year. The list depends on the departure year, so it is
+        // (re)populated from it; Finland shows as "Finland (domestic)".
+        var country = new ComboBox<String>("Destination country");
+        country.setRequiredIndicatorVisible(true);
+        country.setItemLabelGenerator(name ->
+                TravelDto.DOMESTIC_COUNTRY.equals(name)
+                        ? "Finland (domestic)" : name);
+        Runnable refreshCountries = () -> {
+            // Prefer the field, fall back to the model's departure (so the initial
+            // population before readBean uses an edited trip's year), else this year.
+            LocalDateTime departureFor = departure.getValue() != null
+                    ? departure.getValue() : model.getDepartureAt();
+            int year = departureFor != null
+                    ? departureFor.getYear() : Year.now().getValue();
+            List<String> items = new ArrayList<>();
+            items.add(TravelDto.DOMESTIC_COUNTRY);
+            items.addAll(foreignCountriesForYear.apply(year));
+            String selected = country.getValue();
+            country.setItems(items);
+            if (selected != null && items.contains(selected)) {
+                country.setValue(selected);
+            }
+        };
 
         var destinations = new TextField("Destinations");
         destinations.setRequiredIndicatorVisible(true);
@@ -115,11 +151,18 @@ final class TravelEditorDialog extends Dialog {
         // (Save still surfaces any reason). Registered before readBean so an edited
         // trip previews immediately on open.
         Runnable recompute = () -> refreshPreview(departure.getValue(),
-                returnAt.getValue(), destinations.getValue(), purpose.getValue(),
-                notEligible.getValue(), freeLunch.getValue(), chargeToCustomer.getValue(),
-                kilometres.getValue(), payMeal.getValue(), parkingFees.getValue());
-        departure.addValueChangeListener(event -> recompute.run());
+                returnAt.getValue(), country.getValue(), destinations.getValue(),
+                purpose.getValue(), notEligible.getValue(), freeLunch.getValue(),
+                chargeToCustomer.getValue(), kilometres.getValue(), payMeal.getValue(),
+                parkingFees.getValue());
+        // The available countries depend on the departure year, so refresh them
+        // first, then recompute the preview (which reads the country).
+        departure.addValueChangeListener(event -> {
+            refreshCountries.run();
+            recompute.run();
+        });
         returnAt.addValueChangeListener(event -> recompute.run());
+        country.addValueChangeListener(event -> recompute.run());
         notEligible.addValueChangeListener(event -> recompute.run());
         freeLunch.addValueChangeListener(event -> recompute.run());
         kilometres.addValueChangeListener(event -> recompute.run());
@@ -132,6 +175,9 @@ final class TravelEditorDialog extends Dialog {
         binder.forField(returnAt)
                 .asRequired("Return date & time is required")
                 .bind(TravelFormModel::getReturnAt, TravelFormModel::setReturnAt);
+        binder.forField(country)
+                .asRequired("Destination country is required")
+                .bind(TravelFormModel::getCountry, TravelFormModel::setCountry);
         binder.forField(destinations)
                 .asRequired("Destinations are required")
                 .bind(TravelFormModel::getDestinations, TravelFormModel::setDestinations);
@@ -154,6 +200,7 @@ final class TravelEditorDialog extends Dialog {
         if (existing != null) {
             model.setDepartureAt(existing.departureAt());
             model.setReturnAt(existing.returnAt());
+            model.setCountry(existing.country());
             model.setDestinations(existing.destinations());
             model.setPurpose(existing.purpose());
             model.setNotEligibleForAllowance(existing.notEligibleForAllowance());
@@ -163,13 +210,17 @@ final class TravelEditorDialog extends Dialog {
             model.setPayMealAllowance(existing.payMealAllowance());
             model.setParkingFees(zeroToNull(existing.parkingFees()));
         }
+        // Populate the country list for the trip's year before readBean so an edited
+        // trip's stored country preselects.
+        refreshCountries.run();
         binder.readBean(model);
 
-        var form = new FormLayout(departure, returnAt, destinations, purpose,
+        var form = new FormLayout(departure, returnAt, country, destinations, purpose,
                 kilometres, parkingFees, notEligible, freeLunch, payMeal,
                 chargeToCustomer);
         form.setResponsiveSteps(new FormLayout.ResponsiveStep("0", 1),
                 new FormLayout.ResponsiveStep("24rem", 2));
+        form.setColspan(country, 2);
         form.setColspan(destinations, 2);
         form.setColspan(purpose, 2);
         form.setColspan(notEligible, 2);
@@ -200,16 +251,16 @@ final class TravelEditorDialog extends Dialog {
      * reason).
      */
     private void refreshPreview(LocalDateTime departure, LocalDateTime returnAt,
-            String destinations, String purpose, boolean notEligible, boolean freeLunch,
-            boolean chargeToCustomer, BigDecimal kilometres, boolean payMeal,
-            BigDecimal parkingFees) {
-        if (departure == null || returnAt == null) {
+            String country, String destinations, String purpose, boolean notEligible,
+            boolean freeLunch, boolean chargeToCustomer, BigDecimal kilometres,
+            boolean payMeal, BigDecimal parkingFees) {
+        if (departure == null || returnAt == null || country == null) {
             preview.setVisible(false);
             return;
         }
-        var input = TravelDto.domestic(existing == null ? null : existing.id(),
-                departure, returnAt, destinations, purpose, notEligible, freeLunch,
-                chargeToCustomer, kilometres, payMeal, parkingFees);
+        var input = TravelDto.of(existing == null ? null : existing.id(),
+                departure, returnAt, destinations, purpose, country, notEligible,
+                freeLunch, chargeToCustomer, kilometres, payMeal, parkingFees);
         try {
             renderPreview(costPreview.apply(input));
         } catch (IllegalArgumentException | IllegalStateException invalid) {
@@ -230,9 +281,9 @@ final class TravelEditorDialog extends Dialog {
                     .map(ValidationResult::getErrorMessage).distinct().toList());
             return null;
         }
-        var input = TravelDto.domestic(existing == null ? null : existing.id(),
+        var input = TravelDto.of(existing == null ? null : existing.id(),
                 model.getDepartureAt(), model.getReturnAt(), model.getDestinations(),
-                model.getPurpose(), model.isNotEligibleForAllowance(),
+                model.getPurpose(), model.getCountry(), model.isNotEligibleForAllowance(),
                 model.isFreeLunch(), model.isChargeToCustomer(), model.getKilometres(),
                 model.isPayMealAllowance(), model.getParkingFees());
         try {

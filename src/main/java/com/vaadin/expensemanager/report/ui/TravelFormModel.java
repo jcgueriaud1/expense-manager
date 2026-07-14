@@ -17,6 +17,7 @@ final class TravelFormModel {
 
     private LocalDateTime departureAt;
     private LocalDateTime returnAt;
+    private String country;
     private String destinations;
     private String purpose;
     private boolean notEligibleForAllowance;
@@ -40,6 +41,14 @@ final class TravelFormModel {
 
     void setReturnAt(LocalDateTime returnAt) {
         this.returnAt = returnAt;
+    }
+
+    String getCountry() {
+        return country;
+    }
+
+    void setCountry(String country) {
+        this.country = country;
     }
 
     String getDestinations() {

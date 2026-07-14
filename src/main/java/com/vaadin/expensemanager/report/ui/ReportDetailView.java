@@ -385,8 +385,8 @@ public class ReportDetailView extends VerticalLayout
 
     /** Opens the trip editor to insert a new trip (glossary: Travel Calculator). */
     private void addTravel() {
-        new TravelEditorDialog(null, service::previewDomesticTravel,
-                travels::insertLast).open();
+        new TravelEditorDialog(null, service::previewTravel,
+                service::foreignDestinations, travels::insertLast).open();
     }
 
     /**
@@ -397,7 +397,8 @@ public class ReportDetailView extends VerticalLayout
      */
     private void openTravelEditor(ValueSignal<TravelDto> entry) {
         var before = entry.peek();
-        new TravelEditorDialog(before, service::previewDomesticTravel, updated -> {
+        new TravelEditorDialog(before, service::previewTravel,
+                service::foreignDestinations, updated -> {
             entry.set(mergeReceipts(before, updated));
             var kinds = updated.generatedLines().stream()
                     .map(GeneratedLineView::kind).toList();
