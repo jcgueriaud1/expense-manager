@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
@@ -240,6 +241,12 @@ class ExpenseReportTest {
 
     private static final ExpenseType TRAVEL_TYPE =
             new ExpenseType("Travel allowance", 0, RATE_0);
+    private static final ExpenseType KM_TYPE =
+            new ExpenseType("Kilometre allowance", 0, RATE_0);
+    private static final ExpenseType MEAL_TYPE =
+            new ExpenseType("Meal allowance", 0, RATE_0);
+    private static final ExpenseType PARKING_TYPE =
+            new ExpenseType("Parking/supplies/goods", 0, RATE_255);
     private static final LocalDateTime DEP = LocalDateTime.of(2026, 7, 1, 8, 0);
 
     @Test
@@ -325,6 +332,65 @@ class ExpenseReportTest {
     }
 
     @Test
+    void aTripGeneratesEachEarnedLineRoutedByKind() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+
+        report.reconcileTravels(List.of(travelSpecWith(null, List.of(
+                generated(GeneratedLineKind.PER_DIEM, TRAVEL_TYPE, RATE_0, "54.00"),
+                generated(GeneratedLineKind.KILOMETRE, KM_TYPE, RATE_0, "70.80"),
+                generated(GeneratedLineKind.MEAL, MEAL_TYPE, RATE_0, "13.50"),
+                generated(GeneratedLineKind.PARKING, PARKING_TYPE, RATE_255, "12.00")))));
+
+        assertThat(report.getLines()).hasSize(4);
+        // Each tax-free allowance is its own subtotal.
+        assertThat(report.perDiemTotal()).isEqualByComparingTo("54.00");
+        assertThat(report.kilometreTotal()).isEqualByComparingTo("70.80");
+        assertThat(report.mealTotal()).isEqualByComparingTo("13.50");
+        // Parking is VAT-bearing → in Net/VAT, not a tax-free subtotal (12.00 @ 25.5%).
+        assertThat(report.netTotal()).isEqualByComparingTo("9.56");
+        assertThat(report.vatTotal()).isEqualByComparingTo("2.44");
+        // Grand total sums everything: parking gross 12.00 + 54 + 70.80 + 13.50.
+        assertThat(report.total()).isEqualByComparingTo("150.30");
+        // Generated lines trail in kind (declaration) order.
+        assertThat(report.getLines().stream().map(ExpenseLine::getGeneratedKind).toList())
+                .containsExactly(GeneratedLineKind.PER_DIEM, GeneratedLineKind.KILOMETRE,
+                        GeneratedLineKind.MEAL, GeneratedLineKind.PARKING);
+    }
+
+    @Test
+    void editingATripDropsOnlyTheKindsItNoLongerEarns() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+        report.reconcileTravels(List.of(travelSpecWith(null, List.of(
+                generated(GeneratedLineKind.PER_DIEM, TRAVEL_TYPE, RATE_0, "54.00"),
+                generated(GeneratedLineKind.KILOMETRE, KM_TYPE, RATE_0, "70.80")))));
+        setId(report.getTravels().getFirst());
+        var id = report.getTravels().getFirst().getId();
+
+        // Re-cost: per-diem changes, kilometre drops, parking appears.
+        report.reconcileTravels(List.of(travelSpecWith(id, List.of(
+                generated(GeneratedLineKind.PER_DIEM, TRAVEL_TYPE, RATE_0, "27.00"),
+                generated(GeneratedLineKind.PARKING, PARKING_TYPE, RATE_255, "12.00")))));
+
+        assertThat(report.getLines()).hasSize(2);
+        assertThat(report.perDiemTotal()).isEqualByComparingTo("27.00");
+        assertThat(report.kilometreTotal()).isEqualByComparingTo("0.00");
+        assertThat(report.netTotal()).isEqualByComparingTo("9.56");
+    }
+
+    @Test
+    void aParkingOnlyTripGeneratesNoTaxFreeSubtotal() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+
+        report.reconcileTravels(List.of(travelSpecWith(null, List.of(
+                generated(GeneratedLineKind.PARKING, PARKING_TYPE, RATE_255, "20.00")))));
+
+        assertThat(report.getLines()).hasSize(1);
+        assertThat(report.perDiemTotal()).isEqualByComparingTo("0.00");
+        assertThat(report.total()).isEqualByComparingTo("20.00");
+        assertThat(report.netTotal().add(report.vatTotal())).isEqualByComparingTo("20.00");
+    }
+
+    @Test
     void reconcileTravelsWithAnUnknownIdIsRejected() {
         var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
 
@@ -338,9 +404,24 @@ class ExpenseReportTest {
     }
 
     private static TravelSpec travelSpec(Long id, String perDiem, String explanation) {
+        var lines = new ArrayList<GeneratedLineSpec>();
+        if (new BigDecimal(perDiem).signum() != 0) {
+            lines.add(new GeneratedLineSpec(GeneratedLineKind.PER_DIEM, TRAVEL_TYPE,
+                    RATE_0, new BigDecimal(perDiem), explanation));
+        }
+        return travelSpecWith(id, lines);
+    }
+
+    private static TravelSpec travelSpecWith(Long id, List<GeneratedLineSpec> lines) {
         return new TravelSpec(id, DEP, DEP.plusHours(11), "Helsinki", "Client visit",
-                "Finland", false, false, false, TRAVEL_TYPE, RATE_0,
-                new BigDecimal(perDiem), explanation);
+                "Finland", false, false, false, BigDecimal.ZERO.setScale(2), false,
+                BigDecimal.ZERO.setScale(2), lines);
+    }
+
+    private static GeneratedLineSpec generated(GeneratedLineKind kind, ExpenseType type,
+            VatRate rate, String amount) {
+        return new GeneratedLineSpec(kind, type, rate, new BigDecimal(amount),
+                kind + " line");
     }
 
     /** Reflectively stamps a generated id on a transient travel, to model persistence. */

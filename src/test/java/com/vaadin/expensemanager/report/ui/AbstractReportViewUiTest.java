@@ -142,12 +142,28 @@ abstract class AbstractReportViewUiTest extends SpringBrowserlessTest
     /** Seeds a DRAFT report with one domestic trip (11 h → €54.00); returns its id. */
     protected Long seedReportWithTravel(LocalDate date, LocalDateTime departure,
             LocalDateTime returnAt) {
-        var travel = TravelDto.domestic(null, departure, returnAt, "Helsinki",
-                "Client visit", false, false, false);
         var zero = BigDecimal.ZERO.setScale(2);
+        var travel = TravelDto.domestic(null, departure, returnAt, "Helsinki",
+                "Client visit", false, false, false, zero, false, zero);
         return service.create(new ReportDetailDto(null, date, "seed",
                 ReportStatus.DRAFT, 0L, List.of(), List.of(travel), zero, zero, zero,
-                zero));
+                zero, zero, zero));
+    }
+
+    /**
+     * Seeds a DRAFT report with one domestic trip carrying the Phase 4.3 km / meal /
+     * parking inputs, so tests can drive the kilometre / meal subtotal rows and the
+     * VAT-bearing parking line. Returns its id.
+     */
+    protected Long seedReportWithFullTravel(LocalDate date, LocalDateTime departure,
+            LocalDateTime returnAt, BigDecimal kilometres, boolean payMeal,
+            BigDecimal parkingFees) {
+        var zero = BigDecimal.ZERO.setScale(2);
+        var travel = TravelDto.domestic(null, departure, returnAt, "Helsinki",
+                "Client visit", false, false, false, kilometres, payMeal, parkingFees);
+        return service.create(new ReportDetailDto(null, date, "seed",
+                ReportStatus.DRAFT, 0L, List.of(), List.of(travel), zero, zero, zero,
+                zero, zero, zero));
     }
 
     /** Seeds a SUBMITTED report whose single generated line came from a trip. */

@@ -16,6 +16,7 @@ import com.vaadin.expensemanager.report.service.ExpenseLineDto;
 import com.vaadin.expensemanager.report.service.ExpenseReportService;
 import com.vaadin.expensemanager.report.service.ReceiptUpload;
 import com.vaadin.expensemanager.report.service.ReportDetailDto;
+import com.vaadin.expensemanager.report.service.TravelAllowances;
 import com.vaadin.expensemanager.report.service.TravelDto;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
@@ -104,6 +105,8 @@ public class ReportDetailView extends VerticalLayout
     private final Span netDisplay = new Span();
     private final Span vatDisplay = new Span();
     private final Span perDiemDisplay = new Span();
+    private final Span kilometreDisplay = new Span();
+    private final Span mealDisplay = new Span();
     private final Span grossDisplay = new Span();
     private final Button save = new Button("Save");
     private final Button submit = new Button("Submit for approval");
@@ -258,7 +261,8 @@ public class ReportDetailView extends VerticalLayout
         var edited = new ReportDetailDto(working.id(), model.getReportDate(),
                 model.getAdditionalInformation(), working.status(),
                 working.version(), currentLines(), currentTravels(), working.total(),
-                working.netTotal(), working.vatTotal(), working.perDiemTotal());
+                working.netTotal(), working.vatTotal(), working.perDiemTotal(),
+                working.kilometreTotal(), working.mealTotal());
         var receipts = pendingReceiptsByLineIndex();
         try {
             if (!working.isPersisted()) {
@@ -449,17 +453,23 @@ public class ReportDetailView extends VerticalLayout
      * working lines change.
      */
     private Div totalsCard() {
+        // Net/VAT include the VAT-bearing manual lines plus each trip's parking fee
+        // (also VAT-bearing); the three tax-free allowances are broken out below.
         netDisplay.bindText(Signal.computed(() -> formatEur(currentTotals().net())));
         vatDisplay.bindText(Signal.computed(() -> formatEur(currentTotals().vat())));
-        perDiemDisplay.bindText(Signal.computed(() -> formatEur(currentAllowance())));
+        perDiemDisplay.bindText(Signal.computed(() -> formatEur(currentPerDiem())));
+        kilometreDisplay.bindText(Signal.computed(() -> formatEur(currentKilometre())));
+        mealDisplay.bindText(Signal.computed(() -> formatEur(currentMeal())));
         grossDisplay.bindText(Signal.computed(() -> formatEur(currentGrandTotal())));
         grossDisplay.addClassName("totals-grand");
 
-        // The tax-free per-diem allowance, broken out as its own subtotal row —
-        // shown only when a trip earned one (Phase 4.3).
-        var perDiemRow = breakdownRow("Per diem allowance", perDiemDisplay);
-        perDiemRow.bindVisible(
-                Signal.computed(() -> currentAllowance().signum() != 0));
+        // Each tax-free allowance is its own subtotal row, shown only when a trip
+        // earned one (Phase 4.3).
+        var perDiemRow = allowanceRow("Per diem allowance", perDiemDisplay,
+                this::currentPerDiem);
+        var kilometreRow = allowanceRow("Kilometre allowance", kilometreDisplay,
+                this::currentKilometre);
+        var mealRow = allowanceRow("Meal allowance", mealDisplay, this::currentMeal);
 
         var totalLabel = new Span("Total to reimburse");
         var totalRow = new HorizontalLayout(totalLabel, grossDisplay);
@@ -469,10 +479,19 @@ public class ReportDetailView extends VerticalLayout
         totalRow.addClassName("totals-total-row");
 
         var card = new Div(breakdownRow("Net", netDisplay),
-                breakdownRow("VAT", vatDisplay), perDiemRow, totalRow);
+                breakdownRow("VAT", vatDisplay), perDiemRow, kilometreRow, mealRow,
+                totalRow);
         card.setWidthFull();
         card.addClassName("totals-card");
         return card;
+    }
+
+    /** A tax-free allowance subtotal row, shown only when its amount is non-zero. */
+    private HorizontalLayout allowanceRow(String label, Span value,
+            java.util.function.Supplier<BigDecimal> amount) {
+        var row = breakdownRow(label, value);
+        row.bindVisible(Signal.computed(() -> amount.get().signum() != 0));
+        return row;
     }
 
     /** One secondary "label … value" row in the totals card. */
@@ -663,24 +682,47 @@ public class ReportDetailView extends VerticalLayout
         return card;
     }
 
+    /**
+     * The VAT-bearing net/VAT/gross summed live: the working manual lines plus each
+     * trip's parking fee (also VAT-bearing, at the parking type's rate). The
+     * tax-free allowances are broken out separately (Phase 4.3).
+     */
     private LineAmounts currentTotals() {
-        return lines.get().stream().map(ValueSignal::get)
+        var manual = lines.get().stream().map(ValueSignal::get)
                 .filter(dto -> dto.amount() != null && dto.vatRatePercent() != null)
                 .map(dto -> LineAmounts.of(dto.amount(), dto.vatRatePercent()))
                 .reduce(LineAmounts.zero(), LineAmounts::add);
+        return travels.get().stream().map(ValueSignal::get)
+                .map(TravelDto::allowances)
+                .filter(a -> a.parking().signum() != 0)
+                .map(a -> LineAmounts.of(a.parking(), a.parkingVatPercent()))
+                .reduce(manual, LineAmounts::add);
     }
 
-    /** The tax-free per-diem allowance summed live from the working trips (Phase 4.3). */
-    private BigDecimal currentAllowance() {
+    private BigDecimal currentPerDiem() {
+        return sumTravels(a -> a.perDiem());
+    }
+
+    private BigDecimal currentKilometre() {
+        return sumTravels(a -> a.kilometre());
+    }
+
+    private BigDecimal currentMeal() {
+        return sumTravels(a -> a.meal());
+    }
+
+    /** Sums one tax-free allowance amount live across the working trips (Phase 4.3). */
+    private BigDecimal sumTravels(
+            java.util.function.Function<TravelAllowances, BigDecimal> amount) {
         return travels.get().stream().map(ValueSignal::get)
-                .map(t -> t.perDiemAmount() == null
-                        ? BigDecimal.ZERO.setScale(2) : t.perDiemAmount())
+                .map(t -> amount.apply(t.allowances()))
                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
-    /** Grand total = manual gross (Net + VAT) + the per-diem allowance. */
+    /** Grand total = VAT-bearing gross (Net + VAT) + the three tax-free allowances. */
     private BigDecimal currentGrandTotal() {
-        return currentTotals().gross().add(currentAllowance());
+        return currentTotals().gross().add(currentPerDiem()).add(currentKilometre())
+                .add(currentMeal());
     }
 
     private static BigDecimal grossOf(ExpenseLineDto dto) {

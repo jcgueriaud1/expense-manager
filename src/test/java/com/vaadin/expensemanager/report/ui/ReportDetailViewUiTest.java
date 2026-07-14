@@ -332,6 +332,56 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
     }
 
     @Test
+    void insertingATripWithKmMealParkingShowsEachSubtotalAndFoldsParkingIntoNetVat() {
+        navigate(ReportDetailView.class);
+
+        findButton().withText("Insert travel info").click();
+        findDateTimePicker().withLabel("Departure").setValue(DEP);
+        findDateTimePicker().withLabel("Return").setValue(DEP.plusHours(11));
+        findTextField().withLabel("Destinations").setValue("Helsinki");
+        findTextField().withLabel("Travel purpose").setValue("Client visit");
+        findBigDecimalField().withLabel("Kilometre allowance (km)")
+                .setValue(new BigDecimal("120"));
+        findCheckbox().withLabel("Pay meal allowance?").click();
+        findBigDecimalField().withLabel("Parking fees (€)")
+                .setValue(new BigDecimal("12.00"));
+
+        // Every output previews live in the dialog (120 km × €0.59 = €70.80, etc.).
+        assertThat(UI.getCurrent().getElement().getTextRecursively()).contains(
+                "Per diem: €54.00", "Kilometre allowance: €70.80",
+                "Meal allowance: €13.50", "Parking: €12.00");
+
+        findButton().withText("Save trip").click();
+
+        // The two new tax-free subtotal rows are visible; parking is not a subtotal.
+        assertThat(findSpan().withText("Kilometre allowance").exists()).isTrue();
+        assertThat(findSpan().withText("Meal allowance").exists()).isTrue();
+        var text = getCurrentView().getElement().getTextRecursively();
+        assertThat(text).contains("Per diem allowance", "€70.80", "€13.50");
+
+        findButton().withText("Save").click();
+
+        var loaded = service.findMine(service.listMine().getFirst().id());
+        assertThat(loaded.perDiemTotal()).isEqualByComparingTo("54.00");
+        assertThat(loaded.kilometreTotal()).isEqualByComparingTo("70.80");
+        assertThat(loaded.mealTotal()).isEqualByComparingTo("13.50");
+        // Parking folds into Net/VAT; grand total sums it all.
+        assertThat(loaded.netTotal()).isEqualByComparingTo("9.56");
+        assertThat(loaded.total()).isEqualByComparingTo("150.30");
+    }
+
+    @Test
+    void aTripWithoutKmOrMealHidesThoseSubtotalRows() {
+        var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(11));
+        navigate(ReportDetailView.class, id);
+
+        // Per-diem-only trip: its row shows, but the km/meal rows stay hidden.
+        assertThat(findSpan().withText("Per diem allowance").exists()).isTrue();
+        assertThat(findSpan().withText("Kilometre allowance").exists()).isFalse();
+        assertThat(findSpan().withText("Meal allowance").exists()).isFalse();
+    }
+
+    @Test
     void editingATripWithFreeLunchRegeneratesAHalvedPerDiem() {
         var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(11));
         navigate(ReportDetailView.class, id);

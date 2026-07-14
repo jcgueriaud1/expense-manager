@@ -26,10 +26,12 @@ import com.vaadin.expensemanager.report.domain.ReportStatus;
  *
  * <p>The {@link #lines} are the <strong>manual</strong> (user-entered) lines the
  * view shows as editable cards; the {@link #travels} are the trips, each carrying
- * its server-computed per-diem (Phase 4.2/4.3). The generated per-diem lines are
- * not carried here — they are represented by their travel and summed into
- * {@link #perDiemTotal}. Accordingly {@link #netTotal}/{@link #vatTotal} cover
- * only the VAT-bearing manual lines, and {@link #total} = Net + VAT + per-diem.
+ * its server-computed allowance breakdown (Phase 4.2/4.3). The generated lines are
+ * not carried here — they are represented by their travel and summed into the
+ * three tax-free subtotals ({@link #perDiemTotal}, {@link #kilometreTotal},
+ * {@link #mealTotal}). The VAT-bearing parking lines, by contrast, count in
+ * {@link #netTotal}/{@link #vatTotal} alongside the manual lines, and
+ * {@link #total} = Net + VAT + per-diem + kilometre + meal.
  *
  * @param id                    persistent id, or {@code null} for a new report
  * @param reportDate            user-entered report date (required)
@@ -39,25 +41,29 @@ import com.vaadin.expensemanager.report.domain.ReportStatus;
  * @param lines                 the report's manual expense lines in order (never null)
  * @param travels               the report's trips in order (never null)
  * @param total                 derived grand gross total, EUR scale 2
- * @param netTotal              derived net total of the manual lines, EUR scale 2
- * @param vatTotal              derived VAT total of the manual lines, EUR scale 2
- * @param perDiemTotal          derived tax-free per-diem allowance subtotal, EUR scale 2
+ * @param netTotal              derived net total of the VAT-bearing lines, EUR scale 2
+ * @param vatTotal              derived VAT total of the VAT-bearing lines, EUR scale 2
+ * @param perDiemTotal          derived tax-free per-diem subtotal, EUR scale 2
+ * @param kilometreTotal        derived tax-free kilometre allowance subtotal, EUR scale 2
+ * @param mealTotal             derived tax-free meal allowance subtotal, EUR scale 2
  */
 public record ReportDetailDto(Long id, LocalDate reportDate,
         String additionalInformation, ReportStatus status, long version,
         List<ExpenseLineDto> lines, List<TravelDto> travels, BigDecimal total,
-        BigDecimal netTotal, BigDecimal vatTotal, BigDecimal perDiemTotal) {
+        BigDecimal netTotal, BigDecimal vatTotal, BigDecimal perDiemTotal,
+        BigDecimal kilometreTotal, BigDecimal mealTotal) {
 
     /**
      * Backward-compatible constructor for a report with no trips (seeds, tests,
      * and every pre-Phase-4 call site): defaults {@link #travels} empty and the
-     * {@link #perDiemTotal} to zero.
+     * three tax-free subtotals to zero.
      */
     public ReportDetailDto(Long id, LocalDate reportDate, String additionalInformation,
             ReportStatus status, long version, List<ExpenseLineDto> lines,
             BigDecimal total, BigDecimal netTotal, BigDecimal vatTotal) {
         this(id, reportDate, additionalInformation, status, version, lines, List.of(),
-                total, netTotal, vatTotal, BigDecimal.ZERO.setScale(2));
+                total, netTotal, vatTotal, BigDecimal.ZERO.setScale(2),
+                BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2));
     }
 
     /**
@@ -68,7 +74,7 @@ public record ReportDetailDto(Long id, LocalDate reportDate,
     public static ReportDetailDto forNew(LocalDate today) {
         BigDecimal zero = BigDecimal.ZERO.setScale(2);
         return new ReportDetailDto(null, today, null, ReportStatus.DRAFT, 0L,
-                List.of(), List.of(), zero, zero, zero, zero);
+                List.of(), List.of(), zero, zero, zero, zero, zero, zero);
     }
 
     /** Whether this working copy has been persisted yet. */

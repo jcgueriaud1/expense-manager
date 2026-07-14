@@ -1,5 +1,7 @@
 package com.vaadin.expensemanager.report.domain;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 
 import com.vaadin.expensemanager.base.AuditedEntity;
@@ -16,12 +18,13 @@ import jakarta.persistence.Table;
  * {@link ExpenseReport} aggregate, never a root of its own (ADR-0006).
  *
  * <p>Holds the <em>trip inputs</em> the user entered (departure/return date &
- * time, destinations, purpose, country, and the eligibility/free-meal/charge
- * flags). It carries <strong>no money</strong>: the per-diem it earns lives on
- * the generated {@link ExpenseLine} linked back to it via {@code travel_id}
- * (Phase 4.2/4.3), whose amount the aggregate regenerates from these inputs on
- * every save. Editing the trip regenerates that line; deleting the trip
- * orphan-removes it.
+ * time, destinations, purpose, country, the eligibility/free-meal/charge flags,
+ * and the kilometres driven / pay-meal-allowance / parking-fee inputs). It
+ * carries <strong>no money</strong>: the per-diem, kilometre, meal, and parking
+ * outputs it earns live on generated {@link ExpenseLine}s linked back to it via
+ * {@code travel_id} (Phase 4.2/4.3), whose amounts the aggregate regenerates from
+ * these inputs on every save. Editing the trip regenerates those lines; deleting
+ * the trip orphan-removes them.
  *
  * <p>This slice is <strong>domestic only</strong> — {@link #country} is set to
  * Finland when the domestic dialog creates a trip; the foreign country picker is
@@ -32,6 +35,8 @@ import jakarta.persistence.Table;
 @Entity
 @Table(name = "travel")
 public class Travel extends AuditedEntity {
+
+    private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -61,6 +66,18 @@ public class Travel extends AuditedEntity {
     @Column(name = "charge_to_customer", nullable = false)
     private boolean chargeToCustomer;
 
+    /** Kilometres driven, for the kilometre allowance (0 → none). Scale 2. */
+    @Column(name = "kilometres", nullable = false, precision = 19, scale = 2)
+    private BigDecimal kilometres = ZERO;
+
+    /** Whether the trip pays a meal allowance (ateriakorvaus). */
+    @Column(name = "pay_meal_allowance", nullable = false)
+    private boolean payMealAllowance;
+
+    /** Parking fees paid, a VAT-bearing expense (0 → none). Scale 2 money. */
+    @Column(name = "parking_fees", nullable = false, precision = 19, scale = 2)
+    private BigDecimal parkingFees = ZERO;
+
     /** JPA constructor. */
     protected Travel() {
     }
@@ -86,6 +103,9 @@ public class Travel extends AuditedEntity {
         this.notEligibleForAllowance = spec.notEligibleForAllowance();
         this.freeLunch = spec.freeLunch();
         this.chargeToCustomer = spec.chargeToCustomer();
+        this.kilometres = normalizeAmount(spec.kilometres());
+        this.payMealAllowance = spec.payMealAllowance();
+        this.parkingFees = normalizeAmount(spec.parkingFees());
     }
 
     public Long getId() {
@@ -122,6 +142,23 @@ public class Travel extends AuditedEntity {
 
     public boolean isChargeToCustomer() {
         return chargeToCustomer;
+    }
+
+    public BigDecimal getKilometres() {
+        return kilometres;
+    }
+
+    public boolean isPayMealAllowance() {
+        return payMealAllowance;
+    }
+
+    public BigDecimal getParkingFees() {
+        return parkingFees;
+    }
+
+    /** A trip input amount at money scale, defaulting {@code null} to zero. */
+    private static BigDecimal normalizeAmount(BigDecimal value) {
+        return (value == null ? ZERO : value).setScale(2, RoundingMode.HALF_UP);
     }
 
     private static <T> T requireNonNull(T value, String field) {

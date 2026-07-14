@@ -2,6 +2,7 @@ package com.vaadin.expensemanager.report.service;
 
 import java.io.ByteArrayInputStream;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -11,13 +12,18 @@ import java.util.stream.Collectors;
 
 import java.math.BigDecimal;
 
+import com.vaadin.expensemanager.allowance.AllowanceAmount;
 import com.vaadin.expensemanager.allowance.AllowanceCalculator;
 import com.vaadin.expensemanager.allowance.AllowanceRateService;
 import com.vaadin.expensemanager.allowance.DomesticPerDiemDto;
 import com.vaadin.expensemanager.allowance.DomesticPerDiemResult;
+import com.vaadin.expensemanager.allowance.KilometreRateDto;
+import com.vaadin.expensemanager.allowance.MealAllowanceDto;
 import com.vaadin.expensemanager.report.domain.ExpenseLine;
 import com.vaadin.expensemanager.report.domain.ExpenseLineSpec;
 import com.vaadin.expensemanager.report.domain.ExpenseReport;
+import com.vaadin.expensemanager.report.domain.GeneratedLineKind;
+import com.vaadin.expensemanager.report.domain.GeneratedLineSpec;
 import com.vaadin.expensemanager.report.domain.Receipt;
 import com.vaadin.expensemanager.report.domain.ReceiptType;
 import com.vaadin.expensemanager.report.domain.ReceiptValidator;
@@ -69,8 +75,13 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ExpenseReportService {
 
-    /** The tax-free expense type generated per-diem lines are filed under (F-034). */
+    // The expense types the four generated line kinds are filed under, resolved by
+    // name (the accepted coupling — F-034). The three allowances are 0 %-VAT;
+    // parking is filed under the VAT-bearing parking type at its own rate.
     private static final String PER_DIEM_EXPENSE_TYPE = "Travel allowance";
+    private static final String KILOMETRE_EXPENSE_TYPE = "Kilometre allowance";
+    private static final String MEAL_EXPENSE_TYPE = "Meal allowance";
+    private static final String PARKING_EXPENSE_TYPE = "Parking/supplies/goods";
     private static final BigDecimal ZERO_VAT = BigDecimal.ZERO.setScale(2);
 
     private final ExpenseReportRepository reportRepository;
@@ -124,21 +135,21 @@ public class ExpenseReportService {
     }
 
     /**
-     * Previews the domestic per-diem for a trip's inputs without persisting
-     * anything (Phase 4.2/4.3, the dialog's "Continue"). Amounts are
+     * Previews the domestic trip outputs for a trip's inputs without persisting
+     * anything (Phase 4.2/4.3, the dialog preview). Amounts are
      * <strong>server-authoritative</strong>: the client sends inputs, this
-     * recomputes the money from the trip-year rate and returns the trip with its
-     * per-diem and explanation filled in. Invalid input (return before departure,
-     * or no rate configured for the trip year) throws with a message the caller
-     * surfaces in the error summary (ADR-0020).
+     * recomputes every output (per-diem, kilometre, meal, parking) from the
+     * trip-year rates and returns the trip with its {@link TravelAllowances}
+     * breakdown filled in. Invalid input (return before departure, or no rate
+     * configured for a requested output's trip year) throws with a message the
+     * caller surfaces in the error summary (ADR-0020).
      *
-     * @throws IllegalArgumentException if the inputs are invalid or no rate exists
+     * @throws IllegalArgumentException if the inputs are invalid or a rate is missing
      */
     @RolesAllowed("USER")
     @Transactional(readOnly = true)
     public TravelDto previewDomesticTravel(TravelDto input) {
-        DomesticPerDiemResult result = costDomestic(input);
-        return input.withPerDiem(result.amount(), result.explanation());
+        return input.withAllowances(costAllowances(input));
     }
 
     /**
@@ -401,55 +412,124 @@ public class ExpenseReportService {
                 .map(travel -> toTravelDto(r, travel)).toList();
         return new ReportDetailDto(r.getId(), r.getReportDate(),
                 r.getAdditionalInformation(), r.getStatus(), r.getVersion(), lineDtos,
-                travelDtos, r.total(), r.netTotal(), r.vatTotal(), r.perDiemTotal());
+                travelDtos, r.total(), r.netTotal(), r.vatTotal(), r.perDiemTotal(),
+                r.kilometreTotal(), r.mealTotal());
     }
 
     /**
-     * Maps a persisted trip to its working-copy DTO, reading the per-diem
-     * amount/explanation off its generated line (or zero/none if the trip earned
-     * no allowance).
+     * Maps a persisted trip to its working-copy DTO, reading each generated line's
+     * amount/explanation off the report by kind (or zero/none for a kind the trip
+     * earned nothing of) into the {@link TravelAllowances} breakdown.
      */
     private static TravelDto toTravelDto(ExpenseReport r, Travel t) {
-        var line = r.perDiemLineFor(t);
-        BigDecimal amount = line.map(ExpenseLine::gross).orElse(ZERO_VAT);
-        String explanation = line.map(ExpenseLine::getComment).orElse(null);
+        var perDiem = r.generatedLineFor(t, GeneratedLineKind.PER_DIEM);
+        var kilometre = r.generatedLineFor(t, GeneratedLineKind.KILOMETRE);
+        var meal = r.generatedLineFor(t, GeneratedLineKind.MEAL);
+        var parking = r.generatedLineFor(t, GeneratedLineKind.PARKING);
+        var allowances = new TravelAllowances(
+                grossOf(perDiem), commentOf(perDiem),
+                grossOf(kilometre), commentOf(kilometre),
+                grossOf(meal), commentOf(meal),
+                grossOf(parking), commentOf(parking),
+                parking.map(l -> l.getVatRate().getValue()).orElse(ZERO_VAT));
         return new TravelDto(t.getId(), t.getDepartureAt(), t.getReturnAt(),
                 t.getDestinations(), t.getPurpose(), t.getCountry(),
                 t.isNotEligibleForAllowance(), t.isFreeLunch(), t.isChargeToCustomer(),
-                amount, explanation);
+                t.getKilometres(), t.isPayMealAllowance(), t.getParkingFees(), allowances);
+    }
+
+    private static BigDecimal grossOf(Optional<ExpenseLine> line) {
+        return line.map(ExpenseLine::gross).orElse(ZERO_VAT);
+    }
+
+    private static String commentOf(Optional<ExpenseLine> line) {
+        return line.map(ExpenseLine::getComment).orElse(null);
     }
 
     /**
-     * Resolves each incoming trip DTO to a {@link TravelSpec}, recomputing the
-     * per-diem server-side (the client never sends money) and resolving the
-     * generated line's reference data once. Empty when there are no trips — so a
-     * report without trips never touches the per-diem reference lookups.
+     * Resolves each incoming trip DTO to a {@link TravelSpec}, recomputing every
+     * output server-side (the client never sends money) and resolving the generated
+     * lines' reference data once. Empty when there are no trips — so a report
+     * without trips never touches the allowance reference lookups.
      */
     private List<TravelSpec> toTravelSpecs(List<TravelDto> travels) {
         if (travels == null || travels.isEmpty()) {
             return List.of();
         }
-        ExpenseType type = perDiemExpenseType();
-        VatRate rate = zeroVatRate();
-        return travels.stream().map(t -> toTravelSpec(t, type, rate)).toList();
+        GeneratedLineTypes types = resolveGeneratedLineTypes();
+        return travels.stream().map(t -> toTravelSpec(t, types)).toList();
     }
 
-    private TravelSpec toTravelSpec(TravelDto t, ExpenseType type, VatRate rate) {
-        DomesticPerDiemResult result = costDomestic(t);
+    private TravelSpec toTravelSpec(TravelDto t, GeneratedLineTypes types) {
+        TravelAllowances a = costAllowances(t);
         String country = (t.country() == null || t.country().isBlank())
                 ? TravelDto.DOMESTIC_COUNTRY : t.country();
+
+        // One generated-line spec per output the trip actually earned; a kind that
+        // produced nothing is omitted, so the aggregate removes any prior line of it.
+        List<GeneratedLineSpec> generated = new ArrayList<>(4);
+        addLine(generated, GeneratedLineKind.PER_DIEM, types.perDiemType(),
+                types.zeroVat(), a.perDiem(), a.perDiemExplanation());
+        addLine(generated, GeneratedLineKind.KILOMETRE, types.kilometreType(),
+                types.zeroVat(), a.kilometre(), a.kilometreExplanation());
+        addLine(generated, GeneratedLineKind.MEAL, types.mealType(),
+                types.zeroVat(), a.meal(), a.mealExplanation());
+        addLine(generated, GeneratedLineKind.PARKING, types.parkingType(),
+                types.parkingType().getDefaultVatRate(), a.parking(),
+                a.parkingExplanation());
+
         return new TravelSpec(t.id(), t.departureAt(), t.returnAt(), t.destinations(),
                 t.purpose(), country, t.notEligibleForAllowance(), t.freeLunch(),
-                t.chargeToCustomer(), type, rate, result.amount(),
-                result.explanation());
+                t.chargeToCustomer(), t.kilometres(), t.payMealAllowance(),
+                t.parkingFees(), generated);
     }
 
-    /** Server-authoritative domestic per-diem for a trip's inputs (ADR-0006). */
-    private DomesticPerDiemResult costDomestic(TravelDto t) {
+    private static void addLine(List<GeneratedLineSpec> into, GeneratedLineKind kind,
+            ExpenseType type, VatRate rate, BigDecimal amount, String comment) {
+        if (amount != null && amount.signum() != 0) {
+            into.add(new GeneratedLineSpec(kind, type, rate, amount, comment));
+        }
+    }
+
+    /** The resolved reference data the generated lines are filed under, per save. */
+    private record GeneratedLineTypes(ExpenseType perDiemType, ExpenseType kilometreType,
+            ExpenseType mealType, ExpenseType parkingType, VatRate zeroVat) {
+    }
+
+    private GeneratedLineTypes resolveGeneratedLineTypes() {
+        return new GeneratedLineTypes(
+                allowanceExpenseType(PER_DIEM_EXPENSE_TYPE),
+                allowanceExpenseType(KILOMETRE_EXPENSE_TYPE),
+                allowanceExpenseType(MEAL_EXPENSE_TYPE),
+                allowanceExpenseType(PARKING_EXPENSE_TYPE),
+                zeroVatRate());
+    }
+
+    /**
+     * The server-computed money breakdown a trip earns (ADR-0006): per-diem,
+     * kilometre, meal, and parking. Each rule is recomputed here from the trip-year
+     * rate; a missing rate for a requested output is surfaced (ADR-0020).
+     */
+    private TravelAllowances costAllowances(TravelDto t) {
         if (t.departureAt() == null || t.returnAt() == null) {
             throw new IllegalArgumentException(
                     "Departure and return date & time are required");
         }
+        DomesticPerDiemResult perDiem = costDomestic(t);
+        AllowanceAmount kilometre = costKilometre(t);
+        AllowanceAmount meal = costMeal(t);
+        AllowanceAmount parking = calculator.parking(t.parkingFees());
+        BigDecimal parkingVat = parking.hasAmount()
+                ? allowanceExpenseType(PARKING_EXPENSE_TYPE).getDefaultVatRate().getValue()
+                : ZERO_VAT;
+        return new TravelAllowances(perDiem.amount(), perDiem.explanation(),
+                kilometre.amount(), kilometre.explanation(),
+                meal.amount(), meal.explanation(),
+                parking.amount(), parking.explanation(), parkingVat);
+    }
+
+    /** Server-authoritative domestic per-diem for a trip's inputs (ADR-0006). */
+    private DomesticPerDiemResult costDomestic(TravelDto t) {
         int year = t.departureAt().getYear();
         DomesticPerDiemDto rate = allowanceRateService.domesticPerDiem(year)
                 .orElseThrow(() -> new IllegalArgumentException(
@@ -458,20 +538,43 @@ public class ExpenseReportService {
                 t.notEligibleForAllowance(), t.freeLunch(), rate);
     }
 
-    private ExpenseType perDiemExpenseType() {
+    /** Server-authoritative kilometre allowance; needs a rate only when km &gt; 0. */
+    private AllowanceAmount costKilometre(TravelDto t) {
+        BigDecimal km = t.kilometres();
+        if (km == null || km.signum() <= 0) {
+            return calculator.kilometreAllowance(km, null);
+        }
+        int year = t.departureAt().getYear();
+        KilometreRateDto rate = allowanceRateService.kilometreRate(year)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "No kilometre rate is configured for " + year));
+        return calculator.kilometreAllowance(km, rate);
+    }
+
+    /** Server-authoritative meal allowance; needs a rate only when the trip pays it. */
+    private AllowanceAmount costMeal(TravelDto t) {
+        if (!t.payMealAllowance()) {
+            return calculator.mealAllowance(false, null);
+        }
+        int year = t.departureAt().getYear();
+        MealAllowanceDto rate = allowanceRateService.mealAllowance(year)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "No meal allowance is configured for " + year));
+        return calculator.mealAllowance(true, rate);
+    }
+
+    private ExpenseType allowanceExpenseType(String name) {
         return expenseTypeRepository
-                .findFirstByNameIgnoreCaseAndActiveTrueOrderByDisplayOrderAscIdAsc(
-                        PER_DIEM_EXPENSE_TYPE)
-                .orElseThrow(() -> new IllegalStateException("No active '"
-                        + PER_DIEM_EXPENSE_TYPE
-                        + "' expense type is configured for per-diem lines"));
+                .findFirstByNameIgnoreCaseAndActiveTrueOrderByDisplayOrderAscIdAsc(name)
+                .orElseThrow(() -> new IllegalStateException("No active '" + name
+                        + "' expense type is configured for generated travel lines"));
     }
 
     private VatRate zeroVatRate() {
         return vatRateRepository
                 .findFirstByValueAndActiveTrueOrderByDisplayOrderAscIdAsc(ZERO_VAT)
                 .orElseThrow(() -> new IllegalStateException(
-                        "No active 0% VAT rate is configured for per-diem lines"));
+                        "No active 0% VAT rate is configured for allowance lines"));
     }
 
     private static ExpenseLineDto toLineDto(ExpenseLine line,
