@@ -75,7 +75,7 @@ public class MainLayout extends AppLayout {
                 event -> authenticationContext.logout());
         logout.addThemeVariants(ButtonVariant.TERTIARY);
 
-        var bar = new HorizontalLayout(userName, logout);
+        var bar = new HorizontalLayout(new ThemeSwitcher(), userName, logout);
         bar.setAlignItems(FlexComponent.Alignment.CENTER);
         bar.setWidthFull();
         bar.setJustifyContentMode(FlexComponent.JustifyContentMode.END);
