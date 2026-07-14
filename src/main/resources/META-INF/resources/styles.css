@@ -1,6 +1,165 @@
 /* Add your styles here */
 
 /*
+ * Box-sizing reset for light-DOM elements. Vaadin layout components already use
+ * border-box on their host, but raw elements we style ourselves (Div, RouterLink,
+ * …) default to content-box — so `width: 100%` + our own padding/border overflowed
+ * the parent (surfaced once real --vaadin-padding-l was applied to the cards).
+ * This keeps padding and border inside the declared width. Shadow DOM (Vaadin
+ * component internals) is unaffected.
+ */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+/*
+ * Report views (MyReportsView, ReportDetailView) — decoration and typography the
+ * layout Java API can't express, per docs/theming-layouts.md. Structure (flex,
+ * gap, padding, alignment, expand) stays in Java; these classes only carry
+ * borders, radii, surfaces, and text styling, all via --vaadin-/--aura- tokens.
+ */
+
+/* Shared text helpers */
+.muted { color: var(--vaadin-text-color-secondary); font-size: var(--aura-font-size-s); }
+.muted-xs { color: var(--vaadin-text-color-secondary); font-size: var(--aura-font-size-xs); }
+.section-label {
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: var(--aura-font-size-xs);
+    font-weight: var(--aura-font-weight-semibold);
+    color: var(--vaadin-text-color-secondary);
+}
+
+/* ---- List ---- */
+.reports-title {
+    margin: 0;
+    font-size: var(--aura-font-size-xl);
+    font-weight: var(--aura-font-weight-semibold);
+}
+.reports-filter-bar { flex-wrap: wrap; }
+.no-results {
+    display: block;
+    color: var(--vaadin-text-color-secondary);
+    padding: var(--vaadin-padding-m);
+}
+
+.report-card {
+    /* RouterLink is not a Vaadin layout — its column/gap live here (see docs). */
+    display: flex;
+    flex-direction: column;
+    gap: var(--vaadin-gap-s);
+    width: 100%;
+    color: var(--vaadin-text-color);
+    text-decoration: none;
+    padding: var(--vaadin-padding-l);
+    border: 1px solid var(--vaadin-border-color);
+    border-radius: var(--vaadin-radius-l);
+    background: var(--vaadin-background-container);
+    transition: background 0.12s ease;
+}
+.report-card--actionable {
+    background: var(--aura-surface-color);
+    box-shadow: var(--aura-shadow-xs);
+}
+.report-card:hover { background: var(--aura-surface-color); }
+.report-card-title {
+    font-weight: var(--aura-font-weight-semibold);
+    font-size: var(--aura-font-size-m);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.report-card-footer {
+    border-top: 1px solid var(--vaadin-border-color-secondary);
+    padding-top: var(--vaadin-gap-s);
+}
+.report-card-total {
+    font-weight: var(--aura-font-weight-semibold);
+    font-size: var(--aura-font-size-l);
+}
+
+/* ---- Detail ---- */
+.report-detail { margin-inline: auto; }
+.error-summary { color: var(--aura-red-text); }
+.summary-heading { font-weight: var(--aura-font-weight-semibold); }
+.report-detail-eyebrow {
+    color: var(--vaadin-text-color-secondary);
+    font-size: var(--aura-font-size-xs);
+}
+.report-detail-title {
+    font-weight: var(--aura-font-weight-semibold);
+    font-size: var(--aura-font-size-l);
+}
+
+.status-callout {
+    border-radius: var(--vaadin-radius-l);
+    padding: var(--vaadin-padding-l);
+    font-size: var(--aura-font-size-s);
+    color: var(--vaadin-text-color);
+}
+.status-callout-heading {
+    display: block;
+    font-weight: var(--aura-font-weight-semibold);
+}
+.status-callout--rejected {
+    background: color-mix(in srgb, var(--aura-red) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--aura-red) 35%, transparent);
+}
+.status-callout--rejected .status-callout-heading { color: var(--aura-red-text); }
+.status-callout--approved {
+    background: color-mix(in srgb, var(--aura-green) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--aura-green) 30%, transparent);
+}
+.status-callout--approved .status-callout-heading { color: var(--aura-green-text); }
+.status-callout--submitted {
+    background: var(--aura-accent-surface);
+    border: 1px solid var(--aura-accent-border-color);
+}
+
+.line-card {
+    padding: var(--vaadin-padding-l);
+    border: 1px solid var(--vaadin-border-color);
+    border-radius: var(--vaadin-radius-l);
+    background: var(--aura-surface-color);
+}
+.clickable { cursor: var(--vaadin-clickable-cursor, pointer); }
+.category-dot {
+    width: 0.625rem;
+    height: 0.625rem;
+    border-radius: 50%;
+    flex: none;
+    background: var(--category-color, var(--vaadin-border-color));
+}
+.line-name { font-weight: var(--aura-font-weight-semibold); font-size: var(--aura-font-size-s); }
+.line-amount { font-weight: var(--aura-font-weight-semibold); font-size: var(--aura-font-size-m); }
+.line-receipt { margin-top: var(--vaadin-gap-s); }
+
+.totals-card {
+    padding: var(--vaadin-padding-l);
+    border: 1px solid var(--vaadin-border-color);
+    border-radius: var(--vaadin-radius-l);
+    background: var(--aura-surface-color);
+}
+.totals-row {
+    color: var(--vaadin-text-color-secondary);
+    font-size: var(--aura-font-size-s);
+    padding-block: 0.25rem;
+}
+.totals-total-row {
+    border-top: 1px solid var(--vaadin-border-color);
+    padding-top: var(--vaadin-gap-s);
+    font-weight: var(--aura-font-weight-semibold);
+}
+.totals-grand { font-weight: var(--aura-font-weight-semibold); font-size: var(--aura-font-size-xl); }
+.detail-actions {
+    border-top: 1px solid var(--vaadin-border-color-secondary);
+    padding-top: var(--vaadin-padding-m);
+}
+
+/*
  * Receipt preview dialog (Phase 3.2, ADR-0021 + ADR-0020): a comfortable
  * floating overlay on a laptop, but a full-screen sheet on a phone-sized
  * viewport so an enlarged receipt is readable edge-to-edge rather than cramped

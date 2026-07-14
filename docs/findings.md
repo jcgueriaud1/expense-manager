@@ -935,3 +935,69 @@ Deployment/Observability · UX-spec
   `addClickListener(listener).stopPropagation()`) would make this a one-liner
   without hand-written JS.
 - Owner / next step: none — pattern captured for future nested-click affordances.
+
+### F-029 — The Lumo `badge` *theme* is unstyled under Aura — use the official Badge component (25.1+)
+- Date: 2026-07-13
+- Area: Vaadin
+- Severity: Low
+- Task being attempted: importing the "Expense Reports" Claude Design mockup and
+  re-skinning the report list + detail to it (status badges, grouped card list,
+  status callouts) while keeping the domain unchanged.
+- Expected vs actual: Expected `Span` + `theme="badge primary/success/error"`
+  (the standard Vaadin badge recipe) to render a coloured pill. Actual: under the
+  Aura theme it renders as **plain, unstyled text** — no background, no radius,
+  no colour — because the `badge` style module ships with Lumo, not Aura. No
+  error, no console warning; caught only in live Playwright verification (the
+  first list screenshot showed "Draft"/"Submitted" as bare text). This is the
+  badge-level analogue of F-013/F-017 (Lumo-only *button* variants under Aura).
+- Resolution: use the **official `com.vaadin.flow.component.badge.Badge`**
+  component (added in Vaadin 25.1, `vaadin-badge-flow`), which *is* styled under
+  Aura — not the `theme="badge …"` span, and not a hand-styled span (the initial
+  workaround, since replaced). Map with `BadgeVariant`: `SUCCESS` (approved),
+  `ERROR` (rejected), `FILLED` (submitted — Aura has no accent/primary variant
+  and `CONTRAST` is Lumo-only, so a filled neutral reads as "handed off"), plain
+  default (draft), all `SMALL`. The label text always renders, so status is never
+  colour-only (ADR-0020). See `report/ui/ReportViewSupport#statusBadge`.
+- Evidence: `report/ui/ReportViewSupport`; Badge Java API + styling docs
+  (variant support table: `filled/success/warning/error/small/dot` under Aura,
+  `contrast` Lumo-only); report UI tests green.
+- Impact: another silent Lumo-vs-Aura styling trap. The design mockup's own
+  `_ds` tokens (`--aura-text-xs`, `--aura-user-0`, …) are the design project's
+  scheme and do **not** match the app's real Aura/`--vaadin-*` tokens either, so
+  the whole mockup had to be translated token-by-token, not copied.
+- Suggested Vaadin/product improvement: either provide an Aura badge style module
+  (so `theme="badge …"` works across themes) or document on the Badge page that
+  it is Lumo-only and give the Aura-token recipe.
+- Owner / next step: none — reuse `ReportViewSupport#statusBadge` for any future
+  status pill.
+
+### F-030 — `--vaadin-padding` / `--vaadin-gap` don't exist (only sized `-xs…-xl` variants)
+- Date: 2026-07-13
+- Area: Vaadin
+- Severity: Medium
+- Task being attempted: re-skinning the report list/detail cards to the mockup —
+  giving raw `Div`/`RouterLink` cards their own padding and inter-card gaps.
+- Expected vs actual: Expected `var(--vaadin-padding)` and `var(--vaadin-gap)` to
+  be valid base-style tokens (they read like the obvious names, and pre-existing
+  code — `base/ui/MainLayout`, the original totals bar — already used them).
+  Actual: the base styles define **only the sized scale** —
+  `--vaadin-padding-{xs,s,m,l,xl}` and `--vaadin-gap-{xs,s,m,l,xl}` (plus
+  `--vaadin-radius-{s,m,l}`); there is **no unsuffixed `--vaadin-padding` or
+  `--vaadin-gap`. An undefined custom property with no fallback resolves to
+  nothing, so `padding: var(--vaadin-padding)` silently applies **zero padding** —
+  no error, no warning. On Vaadin components it was masked by their own built-in
+  padding; on the new hand-built cards it showed as a cramped, unpadded layout
+  (spotted by JC against the mockup).
+- Workaround used: use the sized tokens — `--vaadin-padding-l` for the roomy card
+  interiors, `--vaadin-padding-m` for standard spacing, `--vaadin-gap-m` between
+  cards. Fixed every occurrence in `report/ui/*` and the two pre-existing ones in
+  `base/ui/MainLayout`. Confirmed via `get_theme_css_properties theme=base`.
+- Evidence: `MainLayout` (2), `MyReportsView`, `ReportDetailView`,
+  `LineEditorDialog`; base-theme MCP token listing; cramped-card screenshot.
+- Impact: a silent no-op that reads like working code and copy-propagates (the
+  bad token was already in the template/earlier phases). Always prefer a fallback
+  (`var(--token, 1rem)`) or the documented sized token.
+- Suggested Vaadin/product improvement: either alias unsuffixed
+  `--vaadin-padding`/`--vaadin-gap` to the medium step, or have the dev-mode
+  theme linter warn on references to undefined `--vaadin-*` custom properties.
+- Owner / next step: none — tokens corrected app-wide.

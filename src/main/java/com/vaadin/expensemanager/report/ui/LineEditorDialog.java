@@ -218,12 +218,12 @@ final class LineEditorDialog extends Dialog {
 
         var statusRow = new Div(receiptStatus, removeReceipt);
         statusRow.getStyle().set("display", "flex").set("align-items", "center")
-                .set("gap", "var(--vaadin-gap)");
+                .set("gap", "var(--vaadin-gap-m)");
 
         var section = new Div(heading, receiptPreview, statusRow, upload);
         section.getStyle().set("display", "flex").set("flex-direction", "column")
                 .set("gap", "var(--vaadin-gap-s)")
-                .set("margin-top", "var(--vaadin-gap)");
+                .set("margin-top", "var(--vaadin-gap-m)");
         refreshReceiptStatus();
         return section;
     }
