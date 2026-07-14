@@ -140,4 +140,83 @@ class AllowanceCalculatorTest {
         assertThat(result.explanation())
                 .contains("1 × full day", "1 × partial day", "€79.00");
     }
+
+    // --- Kilometre allowance (Phase 4.3) ---
+
+    // Seeded 2026 rate: €0.590 / km (V7 seed).
+    private static final KilometreRateDto KM_RATE =
+            new KilometreRateDto(1L, 2026, new BigDecimal("0.590"));
+
+    @Test
+    void kilometreAllowanceIsDistanceTimesRateRoundedToCents() {
+        // 120 km × €0.59 = €70.80.
+        var result = calculator.kilometreAllowance(new BigDecimal("120"), KM_RATE);
+        assertThat(result.amount()).isEqualByComparingTo("70.80");
+        assertThat(result.hasAmount()).isTrue();
+        assertThat(result.explanation()).contains("120 km", "€0.590/km", "€70.80");
+    }
+
+    @Test
+    void fractionalKilometresRoundToTheNearestCent() {
+        // 12.5 km × €0.59 = €7.375 → €7.38 (HALF_UP).
+        var result = calculator.kilometreAllowance(new BigDecimal("12.5"), KM_RATE);
+        assertThat(result.amount()).isEqualByComparingTo("7.38");
+        assertThat(result.explanation()).contains("12.5 km");
+    }
+
+    @Test
+    void zeroOrNullKilometresEarnNothingAndNeedNoRate() {
+        assertThat(calculator.kilometreAllowance(BigDecimal.ZERO, null).hasAmount())
+                .isFalse();
+        assertThat(calculator.kilometreAllowance(null, null).amount())
+                .isEqualByComparingTo("0.00");
+    }
+
+    @Test
+    void positiveKilometresWithoutARateAreRejected() {
+        assertThatThrownBy(() -> calculator.kilometreAllowance(new BigDecimal("10"), null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("kilometre rate");
+    }
+
+    // --- Meal allowance (Phase 4.3) ---
+
+    private static final MealAllowanceDto MEAL_RATE =
+            new MealAllowanceDto(1L, 2026, new BigDecimal("13.50"));
+
+    @Test
+    void mealAllowanceIsTheFlatRateWhenFlagged() {
+        var result = calculator.mealAllowance(true, MEAL_RATE);
+        assertThat(result.amount()).isEqualByComparingTo("13.50");
+        assertThat(result.hasAmount()).isTrue();
+        assertThat(result.explanation()).contains("€13.50");
+    }
+
+    @Test
+    void mealAllowanceIsNothingWhenNotFlaggedAndNeedsNoRate() {
+        assertThat(calculator.mealAllowance(false, null).hasAmount()).isFalse();
+    }
+
+    @Test
+    void mealAllowanceFlaggedWithoutARateIsRejected() {
+        assertThatThrownBy(() -> calculator.mealAllowance(true, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("meal allowance");
+    }
+
+    // --- Parking (Phase 4.3) ---
+
+    @Test
+    void parkingPassesTheFeeThroughAtFaceValue() {
+        var result = calculator.parking(new BigDecimal("12.00"));
+        assertThat(result.amount()).isEqualByComparingTo("12.00");
+        assertThat(result.hasAmount()).isTrue();
+        assertThat(result.explanation()).contains("€12.00");
+    }
+
+    @Test
+    void zeroOrNullParkingFeeEarnsNothing() {
+        assertThat(calculator.parking(BigDecimal.ZERO).hasAmount()).isFalse();
+        assertThat(calculator.parking(null).amount()).isEqualByComparingTo("0.00");
+    }
 }

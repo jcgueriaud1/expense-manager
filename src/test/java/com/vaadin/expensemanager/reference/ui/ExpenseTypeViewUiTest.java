@@ -38,7 +38,8 @@ class ExpenseTypeViewUiTest extends AbstractReferenceDataViewUiTest {
         var grid = findGrid(ExpenseTypeDto.class);
         assertThat(columnText(grid, NAME_COL))
                 .containsExactly("Travel allowance", "Taxi/transport", "Accommodation",
-                        "Restaurant/meals", "Parking/supplies/goods", "Publications");
+                        "Restaurant/meals", "Parking/supplies/goods", "Publications",
+                        "Kilometre allowance", "Meal allowance");
         // Each type renders its seeded default VAT rate.
         assertThat(grid.getCellText(0, RATE_COL)).isEqualTo("0 %");
         assertThat(grid.getCellText(3, RATE_COL)).isEqualTo("13.5 %");
@@ -115,10 +116,12 @@ class ExpenseTypeViewUiTest extends AbstractReferenceDataViewUiTest {
         navigate(ExpenseTypeView.class);
         var grid = findGrid(ExpenseTypeDto.class);
 
-        // Travel allowance is first (row 0) and Publications last (row 5).
+        // Travel allowance is first (row 0); Meal allowance is last (row 7) after
+        // the Phase 4.3 additions.
+        int last = grid.size() - 1;
         assertThat(rowActionButton(grid, 0, ACTIONS_COL, "Move Travel allowance up")
                 .isEnabled()).isFalse();
-        assertThat(rowActionButton(grid, 5, ACTIONS_COL, "Move Publications down")
+        assertThat(rowActionButton(grid, last, ACTIONS_COL, "Move Meal allowance down")
                 .isEnabled()).isFalse();
 
         // Move Taxi/transport (row 1) up; it swaps with Travel allowance.
@@ -136,15 +139,14 @@ class ExpenseTypeViewUiTest extends AbstractReferenceDataViewUiTest {
     void deactivateRetainsRowAsInactiveAndExcludesFromActiveOptions() {
         navigate(ExpenseTypeView.class);
 
-        // Publications is the last seeded row (index 5).
+        // Publications is the sixth seeded row (index 5).
         test(rowActionButton(findGrid(ExpenseTypeDto.class), 5, ACTIONS_COL,
                 "Deactivate Publications")).click();
 
-        // Retained in the admin grid, flagged Inactive — never deleted.
+        // Retained in the admin grid at its position, flagged Inactive — never deleted.
         var grid = findGrid(ExpenseTypeDto.class);
-        int last = grid.size() - 1;
-        assertThat(grid.getCellText(last, NAME_COL)).isEqualTo("Publications");
-        assertThat(grid.getCellText(last, STATUS_COL)).isEqualTo("Inactive");
+        assertThat(grid.getCellText(5, NAME_COL)).isEqualTo("Publications");
+        assertThat(grid.getCellText(5, STATUS_COL)).isEqualTo("Inactive");
 
         assertThat(service.activeExpenseTypes())
                 .noneMatch(t -> t.name().equals("Publications"));

@@ -273,14 +273,15 @@ public class ExpenseReport extends AuditedEntity {
     }
 
     /**
-     * Reconciles the trips against the desired set and regenerates their per-diem
+     * Reconciles the trips against the desired set and regenerates their generated
      * lines (Phase 4.2/4.3, ADR-0019). Each spec matches on its nullable travel id
      * (non-null → update the trip, {@code null} → insert); a trip absent from the
-     * set is orphan-removed along with its generated line. A trip that earned a
-     * per-diem ({@link TravelSpec#hasPerDiem()}) gets a read-only 0 %-VAT generated
-     * line created or regenerated in place; a trip that earned nothing (not-eligible
-     * or too short) has any prior generated line removed. The manual lines and their
-     * order are preserved; the generated lines trail them in trip order.
+     * set is orphan-removed along with its generated lines. Each generated line the
+     * trip earned ({@link TravelSpec#generatedLines()}) — per-diem, kilometre, meal,
+     * or parking — is created or regenerated in place, matched by kind; a kind the
+     * trip no longer earns has its prior line removed. The manual lines and their
+     * order are preserved; the generated lines trail them in trip order, then kind
+     * order.
      *
      * @throws IllegalStateException    if the report is not editable
      * @throws IllegalArgumentException if a spec references a travel id not on this
@@ -314,39 +315,43 @@ public class ExpenseReport extends AuditedEntity {
         }
         travels.sort(Comparator.comparingInt(desired::indexOf));
 
-        regeneratePerDiemLines(specs, desired);
+        regenerateGeneratedLines(specs, desired);
+    }
+
+    /** A travel + generated-line-kind pair — the identity of one generated line. */
+    private record GeneratedKey(Travel travel, GeneratedLineKind kind) {
     }
 
     /**
-     * Creates/regenerates/removes the generated per-diem line for each reconciled
-     * trip (parallel to {@code desired}/{@code specs} by index). Existing generated
-     * lines are matched to their trip by reference so a re-cost updates in place.
+     * Creates/regenerates/removes each generated line for every reconciled trip
+     * (parallel to {@code desired}/{@code specs} by index). Existing generated lines
+     * are matched to their (trip, kind) so a re-cost updates the right line in place,
+     * and a kind a trip no longer earns is dropped.
      */
-    private void regeneratePerDiemLines(List<TravelSpec> specs, List<Travel> desired) {
-        Map<Travel, ExpenseLine> byTravel = lines.stream()
+    private void regenerateGeneratedLines(List<TravelSpec> specs, List<Travel> desired) {
+        Map<GeneratedKey, ExpenseLine> byKey = lines.stream()
                 .filter(ExpenseLine::isGenerated)
-                .collect(Collectors.toMap(ExpenseLine::getTravel, Function.identity()));
+                .collect(Collectors.toMap(
+                        line -> new GeneratedKey(line.getTravel(), line.getGeneratedKind()),
+                        Function.identity()));
 
         List<ExpenseLine> desiredGenerated = new ArrayList<>();
         for (int i = 0; i < desired.size(); i++) {
             Travel travel = desired.get(i);
-            TravelSpec spec = specs.get(i);
-            if (!spec.hasPerDiem()) {
-                continue; // not-eligible / too short → no generated line
+            for (GeneratedLineSpec g : specs.get(i).generatedLines()) {
+                ExpenseLine line = byKey.get(new GeneratedKey(travel, g.kind()));
+                if (line == null) {
+                    line = ExpenseLine.generated(travel, g.kind(), g.expenseType(),
+                            g.amount(), g.vatRate(), g.comment());
+                } else {
+                    line.updateGenerated(travel, g.kind(), g.expenseType(), g.amount(),
+                            g.vatRate(), g.comment());
+                }
+                desiredGenerated.add(line);
             }
-            ExpenseLine line = byTravel.get(travel);
-            if (line == null) {
-                line = ExpenseLine.generated(travel, spec.perDiemType(),
-                        spec.perDiemAmount(), spec.perDiemRate(),
-                        spec.perDiemExplanation());
-            } else {
-                line.updateGenerated(travel, spec.perDiemType(), spec.perDiemAmount(),
-                        spec.perDiemRate(), spec.perDiemExplanation());
-            }
-            desiredGenerated.add(line);
         }
-        // Drop generated lines for removed trips or trips that no longer earn a
-        // per-diem; keep every manual line.
+        // Drop generated lines for removed trips or kinds a trip no longer earns;
+        // keep every manual line.
         lines.removeIf(line -> line.isGenerated() && !desiredGenerated.contains(line));
         for (ExpenseLine line : desiredGenerated) {
             if (!lines.contains(line)) {
@@ -358,16 +363,18 @@ public class ExpenseReport extends AuditedEntity {
 
     /**
      * Rewrites the {@link OrderColumn} so the collection reads [manual lines in
-     * {@code manualOrder}, then generated per-diem lines in trip order]. Keeps the
-     * generated lines grouped after the manual ones regardless of which reconcile
-     * ran, so {@link #manualLines()} indexing (used for receipt mapping) is stable.
+     * {@code manualOrder}, then each trip's generated lines in trip order and, within
+     * a trip, {@link GeneratedLineKind} declaration order]. Keeps the generated lines
+     * grouped after the manual ones regardless of which reconcile ran, so {@link
+     * #manualLines()} indexing (used for receipt mapping) is stable.
      */
     private void orderLines(List<ExpenseLine> manualOrder) {
         List<ExpenseLine> ordered = new ArrayList<>(manualOrder);
         for (Travel travel : travels) {
             lines.stream()
                     .filter(line -> line.isGenerated() && travel == line.getTravel())
-                    .findFirst().ifPresent(ordered::add);
+                    .sorted(Comparator.comparing(line -> line.getGeneratedKind().ordinal()))
+                    .forEach(ordered::add);
         }
         for (ExpenseLine line : lines) {
             if (!ordered.contains(line)) {
@@ -386,42 +393,60 @@ public class ExpenseReport extends AuditedEntity {
 
     /**
      * The derived report grand total (gross) — never stored (ADR-0010, ADR-0019):
-     * the VAT-bearing manual lines plus the tax-free per-diem allowance. Equals the
-     * sum of every line's gross; {@code 0.00} with no lines.
+     * the VAT-bearing lines (manual + parking) plus the three tax-free allowance
+     * subtotals (per-diem, kilometre, meal). Equals the sum of every line's gross;
+     * {@code 0.00} with no lines.
      */
     public BigDecimal total() {
-        return totals().gross().add(perDiemTotal());
+        return totals().gross().add(perDiemTotal()).add(kilometreTotal())
+                .add(mealTotal());
     }
 
-    /** The derived net total of the VAT-bearing (manual) lines, scale 2. */
+    /** The derived net total of the VAT-bearing lines (manual + parking), scale 2. */
     public BigDecimal netTotal() {
         return totals().net();
     }
 
-    /** The derived VAT total of the VAT-bearing (manual) lines, scale 2. */
+    /** The derived VAT total of the VAT-bearing lines (manual + parking), scale 2. */
     public BigDecimal vatTotal() {
         return totals().vat();
     }
 
     /**
-     * The manual (VAT-bearing) lines' derived net/VAT/gross — sum-per-line then
-     * total, so a report with mixed VAT rates carries no rounding drift (ADR-0010).
-     * The tax-free per-diem allowance is broken out separately ({@link
-     * #perDiemTotal()}), so Net/VAT here exclude it (Phase 4.3).
+     * The VAT-bearing lines' derived net/VAT/gross — sum-per-line then total, so a
+     * report with mixed VAT rates carries no rounding drift (ADR-0010). Covers
+     * every manual line plus the generated <em>parking</em> lines (also VAT-bearing);
+     * the tax-free allowances (per-diem/kilometre/meal) are broken out into their
+     * own subtotals and excluded here (Phase 4.3).
      */
     public LineAmounts totals() {
-        return lines.stream().filter(line -> !line.isGenerated())
+        return lines.stream().filter(ExpenseLine::countsInNetVat)
                 .map(ExpenseLine::amounts)
                 .reduce(LineAmounts.zero(), LineAmounts::add);
     }
 
     /**
      * The tax-free per-diem allowance subtotal (Phase 4.3): the sum of the
-     * generated per-diem lines' gross; {@code 0.00} when there are no trips (or
-     * none earned an allowance).
+     * generated per-diem lines' gross; {@code 0.00} when no trip earned one.
      */
     public BigDecimal perDiemTotal() {
-        return lines.stream().filter(ExpenseLine::isGenerated)
+        return allowanceTotal(GeneratedLineKind.PER_DIEM);
+    }
+
+    /** The tax-free kilometre allowance subtotal (Phase 4.3); {@code 0.00} when none. */
+    public BigDecimal kilometreTotal() {
+        return allowanceTotal(GeneratedLineKind.KILOMETRE);
+    }
+
+    /** The tax-free meal allowance subtotal (Phase 4.3); {@code 0.00} when none. */
+    public BigDecimal mealTotal() {
+        return allowanceTotal(GeneratedLineKind.MEAL);
+    }
+
+    /** The summed gross of the generated lines of one tax-free allowance kind. */
+    private BigDecimal allowanceTotal(GeneratedLineKind kind) {
+        return lines.stream()
+                .filter(line -> line.getGeneratedKind() == kind)
                 .map(ExpenseLine::gross)
                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
@@ -474,10 +499,16 @@ public class ExpenseReport extends AuditedEntity {
         return Collections.unmodifiableList(travels);
     }
 
-    /** The generated per-diem line for {@code travel}, if the trip earned one. */
-    public java.util.Optional<ExpenseLine> perDiemLineFor(Travel travel) {
+    /**
+     * The generated line of a given kind for {@code travel}, if the trip earned one
+     * (Phase 4.3). Used by the service to reconstruct a trip's working-copy amounts
+     * per kind on load.
+     */
+    public java.util.Optional<ExpenseLine> generatedLineFor(Travel travel,
+            GeneratedLineKind kind) {
         return lines.stream()
-                .filter(line -> line.isGenerated() && travel == line.getTravel())
+                .filter(line -> travel == line.getTravel()
+                        && line.getGeneratedKind() == kind)
                 .findFirst();
     }
 

@@ -1175,3 +1175,67 @@ Deployment/Observability · UX-spec
   overlays live under the `UI` (not the view) and that text-tree assertions
   ignore visibility, pointing to the locator `.exists()` idiom for visibility.
 - Owner / next step: none.
+
+### F-037 — Slice 2's one-line-per-travel model didn't generalise to four routed outputs
+- Date: 2026-07-14
+- Area: Spec
+- Severity: Medium
+- Task being attempted: Phase 4.3 (#50) — extending the Travel Calculator so one
+  trip generates up to four read-only lines (per-diem, kilometre, meal, parking)
+  instead of the single per-diem line Slice 2 (#49) built.
+- Expected vs actual: expected the Slice 2 machinery to extend by adding rules.
+  Actual: two of its foundations assumed *one* generated line per travel and had
+  to be reshaped. (1) A generated line was identified only by `travel != null`,
+  and the aggregate matched existing lines with `Collectors.toMap(getTravel, …)`
+  — a one-to-one map that throws on a second line per travel. (2) The totals split
+  routed purely on `isGenerated()` (generated ⇒ tax-free per-diem subtotal), but
+  parking is *generated **and** VAT-bearing*, so it must land in Net/VAT, not a
+  tax-free row — the boolean couldn't express that. `TravelSpec`/`TravelDto` also
+  carried flat `perDiem*` fields with no room for the other three outputs.
+- Workaround used: added a first-class `GeneratedLineKind` discriminator
+  (`PER_DIEM`/`KILOMETRE`/`MEAL`/`PARKING`, with `isTaxFreeAllowance()`) on
+  `ExpenseLine`; reconciliation now keys on `(travel, kind)`; totals route by kind
+  (`countsInNetVat()` folds parking into Net/VAT, three `allowanceTotal(kind)`
+  subtotals for the tax-free ones). `TravelSpec` now carries a
+  `List<GeneratedLineSpec>` and `TravelDto` a `TravelAllowances` breakdown record.
+- Evidence: `report/domain/GeneratedLineKind`, `ExpenseLine.getGeneratedKind()`,
+  `ExpenseReport.regenerateGeneratedLines`/`totals`/`perDiemTotal`+`kilometreTotal`
+  +`mealTotal`; `report/service/TravelAllowances`, `ExpenseReportService.toTravelSpec`.
+- Impact: a moderate but clean refactor confined to the aggregate + service +
+  travel DTOs; the manual-line path was untouched. Directly delivers the "next
+  step" F-034 flagged — allowance lines are now recognised by a semantic kind, not
+  by expense-type name — so the Phase-5 approval/export slices can group them by
+  role. The name-based *reference-data* coupling (F-034) still stands; the four
+  types are still resolved by literal name in the service.
+- Suggested Vaadin/product improvement: none (domain-modelling shape, not a
+  framework gap).
+- Owner / next step: when the foreign-trip slice (Slice 4) lands, the same
+  `GeneratedLineSpec` list absorbs a foreign per-diem kind with no further reshape.
+
+### F-038 — Receipts on generated lines: a shared persistence context resurrects the cascade-deleted receipt in a rollback test
+- Date: 2026-07-14
+- Area: Testing
+- Severity: Low
+- Task being attempted: letting a receipt be attached to a travel-generated line
+  (per-diem/kilometre/meal/parking) and verifying that clearing an input (e.g.
+  parking fee → 0) orphan-removes the line and its receipt.
+- Expected vs actual: in production this is clean — the receipt table's FK is
+  {@code ON DELETE CASCADE} (V6) and receipts are not part of the aggregate, so an
+  {@code update()} loads the report without the receipt in its session, removes the
+  line, and the DB cascades the receipt away. But the layer-2 test is
+  {@code @Transactional} (rollback), so {@code create()} and {@code update()} share
+  one Hibernate session: the just-created {@code Receipt} lingered, still pointing at
+  the now-orphan-removed {@code ExpenseLine}, and the flush threw
+  {@code TransientPropertyValueException} ("references an unsaved transient instance").
+- Workaround used: {@code entityManager.clear()} between the create and the update
+  in the test, modelling the separate-request reality (the same trick
+  {@code deletingATripRemovesItsGeneratedLine} already uses). Production code is
+  unchanged and correct.
+- Evidence: {@code ExpenseReportServiceIntegrationTest.removingAGeneratedLineKindCascadesItsReceipt};
+  {@code ExpenseReportService.applyTravelReceipts}; V6 {@code receipt} FK cascade.
+- Impact: a test-only artifact of the shared-session pattern, but a sharp one — the
+  exception points at "persist the transient instance", which misleads toward a
+  production bug that isn't there. The tell is that it only fires when a
+  receipt-carrying line is removed within the same transaction it was created in.
+- Suggested Vaadin/product improvement: none (JPA session semantics).
+- Owner / next step: none.

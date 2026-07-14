@@ -9,6 +9,8 @@ import com.vaadin.expensemanager.reference.VatRate;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -77,6 +79,16 @@ public class ExpenseLine extends AuditedEntity {
     @JoinColumn(name = "travel_id")
     private Travel travel;
 
+    /**
+     * Which generated line this is (Phase 4.3, F-034) — {@code null} for a manual
+     * line, non-null for a travel-generated one. A single {@link Travel} owns at
+     * most one line of each {@link GeneratedLineKind}; the kind routes the line in
+     * the report totals (tax-free subtotal vs Net/VAT).
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "generated_kind")
+    private GeneratedLineKind generatedKind;
+
     /** JPA constructor. */
     protected ExpenseLine() {
     }
@@ -90,14 +102,16 @@ public class ExpenseLine extends AuditedEntity {
     }
 
     /**
-     * Creates a read-only generated per-diem line linked to {@code travel}
-     * (Phase 4.2). The amount must be non-zero — the aggregate only generates a
-     * line when the trip earned an allowance.
+     * Creates a read-only generated line of the given {@code kind} linked to
+     * {@code travel} (Phase 4.2/4.3). The amount must be non-zero — the aggregate
+     * only generates a line when the rule produced something.
      */
-    static ExpenseLine generated(Travel travel, ExpenseType expenseType,
-            BigDecimal amount, VatRate vatRate, String comment) {
+    static ExpenseLine generated(Travel travel, GeneratedLineKind kind,
+            ExpenseType expenseType, BigDecimal amount, VatRate vatRate,
+            String comment) {
         var line = new ExpenseLine(expenseType, amount, vatRate, comment);
         line.travel = travel;
+        line.generatedKind = requireKind(kind);
         return line;
     }
 
@@ -111,10 +125,11 @@ public class ExpenseLine extends AuditedEntity {
     }
 
     /** Regenerates this line's figures from its (re-costed) travel. */
-    void updateGenerated(Travel travel, ExpenseType expenseType, BigDecimal amount,
-            VatRate vatRate, String comment) {
+    void updateGenerated(Travel travel, GeneratedLineKind kind, ExpenseType expenseType,
+            BigDecimal amount, VatRate vatRate, String comment) {
         update(expenseType, amount, vatRate, comment);
         this.travel = travel;
+        this.generatedKind = requireKind(kind);
     }
 
     /** The travel that generated this line, or {@code null} if it is manual. */
@@ -122,9 +137,23 @@ public class ExpenseLine extends AuditedEntity {
         return travel;
     }
 
-    /** Whether this is a read-only generated per-diem line (ADR-0006). */
+    /** Whether this is a read-only generated line owned by a travel (ADR-0006). */
     public boolean isGenerated() {
         return travel != null;
+    }
+
+    /** Which generated line this is, or {@code null} for a manual line (Phase 4.3). */
+    public GeneratedLineKind getGeneratedKind() {
+        return generatedKind;
+    }
+
+    /**
+     * Whether this line counts toward Net/VAT: every manual line, plus a generated
+     * line that is <em>not</em> a tax-free allowance (i.e. parking). The tax-free
+     * allowances (per-diem/kilometre/meal) are broken out into their own subtotals.
+     */
+    boolean countsInNetVat() {
+        return generatedKind == null || !generatedKind.isTaxFreeAllowance();
     }
 
     /** The derived net/VAT/gross figures of this line (ADR-0010). */
@@ -172,6 +201,13 @@ public class ExpenseLine extends AuditedEntity {
             throw new IllegalArgumentException("Expense type is required");
         }
         return expenseType;
+    }
+
+    private static GeneratedLineKind requireKind(GeneratedLineKind kind) {
+        if (kind == null) {
+            throw new IllegalArgumentException("Generated line kind is required");
+        }
+        return kind;
     }
 
     private static VatRate requireRate(VatRate vatRate) {

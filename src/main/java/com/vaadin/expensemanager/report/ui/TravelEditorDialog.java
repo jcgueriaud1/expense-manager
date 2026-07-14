@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
 
+import com.vaadin.expensemanager.report.service.GeneratedLineView;
 import com.vaadin.expensemanager.report.service.TravelDto;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
@@ -18,11 +19,13 @@ import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.ListItem;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.html.UnorderedList;
+import com.vaadin.flow.component.textfield.BigDecimalField;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.data.binder.Binder;
 import com.vaadin.flow.data.binder.ValidationResult;
 
 import static com.vaadin.expensemanager.report.ui.ReportViewSupport.formatEur;
+import static com.vaadin.expensemanager.report.ui.ReportViewSupport.generatedLineLabel;
 
 /**
  * The focused modal editor for one trip (glossary: Travel Calculator, Phase
@@ -93,6 +96,12 @@ final class TravelEditorDialog extends Dialog {
         var freeLunch = new Checkbox("Free lunch provided?");
         var chargeToCustomer = new Checkbox("Charge expenses from customer?");
 
+        var kilometres = new BigDecimalField("Kilometre allowance (km)");
+        kilometres.setPlaceholder("e.g. 120");
+        var payMeal = new Checkbox("Pay meal allowance?");
+        var parkingFees = new BigDecimalField("Parking fees (€)");
+        parkingFees.setPlaceholder("e.g. 12.00");
+
         errorSummary.getElement().setAttribute("role", "alert");
         errorSummary.addClassName("error-summary");
         errorSummary.setVisible(false);
@@ -107,11 +116,15 @@ final class TravelEditorDialog extends Dialog {
         // trip previews immediately on open.
         Runnable recompute = () -> refreshPreview(departure.getValue(),
                 returnAt.getValue(), destinations.getValue(), purpose.getValue(),
-                notEligible.getValue(), freeLunch.getValue(), chargeToCustomer.getValue());
+                notEligible.getValue(), freeLunch.getValue(), chargeToCustomer.getValue(),
+                kilometres.getValue(), payMeal.getValue(), parkingFees.getValue());
         departure.addValueChangeListener(event -> recompute.run());
         returnAt.addValueChangeListener(event -> recompute.run());
         notEligible.addValueChangeListener(event -> recompute.run());
         freeLunch.addValueChangeListener(event -> recompute.run());
+        kilometres.addValueChangeListener(event -> recompute.run());
+        payMeal.addValueChangeListener(event -> recompute.run());
+        parkingFees.addValueChangeListener(event -> recompute.run());
 
         binder.forField(departure)
                 .asRequired("Departure date & time is required")
@@ -131,6 +144,12 @@ final class TravelEditorDialog extends Dialog {
                 TravelFormModel::setFreeLunch);
         binder.forField(chargeToCustomer).bind(TravelFormModel::isChargeToCustomer,
                 TravelFormModel::setChargeToCustomer);
+        binder.forField(kilometres).bind(TravelFormModel::getKilometres,
+                TravelFormModel::setKilometres);
+        binder.forField(payMeal).bind(TravelFormModel::isPayMealAllowance,
+                TravelFormModel::setPayMealAllowance);
+        binder.forField(parkingFees).bind(TravelFormModel::getParkingFees,
+                TravelFormModel::setParkingFees);
 
         if (existing != null) {
             model.setDepartureAt(existing.departureAt());
@@ -140,17 +159,22 @@ final class TravelEditorDialog extends Dialog {
             model.setNotEligibleForAllowance(existing.notEligibleForAllowance());
             model.setFreeLunch(existing.freeLunch());
             model.setChargeToCustomer(existing.chargeToCustomer());
+            model.setKilometres(zeroToNull(existing.kilometres()));
+            model.setPayMealAllowance(existing.payMealAllowance());
+            model.setParkingFees(zeroToNull(existing.parkingFees()));
         }
         binder.readBean(model);
 
         var form = new FormLayout(departure, returnAt, destinations, purpose,
-                notEligible, freeLunch, chargeToCustomer);
+                kilometres, parkingFees, notEligible, freeLunch, payMeal,
+                chargeToCustomer);
         form.setResponsiveSteps(new FormLayout.ResponsiveStep("0", 1),
                 new FormLayout.ResponsiveStep("24rem", 2));
         form.setColspan(destinations, 2);
         form.setColspan(purpose, 2);
         form.setColspan(notEligible, 2);
         form.setColspan(freeLunch, 2);
+        form.setColspan(payMeal, 2);
         form.setColspan(chargeToCustomer, 2);
         add(errorSummary, form, preview);
 
@@ -170,20 +194,22 @@ final class TravelEditorDialog extends Dialog {
     }
 
     /**
-     * Recomputes and shows the live per-diem preview from the current inputs. The
-     * amount is always the server's ({@link #costPreview}); the preview hides while
-     * the dates are incomplete or the range is invalid (Save surfaces any reason).
+     * Recomputes and shows the live allowance preview from the current inputs. The
+     * amounts are always the server's ({@link #costPreview}); the preview hides
+     * while the dates are incomplete or the range is invalid (Save surfaces any
+     * reason).
      */
     private void refreshPreview(LocalDateTime departure, LocalDateTime returnAt,
             String destinations, String purpose, boolean notEligible, boolean freeLunch,
-            boolean chargeToCustomer) {
+            boolean chargeToCustomer, BigDecimal kilometres, boolean payMeal,
+            BigDecimal parkingFees) {
         if (departure == null || returnAt == null) {
             preview.setVisible(false);
             return;
         }
         var input = TravelDto.domestic(existing == null ? null : existing.id(),
                 departure, returnAt, destinations, purpose, notEligible, freeLunch,
-                chargeToCustomer);
+                chargeToCustomer, kilometres, payMeal, parkingFees);
         try {
             renderPreview(costPreview.apply(input));
         } catch (IllegalArgumentException | IllegalStateException invalid) {
@@ -207,7 +233,8 @@ final class TravelEditorDialog extends Dialog {
         var input = TravelDto.domestic(existing == null ? null : existing.id(),
                 model.getDepartureAt(), model.getReturnAt(), model.getDestinations(),
                 model.getPurpose(), model.isNotEligibleForAllowance(),
-                model.isFreeLunch(), model.isChargeToCustomer());
+                model.isFreeLunch(), model.isChargeToCustomer(), model.getKilometres(),
+                model.isPayMealAllowance(), model.getParkingFees());
         try {
             return costPreview.apply(input);
         } catch (IllegalArgumentException | IllegalStateException invalid) {
@@ -216,21 +243,45 @@ final class TravelEditorDialog extends Dialog {
         }
     }
 
-    /** Shows the computed per-diem and its breakdown below the form. */
+    /**
+     * Shows the computed trip outputs below the form: one line per non-zero
+     * allowance/expense (per-diem, kilometre, meal, parking) with its breakdown,
+     * plus a grand-total heading — or a "no allowances" note when the trip earns
+     * nothing (Phase 4.3).
+     */
     private void renderPreview(TravelDto trip) {
         preview.removeAll();
-        BigDecimal amount = trip.perDiemAmount() == null
-                ? BigDecimal.ZERO.setScale(2) : trip.perDiemAmount();
-        var heading = new Span(amount.signum() == 0
-                ? "No per-diem for this trip" : "Per diem: " + formatEur(amount));
+        BigDecimal total = trip.generatedLines().stream()
+                .map(GeneratedLineView::amount)
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+
+        var heading = new Span(total.signum() == 0
+                ? "No allowances for this trip"
+                : "Trip total: " + formatEur(total));
         heading.addClassName("travel-preview-amount");
         preview.add(heading);
-        if (trip.perDiemExplanation() != null) {
-            var detail = new Span(trip.perDiemExplanation());
+
+        trip.generatedLines().forEach(line -> addPreviewLine(
+                generatedLineLabel(line.kind()), line.amount(), line.comment()));
+        preview.setVisible(true);
+    }
+
+    /** Adds one "label — amount / explanation" preview line. */
+    private void addPreviewLine(String label, BigDecimal amount, String explanation) {
+        var line = new Span(label + ": " + formatEur(amount));
+        line.addClassName("travel-preview-line");
+        preview.add(line);
+        if (explanation != null) {
+            var detail = new Span(explanation);
             detail.addClassName("muted");
+            detail.addClassName("muted-xs");
             preview.add(detail);
         }
-        preview.setVisible(true);
+    }
+
+    /** Blank a zero amount so an untouched money field shows empty, not "0.00". */
+    private static BigDecimal zeroToNull(BigDecimal amount) {
+        return amount == null || amount.signum() == 0 ? null : amount;
     }
 
     private void clearErrors() {

@@ -2,6 +2,7 @@ package com.vaadin.expensemanager.report.service;
 
 import java.io.ByteArrayInputStream;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -11,13 +12,18 @@ import java.util.stream.Collectors;
 
 import java.math.BigDecimal;
 
+import com.vaadin.expensemanager.allowance.AllowanceAmount;
 import com.vaadin.expensemanager.allowance.AllowanceCalculator;
 import com.vaadin.expensemanager.allowance.AllowanceRateService;
 import com.vaadin.expensemanager.allowance.DomesticPerDiemDto;
 import com.vaadin.expensemanager.allowance.DomesticPerDiemResult;
+import com.vaadin.expensemanager.allowance.KilometreRateDto;
+import com.vaadin.expensemanager.allowance.MealAllowanceDto;
 import com.vaadin.expensemanager.report.domain.ExpenseLine;
 import com.vaadin.expensemanager.report.domain.ExpenseLineSpec;
 import com.vaadin.expensemanager.report.domain.ExpenseReport;
+import com.vaadin.expensemanager.report.domain.GeneratedLineKind;
+import com.vaadin.expensemanager.report.domain.GeneratedLineSpec;
 import com.vaadin.expensemanager.report.domain.Receipt;
 import com.vaadin.expensemanager.report.domain.ReceiptType;
 import com.vaadin.expensemanager.report.domain.ReceiptValidator;
@@ -69,8 +75,13 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ExpenseReportService {
 
-    /** The tax-free expense type generated per-diem lines are filed under (F-034). */
+    // The expense types the four generated line kinds are filed under, resolved by
+    // name (the accepted coupling — F-034). The three allowances are 0 %-VAT;
+    // parking is filed under the VAT-bearing parking type at its own rate.
     private static final String PER_DIEM_EXPENSE_TYPE = "Travel allowance";
+    private static final String KILOMETRE_EXPENSE_TYPE = "Kilometre allowance";
+    private static final String MEAL_EXPENSE_TYPE = "Meal allowance";
+    private static final String PARKING_EXPENSE_TYPE = "Parking/supplies/goods";
     private static final BigDecimal ZERO_VAT = BigDecimal.ZERO.setScale(2);
 
     private final ExpenseReportRepository reportRepository;
@@ -124,21 +135,23 @@ public class ExpenseReportService {
     }
 
     /**
-     * Previews the domestic per-diem for a trip's inputs without persisting
-     * anything (Phase 4.2/4.3, the dialog's "Continue"). Amounts are
+     * Previews the domestic trip outputs for a trip's inputs without persisting
+     * anything (Phase 4.2/4.3, the dialog preview). Amounts are
      * <strong>server-authoritative</strong>: the client sends inputs, this
-     * recomputes the money from the trip-year rate and returns the trip with its
-     * per-diem and explanation filled in. Invalid input (return before departure,
-     * or no rate configured for the trip year) throws with a message the caller
-     * surfaces in the error summary (ADR-0020).
+     * recomputes every output (per-diem, kilometre, meal, parking) from the
+     * trip-year rates and returns the trip with its {@link TravelAllowances}
+     * breakdown filled in. Invalid input (return before departure, or no rate
+     * configured for a requested output's trip year) throws with a message the
+     * caller surfaces in the error summary (ADR-0020).
      *
-     * @throws IllegalArgumentException if the inputs are invalid or no rate exists
+     * @throws IllegalArgumentException if the inputs are invalid or a rate is missing
      */
     @RolesAllowed("USER")
     @Transactional(readOnly = true)
     public TravelDto previewDomesticTravel(TravelDto input) {
-        DomesticPerDiemResult result = costDomestic(input);
-        return input.withPerDiem(result.amount(), result.explanation());
+        var views = earnedLines(input, resolveGeneratedLineTypes()).stream()
+                .map(ExpenseReportService::toView).toList();
+        return input.withGeneratedLines(views);
     }
 
     /**
@@ -211,6 +224,21 @@ public class ExpenseReportService {
     @RolesAllowed("USER")
     @Transactional
     public Long create(ReportDetailDto dto, Map<Integer, ReceiptUpload> receipts) {
+        return create(dto, receipts, Map.of());
+    }
+
+    /**
+     * First save that also persists receipts buffered against a trip's generated
+     * lines (Phase 4.3, ADR-0021). {@code travelReceipts} maps a
+     * {@link GeneratedLineRef} — a (trip position, {@link
+     * com.vaadin.expensemanager.report.domain.GeneratedLineKind}) pair — to an
+     * attach or {@link ReceiptUpload#REMOVE}, applied against the generated line
+     * once the aggregate is flushed and those lines have ids.
+     */
+    @RolesAllowed("USER")
+    @Transactional
+    public Long create(ReportDetailDto dto, Map<Integer, ReceiptUpload> receipts,
+            Map<GeneratedLineRef, ReceiptUpload> travelReceipts) {
         User owner = userRepository.findById(currentUserId()).orElseThrow(
                 () -> new IllegalStateException("Current user no longer exists"));
         var report = new ExpenseReport(owner, dto.reportDate(),
@@ -222,6 +250,7 @@ public class ExpenseReportService {
         reportRepository.save(report);
         reportRepository.flush();
         applyReceipts(report, receipts);
+        applyTravelReceipts(report, travelReceipts);
         return report.getId();
     }
 
@@ -250,6 +279,20 @@ public class ExpenseReportService {
     @Transactional
     public ReportDetailDto update(Long id, ReportDetailDto dto, long expectedVersion,
             Map<Integer, ReceiptUpload> receipts) {
+        return update(id, dto, expectedVersion, receipts, Map.of());
+    }
+
+    /**
+     * Whole-aggregate UPDATE that also persists receipts buffered against a trip's
+     * generated lines (Phase 4.3, ADR-0021): {@code travelReceipts} keys each
+     * upload by its {@link GeneratedLineRef}, applied once the reconciled lines are
+     * flushed and have ids.
+     */
+    @RolesAllowed("USER")
+    @Transactional
+    public ReportDetailDto update(Long id, ReportDetailDto dto, long expectedVersion,
+            Map<Integer, ReceiptUpload> receipts,
+            Map<GeneratedLineRef, ReceiptUpload> travelReceipts) {
         var report = requireOwned(id);
         if (report.getVersion() != expectedVersion) {
             throw new ObjectOptimisticLockingFailureException(ExpenseReport.class, id);
@@ -260,6 +303,7 @@ public class ExpenseReportService {
         // new lines get ids and orphan-removals execute before receipts apply.
         reportRepository.flush();
         applyReceipts(report, receipts);
+        applyTravelReceipts(report, travelReceipts);
         return toDetail(report);
     }
 
@@ -314,26 +358,57 @@ public class ExpenseReportService {
         if (receipts == null || receipts.isEmpty()) {
             return;
         }
-        // Receipts map to positions in dto.lines() — the MANUAL lines — never the
-        // generated per-diem lines (which have no receipts).
+        // Receipts map to positions in dto.lines() — the MANUAL lines. The trip's
+        // generated lines are addressed separately, by GeneratedLineRef.
         List<ExpenseLine> lines = report.manualLines();
         receipts.forEach((index, upload) -> {
             if (index == null || index < 0 || index >= lines.size()) {
                 throw new IllegalArgumentException("No line at index " + index);
             }
-            Long lineId = lines.get(index).getId();
-            if (upload.isRemoval()) {
-                receiptRepository.findByExpenseLineId(lineId)
-                        .ifPresent(receiptRepository::delete);
-                return;
-            }
-            ReceiptType type = ReceiptValidator.validate(upload.data());
-            receiptRepository.findByExpenseLineId(lineId).ifPresentOrElse(
-                    existing -> existing.replace(upload.data(), upload.filename(),
-                            type.contentType()),
-                    () -> receiptRepository.save(new Receipt(lines.get(index),
-                            upload.data(), upload.filename(), type.contentType())));
+            applyReceiptToLine(lines.get(index), upload);
         });
+    }
+
+    /**
+     * Applies buffered receipt mutations to a trip's generated lines (Phase 4.3,
+     * ADR-0021). Each {@link GeneratedLineRef} names a trip by its position in
+     * {@code dto.travels()} — the same order the aggregate reconciled them into
+     * {@link ExpenseReport#getTravels()} — and a {@link
+     * com.vaadin.expensemanager.report.domain.GeneratedLineKind}. A ref whose kind
+     * the trip no longer earns (e.g. kilometres cleared before the save) is
+     * silently dropped: there is no line to attach to, and the aggregate already
+     * removed any prior one (cascading its receipt).
+     */
+    private void applyTravelReceipts(ExpenseReport report,
+            Map<GeneratedLineRef, ReceiptUpload> receipts) {
+        if (receipts == null || receipts.isEmpty()) {
+            return;
+        }
+        List<Travel> travels = report.getTravels();
+        receipts.forEach((ref, upload) -> {
+            if (ref.travelIndex() < 0 || ref.travelIndex() >= travels.size()) {
+                throw new IllegalArgumentException(
+                        "No travel at index " + ref.travelIndex());
+            }
+            report.generatedLineFor(travels.get(ref.travelIndex()), ref.kind())
+                    .ifPresent(line -> applyReceiptToLine(line, upload));
+        });
+    }
+
+    /** Attaches/replaces or removes one line's receipt, re-sniffing the bytes. */
+    private void applyReceiptToLine(ExpenseLine line, ReceiptUpload upload) {
+        Long lineId = line.getId();
+        if (upload.isRemoval()) {
+            receiptRepository.findByExpenseLineId(lineId)
+                    .ifPresent(receiptRepository::delete);
+            return;
+        }
+        ReceiptType type = ReceiptValidator.validate(upload.data());
+        receiptRepository.findByExpenseLineId(lineId).ifPresentOrElse(
+                existing -> existing.replace(upload.data(), upload.filename(),
+                        type.contentType()),
+                () -> receiptRepository.save(new Receipt(line, upload.data(),
+                        upload.filename(), type.contentType())));
     }
 
     private ExpenseReport requireOwned(Long id) {
@@ -384,72 +459,133 @@ public class ExpenseReportService {
     }
 
     private ReportDetailDto toDetail(ExpenseReport r) {
-        // Only the manual lines become line DTOs / cards; the generated per-diem
-        // lines are represented by their travels and summed into perDiemTotal.
-        var lines = r.manualLines();
-        var lineIds = lines.stream().map(ExpenseLine::getId)
+        // The manual lines become editable cards; the generated lines ride their
+        // travels as read-only rows. Both can carry a receipt (Phase 4.3), so the
+        // one blob-free receipt query covers every line's id (ADR-0021).
+        var lineIds = r.getLines().stream().map(ExpenseLine::getId)
                 .filter(Objects::nonNull).toList();
-        // One blob-free projection query for the whole report's receipts — the
-        // bytea never rides this (or any) aggregate load (ADR-0021).
         Map<Long, ReceiptSummaryView> byLine = lineIds.isEmpty() ? Map.of()
                 : receiptRepository.findSummariesByExpenseLineIdIn(lineIds).stream()
                         .collect(Collectors.toMap(ReceiptSummaryView::getExpenseLineId,
                                 Function.identity()));
-        var lineDtos = lines.stream()
+        var lineDtos = r.manualLines().stream()
                 .map(line -> toLineDto(line, byLine.get(line.getId()))).toList();
         var travelDtos = r.getTravels().stream()
-                .map(travel -> toTravelDto(r, travel)).toList();
+                .map(travel -> toTravelDto(r, travel, byLine)).toList();
         return new ReportDetailDto(r.getId(), r.getReportDate(),
                 r.getAdditionalInformation(), r.getStatus(), r.getVersion(), lineDtos,
-                travelDtos, r.total(), r.netTotal(), r.vatTotal(), r.perDiemTotal());
+                travelDtos, r.total(), r.netTotal(), r.vatTotal(), r.perDiemTotal(),
+                r.kilometreTotal(), r.mealTotal());
     }
 
     /**
-     * Maps a persisted trip to its working-copy DTO, reading the per-diem
-     * amount/explanation off its generated line (or zero/none if the trip earned
-     * no allowance).
+     * Maps a persisted trip to its working-copy DTO, reading each generated line
+     * (per kind, in kind order) off the report into a {@link GeneratedLineView}
+     * with its amount, read-only explanation, id, and any attached receipt.
      */
-    private static TravelDto toTravelDto(ExpenseReport r, Travel t) {
-        var line = r.perDiemLineFor(t);
-        BigDecimal amount = line.map(ExpenseLine::gross).orElse(ZERO_VAT);
-        String explanation = line.map(ExpenseLine::getComment).orElse(null);
+    private static TravelDto toTravelDto(ExpenseReport r, Travel t,
+            Map<Long, ReceiptSummaryView> byLine) {
+        List<GeneratedLineView> generated = new ArrayList<>();
+        for (GeneratedLineKind kind : GeneratedLineKind.values()) {
+            r.generatedLineFor(t, kind).ifPresent(line -> {
+                var view = GeneratedLineView.of(kind, line.getExpenseType().getName(),
+                        line.gross(), line.getVatRate().getValue(), line.getComment(),
+                        line.getId());
+                var receipt = byLine.get(line.getId());
+                if (receipt != null) {
+                    view = view.withReceipt(receipt.getId(), receipt.getFilename(),
+                            receipt.getContentType(), receipt.getSizeBytes());
+                }
+                generated.add(view);
+            });
+        }
         return new TravelDto(t.getId(), t.getDepartureAt(), t.getReturnAt(),
                 t.getDestinations(), t.getPurpose(), t.getCountry(),
                 t.isNotEligibleForAllowance(), t.isFreeLunch(), t.isChargeToCustomer(),
-                amount, explanation);
+                t.getKilometres(), t.isPayMealAllowance(), t.getParkingFees(), generated);
     }
 
     /**
-     * Resolves each incoming trip DTO to a {@link TravelSpec}, recomputing the
-     * per-diem server-side (the client never sends money) and resolving the
-     * generated line's reference data once. Empty when there are no trips — so a
-     * report without trips never touches the per-diem reference lookups.
+     * Resolves each incoming trip DTO to a {@link TravelSpec}, recomputing every
+     * output server-side (the client never sends money) and resolving the generated
+     * lines' reference data once. Empty when there are no trips — so a report
+     * without trips never touches the allowance reference lookups.
      */
     private List<TravelSpec> toTravelSpecs(List<TravelDto> travels) {
         if (travels == null || travels.isEmpty()) {
             return List.of();
         }
-        ExpenseType type = perDiemExpenseType();
-        VatRate rate = zeroVatRate();
-        return travels.stream().map(t -> toTravelSpec(t, type, rate)).toList();
+        GeneratedLineTypes types = resolveGeneratedLineTypes();
+        return travels.stream().map(t -> toTravelSpec(t, types)).toList();
     }
 
-    private TravelSpec toTravelSpec(TravelDto t, ExpenseType type, VatRate rate) {
-        DomesticPerDiemResult result = costDomestic(t);
+    private TravelSpec toTravelSpec(TravelDto t, GeneratedLineTypes types) {
         String country = (t.country() == null || t.country().isBlank())
                 ? TravelDto.DOMESTIC_COUNTRY : t.country();
         return new TravelSpec(t.id(), t.departureAt(), t.returnAt(), t.destinations(),
                 t.purpose(), country, t.notEligibleForAllowance(), t.freeLunch(),
-                t.chargeToCustomer(), type, rate, result.amount(),
-                result.explanation());
+                t.chargeToCustomer(), t.kilometres(), t.payMealAllowance(),
+                t.parkingFees(), earnedLines(t, types));
     }
 
-    /** Server-authoritative domestic per-diem for a trip's inputs (ADR-0006). */
-    private DomesticPerDiemResult costDomestic(TravelDto t) {
+    /**
+     * The generated lines a trip earns (ADR-0006): one {@link GeneratedLineSpec}
+     * per non-zero output — per-diem, kilometre, meal, parking — recomputed
+     * server-side from the trip-year rates (the client never sends money). A kind
+     * that produced nothing is omitted, so the aggregate removes any prior line of
+     * it. A missing rate for a requested output is surfaced (ADR-0020).
+     */
+    private List<GeneratedLineSpec> earnedLines(TravelDto t, GeneratedLineTypes types) {
         if (t.departureAt() == null || t.returnAt() == null) {
             throw new IllegalArgumentException(
                     "Departure and return date & time are required");
         }
+        List<GeneratedLineSpec> lines = new ArrayList<>(4);
+        DomesticPerDiemResult perDiem = costDomestic(t);
+        addSpec(lines, GeneratedLineKind.PER_DIEM, types.perDiemType(), types.zeroVat(),
+                perDiem.amount(), perDiem.explanation());
+        AllowanceAmount km = costKilometre(t);
+        addSpec(lines, GeneratedLineKind.KILOMETRE, types.kilometreType(),
+                types.zeroVat(), km.amount(), km.explanation());
+        AllowanceAmount meal = costMeal(t);
+        addSpec(lines, GeneratedLineKind.MEAL, types.mealType(), types.zeroVat(),
+                meal.amount(), meal.explanation());
+        AllowanceAmount parking = calculator.parking(t.parkingFees());
+        addSpec(lines, GeneratedLineKind.PARKING, types.parkingType(),
+                types.parkingType().getDefaultVatRate(), parking.amount(),
+                parking.explanation());
+        return lines;
+    }
+
+    private static void addSpec(List<GeneratedLineSpec> into, GeneratedLineKind kind,
+            ExpenseType type, VatRate rate, BigDecimal amount, String comment) {
+        if (amount != null && amount.signum() != 0) {
+            into.add(new GeneratedLineSpec(kind, type, rate, amount, comment));
+        }
+    }
+
+    /** A preview view of an earned generated line — no id or receipt yet. */
+    private static GeneratedLineView toView(GeneratedLineSpec spec) {
+        return GeneratedLineView.of(spec.kind(), spec.expenseType().getName(),
+                spec.amount(), spec.vatRate().getValue(), spec.comment(), null);
+    }
+
+    /** The resolved reference data the generated lines are filed under, per save. */
+    private record GeneratedLineTypes(ExpenseType perDiemType, ExpenseType kilometreType,
+            ExpenseType mealType, ExpenseType parkingType, VatRate zeroVat) {
+    }
+
+    private GeneratedLineTypes resolveGeneratedLineTypes() {
+        return new GeneratedLineTypes(
+                allowanceExpenseType(PER_DIEM_EXPENSE_TYPE),
+                allowanceExpenseType(KILOMETRE_EXPENSE_TYPE),
+                allowanceExpenseType(MEAL_EXPENSE_TYPE),
+                allowanceExpenseType(PARKING_EXPENSE_TYPE),
+                zeroVatRate());
+    }
+
+    /** Server-authoritative domestic per-diem for a trip's inputs (ADR-0006). */
+    private DomesticPerDiemResult costDomestic(TravelDto t) {
         int year = t.departureAt().getYear();
         DomesticPerDiemDto rate = allowanceRateService.domesticPerDiem(year)
                 .orElseThrow(() -> new IllegalArgumentException(
@@ -458,20 +594,43 @@ public class ExpenseReportService {
                 t.notEligibleForAllowance(), t.freeLunch(), rate);
     }
 
-    private ExpenseType perDiemExpenseType() {
+    /** Server-authoritative kilometre allowance; needs a rate only when km &gt; 0. */
+    private AllowanceAmount costKilometre(TravelDto t) {
+        BigDecimal km = t.kilometres();
+        if (km == null || km.signum() <= 0) {
+            return calculator.kilometreAllowance(km, null);
+        }
+        int year = t.departureAt().getYear();
+        KilometreRateDto rate = allowanceRateService.kilometreRate(year)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "No kilometre rate is configured for " + year));
+        return calculator.kilometreAllowance(km, rate);
+    }
+
+    /** Server-authoritative meal allowance; needs a rate only when the trip pays it. */
+    private AllowanceAmount costMeal(TravelDto t) {
+        if (!t.payMealAllowance()) {
+            return calculator.mealAllowance(false, null);
+        }
+        int year = t.departureAt().getYear();
+        MealAllowanceDto rate = allowanceRateService.mealAllowance(year)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "No meal allowance is configured for " + year));
+        return calculator.mealAllowance(true, rate);
+    }
+
+    private ExpenseType allowanceExpenseType(String name) {
         return expenseTypeRepository
-                .findFirstByNameIgnoreCaseAndActiveTrueOrderByDisplayOrderAscIdAsc(
-                        PER_DIEM_EXPENSE_TYPE)
-                .orElseThrow(() -> new IllegalStateException("No active '"
-                        + PER_DIEM_EXPENSE_TYPE
-                        + "' expense type is configured for per-diem lines"));
+                .findFirstByNameIgnoreCaseAndActiveTrueOrderByDisplayOrderAscIdAsc(name)
+                .orElseThrow(() -> new IllegalStateException("No active '" + name
+                        + "' expense type is configured for generated travel lines"));
     }
 
     private VatRate zeroVatRate() {
         return vatRateRepository
                 .findFirstByValueAndActiveTrueOrderByDisplayOrderAscIdAsc(ZERO_VAT)
                 .orElseThrow(() -> new IllegalStateException(
-                        "No active 0% VAT rate is configured for per-diem lines"));
+                        "No active 0% VAT rate is configured for allowance lines"));
     }
 
     private static ExpenseLineDto toLineDto(ExpenseLine line,

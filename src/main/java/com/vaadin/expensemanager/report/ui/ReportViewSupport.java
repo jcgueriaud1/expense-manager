@@ -6,6 +6,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
+import com.vaadin.expensemanager.report.domain.GeneratedLineKind;
 import com.vaadin.expensemanager.report.domain.ReportStatus;
 import com.vaadin.flow.component.badge.Badge;
 import com.vaadin.flow.component.badge.BadgeVariant;
@@ -72,6 +73,16 @@ final class ReportViewSupport {
         }
         int index = Math.floorMod(expenseTypeName.hashCode(), CATEGORY_COLORS.length);
         return "var(" + CATEGORY_COLORS[index] + ")";
+    }
+
+    /** A friendly label for a generated (travel-owned) line kind (Phase 4.3). */
+    static String generatedLineLabel(GeneratedLineKind kind) {
+        return switch (kind) {
+            case PER_DIEM -> "Per diem allowance";
+            case KILOMETRE -> "Kilometre allowance";
+            case MEAL -> "Meal allowance";
+            case PARKING -> "Parking";
+        };
     }
 
     /** EUR amount at scale 2, e.g. {@code "€0.00"} (ADR-0010). */

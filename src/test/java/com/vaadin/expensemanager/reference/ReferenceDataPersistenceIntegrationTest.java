@@ -42,9 +42,12 @@ class ReferenceDataPersistenceIntegrationTest extends AbstractIntegrationTest {
     void expenseTypeSeedHasCorrectNamesOrderAndDefaultRates() {
         var types = expenseTypeRepository.findAllByOrderByDisplayOrderAscIdAsc();
 
+        // The Kilometre/Meal allowance types are the Phase 4.3 additions (V9),
+        // both 0 %-VAT and distinct from "Travel allowance".
         assertThat(types).extracting(ExpenseType::getName).containsExactly(
                 "Travel allowance", "Taxi/transport", "Accommodation",
-                "Restaurant/meals", "Parking/supplies/goods", "Publications");
+                "Restaurant/meals", "Parking/supplies/goods", "Publications",
+                "Kilometre allowance", "Meal allowance");
         assertThat(types).allMatch(ExpenseType::isActive);
 
         assertThat(types).extracting(t -> t.getDefaultVatRate().getValue())
@@ -55,7 +58,9 @@ class ReferenceDataPersistenceIntegrationTest extends AbstractIntegrationTest {
                         new java.math.BigDecimal("13.5"),   // Accommodation
                         new java.math.BigDecimal("13.5"),   // Restaurant/meals
                         new java.math.BigDecimal("25.5"),   // Parking/supplies/goods
-                        new java.math.BigDecimal("10"));    // Publications
+                        new java.math.BigDecimal("10"),     // Publications
+                        new java.math.BigDecimal("0"),      // Kilometre allowance
+                        new java.math.BigDecimal("0"));     // Meal allowance
     }
 
     @Test
