@@ -1001,3 +1001,36 @@ Deployment/Observability · UX-spec
   `--vaadin-padding`/`--vaadin-gap` to the medium step, or have the dev-mode
   theme linter warn on references to undefined `--vaadin-*` custom properties.
 - Owner / next step: none — tokens corrected app-wide.
+
+### F-031 — Theme switcher hand-rolled raw `executeJs`/`localStorage` instead of the idiomatic Flow APIs
+- Date: 2026-07-14
+- Area: AI
+- Severity: Medium
+- Task being attempted: the original theme switcher (PR #46) — apply a light/dark/
+  system colour scheme live and persist it per-browser.
+- Expected vs actual: Expected the first cut to reach for the framework APIs that
+  cover exactly this. Actual: it hand-wrote JavaScript strings —
+  `getElement().executeJs("document.documentElement.style.colorScheme=$0; …")` to
+  flip the scheme and `executeJs("localStorage.setItem/getItem…")` to persist —
+  when Flow 25 already ships **`Page.setColorScheme(ColorScheme.Value)`** (since
+  25.0; does the same `<html>` `color-scheme` manipulation, plus a `theme`
+  attribute) and **`WebStorage`** (typed `setItem`/`removeItem`/`getItem`) for
+  localStorage. The raw-JS version worked, so nothing flagged it; it just
+  shouldn't have been written that way. Simplified in PR #47.
+- Workaround used: rewrote `ThemeSwitcher` on `Page.setColorScheme` + `WebStorage`,
+  keying the choice map on `ColorScheme.Value` (`NORMAL`/`LIGHT`/`DARK`). The one
+  irreducible bit of JS — the pre-paint bootstrap in `Application#configurePage` —
+  legitimately stays: it must run synchronously before first paint and the server
+  can't read client `localStorage` before the initial HTML is sent, so no Java API
+  can express it.
+- Evidence: `base/ui/ThemeSwitcher` (before/after in PRs #46 → #47);
+  `Page#setColorScheme` (flow-server 25.2.1 source); `WebStorage` docs.
+- Impact: `executeJs` string-slinging is the class of code that bypasses the
+  framework, dodges type-checking, and copy-propagates as a bad example. When a
+  task is "set a browser/DOM property" or "read/write web storage", check for a
+  first-party Flow API (`Page.*`, `WebStorage`, `getThemeList`, `getStyle`) before
+  writing JS. Prefer the idiomatic API from the first cut, not as a follow-up.
+- Suggested Vaadin/product improvement: cross-link the colour-scheme docs and the
+  `Page.setColorScheme`/`WebStorage` APIs from the Aura light/dark page, so the
+  idiomatic path is discoverable at the point of need.
+- Owner / next step: none — `ThemeSwitcher` now uses the idiomatic APIs.
