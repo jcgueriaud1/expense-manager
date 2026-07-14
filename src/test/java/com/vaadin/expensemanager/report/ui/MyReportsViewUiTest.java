@@ -2,7 +2,6 @@ package com.vaadin.expensemanager.report.ui;
 
 import java.time.LocalDate;
 
-import com.vaadin.expensemanager.report.service.ReportSummaryDto;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.test.context.support.WithUserDetails;
@@ -13,96 +12,94 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Browserless view test (pyramid layer 3, ADR-0012) for {@link MyReportsView}
  * (UC-002). Runs as the seeded plain user via {@link WithUserDetails}.
  *
- * <p>Covers the acceptance criteria: owner scoping (only the current user's
- * reports render), newest-report-date-first ordering, the status and month/year
- * period filters narrowing the grid, the empty state when there are none, and
- * the "New report" action routing to the detail view. Grid cells are read with
- * {@code getCellText} (revised F-018).
+ * <p>Covers the acceptance criteria against the card layout: owner scoping (only
+ * the current user's reports render), newest-report-date-first ordering, the
+ * grouping into "Needs your attention" (draft/rejected) vs "Submitted &amp;
+ * closed" (submitted/approved), the status and month/year period filters
+ * narrowing the sections, the empty state when there are none, and the
+ * "New report" action routing to the detail view. Assertions read the rendered
+ * text of the view (the cards are plain links, not a Grid).
  */
 @WithUserDetails(LocalUserSeeder.PLAIN_USER_EMAIL)
 class MyReportsViewUiTest extends AbstractReportViewUiTest {
 
-    private static final int DATE_COL = 0;
-    private static final int INFO_COL = 1;
-    private static final int STATUS_COL = 2;
-    private static final int TOTAL_COL = 3;
+    private String renderedText() {
+        return getCurrentView().getElement().getTextRecursively();
+    }
 
     @Test
     void emptyStateRendersWhenOwnerHasNoReports() {
         navigate(MyReportsView.class);
 
-        assertThat(findGrid(ReportSummaryDto.class).exists()).isFalse();
-        assertThat(getCurrentView().getElement().getTextRecursively())
-                .contains("No expense reports yet");
+        assertThat(renderedText()).contains("No expense reports yet");
     }
 
     @Test
-    void listsOwnReportsNewestReportDateFirstWithAllColumns() {
+    void listsOwnReportsNewestReportDateFirstWithStatusAndTotal() {
         seedReport(LocalDate.of(2026, 6, 1), "older trip");
         seedReport(LocalDate.of(2026, 7, 1), "newer trip");
 
         navigate(MyReportsView.class);
-        var grid = findGrid(ReportSummaryDto.class);
+        var text = renderedText();
 
-        assertThat(grid.size()).isEqualTo(2);
-        // Newest report date first.
-        assertThat(grid.getCellText(0, DATE_COL)).isEqualTo("2026-07-01");
-        assertThat(grid.getCellText(1, DATE_COL)).isEqualTo("2026-06-01");
-        assertThat(grid.getCellText(0, INFO_COL)).isEqualTo("newer trip");
-        assertThat(grid.getCellText(0, STATUS_COL)).isEqualTo("Draft");
-        // Derived total is €0.00 until lines arrive (Phase 2.3).
-        assertThat(grid.getCellText(0, TOTAL_COL)).isEqualTo("€0.00");
+        // Both reports, their status badge, and the derived €0.00 total render.
+        assertThat(text).contains("older trip").contains("newer trip")
+                .contains("Draft").contains("€0.00");
+        // Newest report date first: the newer card appears above the older one.
+        assertThat(text.indexOf("newer trip")).isLessThan(text.indexOf("older trip"));
     }
 
     @Test
-    void statusFilterDistinguishesDraftAndSubmitted() {
+    void statusFilterSplitsDraftFromSubmitted() {
         seedReport(LocalDate.of(2026, 7, 1), "still a draft");
         seedSubmittedReport(LocalDate.of(2026, 7, 2), "50.00");
         navigate(MyReportsView.class);
 
-        // Filtering by SUBMITTED leaves only the submitted report.
+        // Both sections show before any filter is applied.
+        assertThat(renderedText()).contains("Needs your attention")
+                .contains("Submitted & closed");
+
+        // Filtering by SUBMITTED leaves only the "Submitted & closed" section.
         findComboBox(com.vaadin.expensemanager.report.domain.ReportStatus.class)
                 .withLabel("Status").selectItem("Submitted");
-        var submittedOnly = findGrid(ReportSummaryDto.class);
-        assertThat(submittedOnly.size()).isEqualTo(1);
-        assertThat(submittedOnly.getCellText(0, STATUS_COL)).isEqualTo("Submitted");
+        assertThat(renderedText()).contains("Submitted & closed")
+                .doesNotContain("Needs your attention")
+                .doesNotContain("still a draft");
 
-        // Filtering by DRAFT leaves only the draft.
+        // Filtering by DRAFT leaves only the "Needs your attention" section.
         findComboBox(com.vaadin.expensemanager.report.domain.ReportStatus.class)
                 .withLabel("Status").selectItem("Draft");
-        var draftOnly = findGrid(ReportSummaryDto.class);
-        assertThat(draftOnly.size()).isEqualTo(1);
-        assertThat(draftOnly.getCellText(0, STATUS_COL)).isEqualTo("Draft");
+        assertThat(renderedText()).contains("Needs your attention")
+                .contains("still a draft")
+                .doesNotContain("Submitted & closed");
     }
 
     @Test
-    void monthAndYearFiltersNarrowTheGrid() {
+    void monthAndYearFiltersNarrowTheList() {
         seedReport(LocalDate.of(2026, 1, 15), "january");
         seedReport(LocalDate.of(2026, 7, 15), "july");
         seedReport(LocalDate.of(2025, 7, 15), "last july");
         navigate(MyReportsView.class);
 
         findComboBox(java.time.Month.class).withLabel("Month").selectItem("July");
-        assertThat(findGrid(ReportSummaryDto.class).size()).isEqualTo(2);
+        // Both Julys remain; January is filtered out.
+        assertThat(renderedText()).contains("last july").doesNotContain("january");
 
         findComboBox(Integer.class).withLabel("Year").selectItem("2026");
-        // July + 2026 leaves just the one report.
-        var grid = findGrid(ReportSummaryDto.class);
-        assertThat(grid.size()).isEqualTo(1);
-        assertThat(grid.getCellText(0, INFO_COL)).isEqualTo("july");
+        // July + 2026 leaves just the one report — the 2025 July drops out.
+        assertThat(renderedText()).contains("july")
+                .doesNotContain("last july").doesNotContain("january");
     }
 
     @Test
-    void gridShowsOnlyTheCurrentUsersReports() {
+    void listShowsOnlyTheCurrentUsersReports() {
         // Another user's report seeded directly must not leak into this list.
         seedReportForAdmin(LocalDate.of(2026, 7, 1), "admin's report");
         seedReport(LocalDate.of(2026, 7, 2), "mine");
 
         navigate(MyReportsView.class);
-        var grid = findGrid(ReportSummaryDto.class);
 
-        assertThat(grid.size()).isEqualTo(1);
-        assertThat(grid.getCellText(0, INFO_COL)).isEqualTo("mine");
+        assertThat(renderedText()).contains("mine").doesNotContain("admin's report");
     }
 
     @Test

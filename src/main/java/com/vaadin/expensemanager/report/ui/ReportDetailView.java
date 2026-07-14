@@ -22,7 +22,6 @@ import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.datepicker.DatePicker;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.html.Div;
-import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.ListItem;
 import com.vaadin.flow.component.html.Paragraph;
 import com.vaadin.flow.component.html.Span;
@@ -50,7 +49,6 @@ import org.springframework.orm.ObjectOptimisticLockingFailureException;
 
 import static com.vaadin.expensemanager.report.ui.ReportViewSupport.formatEur;
 import static com.vaadin.expensemanager.report.ui.ReportViewSupport.formatPercent;
-import static com.vaadin.expensemanager.report.ui.ReportViewSupport.statusLabel;
 
 /**
  * Create and edit a single report with its expense lines (UC-001/UC-005,
@@ -92,11 +90,19 @@ public class ReportDetailView extends VerticalLayout
     private final transient ReferenceDataService referenceData;
 
     private final Div errorSummary = new Div();
-    private final Span statusBadge = new Span();
+    /** Holds the freshly-built status badge; repopulated on each (re)load. */
+    private final Div statusBadgeSlot = new Div();
+    /** The rejected/approved/submitted status callout; hidden while DRAFT. */
+    private final Div statusCallout = new Div();
+    /** Header eyebrow: "New report" or "Report #{id}". */
+    private final Span headerId = new Span();
+    /** Header title: the note, or a generic label. */
+    private final Span headerName = new Span();
     private final DatePicker reportDate = new DatePicker("Report date");
     private final TextArea additionalInformation = new TextArea("Additional information");
+    private final Span netDisplay = new Span();
+    private final Span vatDisplay = new Span();
     private final Span grossDisplay = new Span();
-    private final Span breakdownDisplay = new Span();
     private final Button save = new Button("Save");
     private final Button submit = new Button("Submit for approval");
     private final Button addLine = new Button("Add expense", VaadinIcon.PLUS.create());
@@ -127,11 +133,15 @@ public class ReportDetailView extends VerticalLayout
         this.referenceData = referenceData;
         setPadding(true);
         setSpacing(true);
-        setMaxWidth("40rem");
+        setMaxWidth("46rem");
+        addClassName("report-detail");
 
         errorSummary.getElement().setAttribute("role", "alert");
         errorSummary.setVisible(false);
-        errorSummary.getStyle().setColor("var(--aura-red-text)");
+        errorSummary.addClassName("error-summary");
+
+        statusCallout.setWidthFull();
+        statusCallout.setVisible(false);
 
         reportDate.setRequiredIndicatorVisible(true);
         additionalInformation.setMaxLength(2000);
@@ -154,11 +164,16 @@ public class ReportDetailView extends VerticalLayout
         addLine.addThemeVariants(ButtonVariant.TERTIARY);
         addLine.addClickListener(event -> addLine());
 
+        // Submit is the full-width forward action; Save keeps working, Delete is
+        // the quiet destructive one — a footer action bar (the mockup's footer).
         var actions = new HorizontalLayout(save, submit, delete);
+        actions.setWidthFull();
         actions.setAlignItems(FlexComponent.Alignment.CENTER);
+        actions.expand(submit);
+        actions.addClassName("detail-actions");
 
-        add(headerRow(), errorSummary, reportDate, additionalInformation,
-                totalsBar(), linesSection(), actions);
+        add(headerRow(), errorSummary, statusCallout, reportDate,
+                additionalInformation, linesSection(), totalsCard(), actions);
     }
 
     @Override
@@ -185,7 +200,13 @@ public class ReportDetailView extends VerticalLayout
         binder.readBean(model);
 
         clearErrors();
-        statusBadge.setText(statusLabel(dto.status()));
+        statusBadgeSlot.removeAll();
+        statusBadgeSlot.add(ReportViewSupport.statusBadge(dto.status()));
+        updateStatusCallout(dto.status());
+        headerId.setText(dto.isPersisted() ? "Report #" + dto.id() : "New report");
+        headerName.setText(dto.additionalInformation() == null
+                || dto.additionalInformation().isBlank()
+                ? "Expense report" : dto.additionalInformation());
 
         // Set editability before repopulating so the card factory builds the
         // right (interactive vs read-only) cards.
@@ -329,50 +350,106 @@ public class ReportDetailView extends VerticalLayout
     }
 
     private HorizontalLayout headerRow() {
-        var header = new HorizontalLayout(new H2("Report"), statusBadge);
-        header.setAlignItems(FlexComponent.Alignment.BASELINE);
-        header.setSpacing(true);
+        var back = new Button(VaadinIcon.ARROW_LEFT.create(),
+                event -> getUI().ifPresent(ui -> ui.navigate(MyReportsView.class)));
+        back.addThemeVariants(ButtonVariant.TERTIARY);
+        back.getElement().setAttribute("aria-label", "Back to reports");
+
+        headerId.addClassName("report-detail-eyebrow");
+        headerName.addClassName("report-detail-title");
+        var titleColumn = new VerticalLayout(headerId, headerName);
+        titleColumn.setPadding(false);
+        titleColumn.setSpacing(false);
+
+        var header = new HorizontalLayout(back, titleColumn, statusBadgeSlot);
+        header.setWidthFull();
+        header.setAlignItems(FlexComponent.Alignment.CENTER);
+        header.expand(titleColumn);
         return header;
     }
 
-    /** The pinned live-total bar — recomputes net/VAT/gross via Signals. */
-    private Div totalsBar() {
-        var label = new Span("Report total");
-        label.getStyle().setColor("var(--vaadin-text-color-secondary)");
-        grossDisplay.getStyle().setFontWeight("700");
-        grossDisplay.getStyle().setFontSize("var(--aura-font-size-xl)");
-        breakdownDisplay.getStyle().setColor("var(--vaadin-text-color-secondary)");
-        breakdownDisplay.getStyle().setFontSize("var(--aura-font-size-s)");
+    /**
+     * Sets the coloured status note above the form: a red "changes requested"
+     * callout for a rejected report, a green approved note, a neutral
+     * "waiting for approval" note once submitted, and nothing while it is a
+     * draft. Only the status drives it — the approver identity, comment, and
+     * dates are surfaced when the approval flow lands (Phase 5); until then the
+     * note states where the report stands without inventing that data.
+     */
+    private void updateStatusCallout(ReportStatus status) {
+        statusCallout.removeAll();
+        statusCallout.setClassName("status-callout");
+        switch (status) {
+            case REJECTED -> {
+                statusCallout.addClassName("status-callout--rejected");
+                var heading = new Span("Rejected — changes requested");
+                heading.addClassName("status-callout-heading");
+                statusCallout.add(heading, new Span(
+                        "Update this report to address the feedback, then resubmit."));
+                statusCallout.setVisible(true);
+            }
+            case APPROVED -> {
+                statusCallout.addClassName("status-callout--approved");
+                var heading = new Span("Approved.");
+                heading.addClassName("status-callout-heading");
+                statusCallout.add(heading,
+                        new Span(" This report has been approved for reimbursement."));
+                statusCallout.setVisible(true);
+            }
+            case SUBMITTED -> {
+                statusCallout.addClassName("status-callout--submitted");
+                statusCallout.add(new Span(
+                        "Waiting for approval. You'll see any feedback here."));
+                statusCallout.setVisible(true);
+            }
+            case DRAFT -> statusCallout.setVisible(false);
+        }
+    }
 
+    /**
+     * The totals card (the mockup's summary block) — a net / VAT breakdown above
+     * a bold total-to-reimburse line, all recomputing live via Signals as the
+     * working lines change.
+     */
+    private Div totalsCard() {
+        netDisplay.bindText(Signal.computed(() -> formatEur(currentTotals().net())));
+        vatDisplay.bindText(Signal.computed(() -> formatEur(currentTotals().vat())));
         grossDisplay.bindText(Signal.computed(
                 () -> formatEur(currentTotals().gross())));
-        breakdownDisplay.bindText(Signal.computed(() -> {
-            var totals = currentTotals();
-            return "net " + formatEur(totals.net())
-                    + "  ·  VAT " + formatEur(totals.vat());
-        }));
+        grossDisplay.addClassName("totals-grand");
 
-        var column = new VerticalLayout(label, grossDisplay, breakdownDisplay);
-        column.setPadding(false);
-        column.setSpacing(false);
+        var totalLabel = new Span("Total to reimburse");
+        var totalRow = new HorizontalLayout(totalLabel, grossDisplay);
+        totalRow.setWidthFull();
+        totalRow.setAlignItems(FlexComponent.Alignment.BASELINE);
+        totalRow.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
+        totalRow.addClassName("totals-total-row");
 
-        var bar = new Div(column);
-        bar.setWidthFull();
-        bar.getStyle().set("position", "sticky").set("top", "0").set("z-index", "5")
-                .set("padding", "var(--vaadin-padding)")
-                .set("background", "var(--aura-accent-surface)")
-                .set("border-radius", "var(--vaadin-radius-l)");
-        return bar;
+        var card = new Div(breakdownRow("Net", netDisplay),
+                breakdownRow("VAT", vatDisplay), totalRow);
+        card.setWidthFull();
+        card.addClassName("totals-card");
+        return card;
+    }
+
+    /** One secondary "label … value" row in the totals card. */
+    private static HorizontalLayout breakdownRow(String label, Span value) {
+        var name = new Span(label);
+        var row = new HorizontalLayout(name, value);
+        row.setWidthFull();
+        row.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
+        row.addClassName("totals-row");
+        return row;
     }
 
     private Div linesSection() {
         var emptyState = new Span("No expenses yet — add your first.");
-        emptyState.getStyle().setColor("var(--vaadin-text-color-secondary)");
+        emptyState.addClassName("muted");
         emptyState.bindVisible(Signal.computed(() -> lines.get().isEmpty()));
 
         var cardList = new VerticalLayout();
         cardList.setPadding(false);
-        cardList.setSpacing(true);
+        cardList.setSpacing("var(--vaadin-gap-m)");
         cardList.setWidthFull();
         cardList.bindChildren(lines, this::card);
 
@@ -386,11 +463,10 @@ public class ReportDetailView extends VerticalLayout
         var name = new Span();
         name.bindText(entry.map(dto -> dto.expenseTypeName() == null
                 ? "New expense" : dto.expenseTypeName()));
-        name.getStyle().setFontWeight("600");
+        name.addClassName("line-name");
         var subtitle = new Span();
         subtitle.bindText(entry.map(ReportDetailView::subtitleOf));
-        subtitle.getStyle().setColor("var(--vaadin-text-color-secondary)");
-        subtitle.getStyle().setFontSize("var(--aura-font-size-s)");
+        subtitle.addClassName("muted");
         // Receipt read affordance (ADR-0021): a saved image shows a thumbnail
         // that enlarges in a dialog, a saved PDF an "open" link — both streaming
         // the bytes on demand via the owner-scoped DownloadHandler, so a submitted
@@ -398,7 +474,7 @@ public class ReportDetailView extends VerticalLayout
         // attachment has no stable id yet, so the card shows its filename until
         // the first save (the editor previews the buffered bytes meanwhile).
         var receipt = new Div();
-        receipt.getStyle().set("margin-top", "var(--vaadin-gap-s)");
+        receipt.addClassName("line-receipt");
         Signal.effect(receipt, () -> {
             ExpenseLineDto dto = entry.get();
             receipt.removeAll();
@@ -412,8 +488,7 @@ public class ReportDetailView extends VerticalLayout
                         () -> service.receiptDownload(receiptId)));
             } else {
                 var chip = new Span("📎 " + dto.receiptFilename());
-                chip.getStyle().setColor("var(--vaadin-text-color-secondary)");
-                chip.getStyle().setFontSize("var(--aura-font-size-xs)");
+                chip.addClassName("muted-xs");
                 receipt.add(chip);
             }
         });
@@ -423,34 +498,38 @@ public class ReportDetailView extends VerticalLayout
 
         var gross = new Span();
         gross.bindText(entry.map(dto -> formatEur(grossOf(dto))));
-        gross.getStyle().setFontWeight("600");
+        gross.addClassName("line-amount");
         var breakdown = new Span();
         breakdown.bindText(entry.map(ReportDetailView::breakdownOf));
-        breakdown.getStyle().setColor("var(--vaadin-text-color-secondary)");
-        breakdown.getStyle().setFontSize("var(--aura-font-size-xs)");
+        breakdown.addClassName("muted-xs");
         var amounts = new VerticalLayout(gross, breakdown);
         amounts.setPadding(false);
         amounts.setSpacing(false);
         amounts.setAlignItems(FlexComponent.Alignment.END);
 
-        var body = new HorizontalLayout(texts, amounts);
+        // A small colour swatch per expense type (the mockup's category dot). The
+        // dynamic colour is fed to the .category-dot class as a CSS custom
+        // property, recomputed if the line's type changes in the editor.
+        var dot = new Div();
+        dot.addClassName("category-dot");
+        Signal.effect(dot, () -> dot.getStyle().set("--category-color",
+                ReportViewSupport.categoryColor(entry.get().expenseTypeName())));
+
+        var body = new HorizontalLayout(dot, texts, amounts);
         body.setWidthFull();
-        body.setFlexGrow(1, texts);
-        body.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
         body.setAlignItems(FlexComponent.Alignment.CENTER);
+        body.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
+        body.expand(texts);
         if (editable) {
-            body.getStyle().setCursor("pointer");
+            body.addClassName("clickable");
             body.addClickListener(event -> openEditor(entry));
         }
 
         var card = new HorizontalLayout(body);
         card.setWidthFull();
         card.setAlignItems(FlexComponent.Alignment.CENTER);
-        card.setFlexGrow(1, body);
-        card.getStyle().set("padding", "var(--vaadin-padding)")
-                .set("border", "1px solid var(--vaadin-border-color)")
-                .set("border-radius", "var(--vaadin-radius-l)")
-                .set("background", "var(--aura-surface-color)");
+        card.expand(body);
+        card.addClassName("line-card");
         // Trash lives outside the clickable body, so removing a line never also
         // opens the editor (no click-propagation hack needed).
         if (editable) {
@@ -507,7 +586,7 @@ public class ReportDetailView extends VerticalLayout
     private void showConflict() {
         errorSummary.removeAll();
         var heading = new Span("This report was changed elsewhere.");
-        heading.getStyle().setFontWeight("600");
+        heading.addClassName("summary-heading");
         var detail = new Paragraph(
                 "Reload to see the latest version before saving again.");
         var reload = new Button("Reload", event -> reload());
@@ -531,7 +610,7 @@ public class ReportDetailView extends VerticalLayout
             return;
         }
         var heading = new Span("Please fix the following:");
-        heading.getStyle().setFontWeight("600");
+        heading.addClassName("summary-heading");
         var list = new UnorderedList();
         messages.forEach(message -> list.add(new ListItem(message)));
         errorSummary.add(heading, list);

@@ -61,7 +61,7 @@ public class MainLayout extends AppLayout {
         var appName = new H1("Expense Manager");
         appName.getStyle()
                 .setFontSize("var(--aura-font-size-l)")
-                .setMargin("var(--vaadin-padding)");
+                .setMargin("var(--vaadin-padding-m)");
         return appName;
     }
 
@@ -79,7 +79,7 @@ public class MainLayout extends AppLayout {
         bar.setAlignItems(FlexComponent.Alignment.CENTER);
         bar.setWidthFull();
         bar.setJustifyContentMode(FlexComponent.JustifyContentMode.END);
-        bar.getStyle().setPaddingRight("var(--vaadin-padding)");
+        bar.getStyle().setPaddingRight("var(--vaadin-padding-m)");
         return bar;
     }
 

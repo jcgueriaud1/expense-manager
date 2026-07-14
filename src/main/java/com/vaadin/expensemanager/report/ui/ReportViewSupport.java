@@ -4,15 +4,28 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 
 import com.vaadin.expensemanager.report.domain.ReportStatus;
+import com.vaadin.flow.component.badge.Badge;
+import com.vaadin.flow.component.badge.BadgeVariant;
 
 /**
  * Shared presentation helpers for the report views ({@link MyReportsView},
  * {@link ReportDetailView}) so the two don't duplicate status/money formatting.
  *
  * <p>Status is always rendered as <strong>text</strong>, never colour alone
- * (ADR-0020, no colour-only meaning).
+ * (ADR-0020, no colour-only meaning): {@link #statusBadge} carries the label
+ * text and only <em>adds</em> colour via the Vaadin badge theme.
  */
 final class ReportViewSupport {
+
+    /**
+     * Aura palette colours cycled through to give each expense type a stable
+     * colour dot on the detail line cards (the mockup's category swatch). Chosen
+     * from the documented saturated palette so both colour schemes stay legible.
+     */
+    private static final String[] CATEGORY_COLORS = {
+            "--aura-blue", "--aura-green", "--aura-orange",
+            "--aura-purple", "--aura-red", "--aura-yellow"
+    };
 
     private ReportViewSupport() {
     }
@@ -21,6 +34,41 @@ final class ReportViewSupport {
     static String statusLabel(ReportStatus status) {
         var name = status.name();
         return name.charAt(0) + name.substring(1).toLowerCase();
+    }
+
+    /**
+     * The status as the official Vaadin {@link Badge} (since 25.1, styled under
+     * Aura). The label text always renders, so meaning never rides on colour
+     * alone (ADR-0020); the variant only reinforces it: approved is
+     * {@code success} (green), rejected {@code error} (red), submitted a
+     * {@code filled} (solid) neutral badge to read as "handed off", and a draft
+     * the plain default badge. All are {@code small} to sit compactly beside a
+     * title. (Aura has no accent/primary badge variant — {@code contrast} is
+     * Lumo-only — so submitted uses the filled neutral rather than a blue tint.)
+     */
+    static Badge statusBadge(ReportStatus status) {
+        var badge = new Badge(statusLabel(status));
+        badge.addThemeVariants(BadgeVariant.SMALL);
+        switch (status) {
+            case SUBMITTED -> badge.addThemeVariants(BadgeVariant.FILLED);
+            case APPROVED -> badge.addThemeVariants(BadgeVariant.SUCCESS);
+            case REJECTED -> badge.addThemeVariants(BadgeVariant.ERROR);
+            case DRAFT -> { /* the plain default (neutral) badge */ }
+        }
+        return badge;
+    }
+
+    /**
+     * A stable Aura palette colour for an expense type's swatch dot, derived from
+     * its name so the same type always reads the same colour within a report.
+     * Falls back to a neutral border colour for a not-yet-chosen type.
+     */
+    static String categoryColor(String expenseTypeName) {
+        if (expenseTypeName == null || expenseTypeName.isBlank()) {
+            return "var(--vaadin-border-color)";
+        }
+        int index = Math.floorMod(expenseTypeName.hashCode(), CATEGORY_COLORS.length);
+        return "var(" + CATEGORY_COLORS[index] + ")";
     }
 
     /** EUR amount at scale 2, e.g. {@code "€0.00"} (ADR-0010). */
