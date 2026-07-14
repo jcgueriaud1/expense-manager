@@ -2,6 +2,7 @@ package com.vaadin.expensemanager.report.ui;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -14,6 +15,7 @@ import com.vaadin.expensemanager.report.service.ExpenseReportRepository;
 import com.vaadin.expensemanager.report.service.ExpenseReportService;
 import com.vaadin.expensemanager.report.service.ReceiptUpload;
 import com.vaadin.expensemanager.report.service.ReportDetailDto;
+import com.vaadin.expensemanager.report.service.TravelDto;
 import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.ReferenceDataService;
 import com.vaadin.expensemanager.reference.VatRateDto;
@@ -133,6 +135,25 @@ abstract class AbstractReportViewUiTest extends SpringBrowserlessTest
     protected Long seedSubmittedReportWithReceipt(LocalDate date, String amount,
             String filename) {
         var id = seedReportWithReceipt(date, amount, filename);
+        service.submit(id, service.findMine(id).version());
+        return id;
+    }
+
+    /** Seeds a DRAFT report with one domestic trip (11 h → €54.00); returns its id. */
+    protected Long seedReportWithTravel(LocalDate date, LocalDateTime departure,
+            LocalDateTime returnAt) {
+        var travel = TravelDto.domestic(null, departure, returnAt, "Helsinki",
+                "Client visit", false, false, false);
+        var zero = BigDecimal.ZERO.setScale(2);
+        return service.create(new ReportDetailDto(null, date, "seed",
+                ReportStatus.DRAFT, 0L, List.of(), List.of(travel), zero, zero, zero,
+                zero));
+    }
+
+    /** Seeds a SUBMITTED report whose single generated line came from a trip. */
+    protected Long seedSubmittedReportWithTravel(LocalDate date,
+            LocalDateTime departure, LocalDateTime returnAt) {
+        var id = seedReportWithTravel(date, departure, returnAt);
         service.submit(id, service.findMine(id).version());
         return id;
     }

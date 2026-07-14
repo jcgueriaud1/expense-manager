@@ -2,12 +2,15 @@ package com.vaadin.expensemanager.report.ui;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 import com.vaadin.expensemanager.report.domain.ReportStatus;
 import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.VatRateDto;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
+import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.datepicker.DatePicker;
+import com.vaadin.flow.component.datetimepicker.DateTimePicker;
 import com.vaadin.flow.component.html.Image;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.test.context.support.WithUserDetails;
@@ -288,6 +291,131 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         // The preview affordance appears in the still-open dialog, before any save.
         assertThat(findButton().withAriaLabel("Preview receipt: taxi.jpg").exists())
                 .isTrue();
+    }
+
+    // --- Travel Calculator / domestic per-diem (Phase 4.2/4.3) ---
+
+    private static final LocalDateTime DEP = LocalDateTime.of(2026, 7, 1, 8, 0);
+
+    @Test
+    void insertingADomesticTripPreviewsGeneratesAndPersistsThePerDiem() {
+        navigate(ReportDetailView.class);
+
+        findButton().withText("Insert travel info").click();
+        findDateTimePicker().withLabel("Departure").setValue(DEP);
+        findDateTimePicker().withLabel("Return").setValue(DEP.plusHours(11));
+        findTextField().withLabel("Destinations").setValue("Helsinki");
+        findTextField().withLabel("Travel purpose").setValue("Client visit");
+
+        // The per-diem previews live as the dates are filled — no separate compute
+        // step (11 h → one full day €54). The preview lives in the dialog overlay
+        // (attached to the UI, not the view), so assert against the whole UI tree.
+        assertThat(UI.getCurrent().getElement().getTextRecursively())
+                .contains("Per diem: €54.00");
+
+        findButton().withText("Save trip").click();
+
+        // The trip card + the live "Per diem allowance" subtotal row appear before
+        // the report is even saved.
+        var text = getCurrentView().getElement().getTextRecursively();
+        assertThat(text).contains("Client visit", "Helsinki, Finland",
+                "Per diem allowance", "€54.00");
+
+        findButton().withText("Save").click();
+
+        var mine = service.listMine();
+        assertThat(mine).hasSize(1);
+        var loaded = service.findMine(mine.getFirst().id());
+        assertThat(loaded.travels()).hasSize(1);
+        assertThat(loaded.perDiemTotal()).isEqualByComparingTo("54.00");
+        assertThat(loaded.total()).isEqualByComparingTo("54.00");
+    }
+
+    @Test
+    void editingATripWithFreeLunchRegeneratesAHalvedPerDiem() {
+        var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(11));
+        navigate(ReportDetailView.class, id);
+
+        findButton().withText("Edit").click();          // the trip card's Edit
+        findCheckbox().withLabel("Free lunch provided?").click();
+        findButton().withText("Save trip").click();
+
+        // Live per-diem halves to €27.00; a save regenerates the line.
+        assertThat(getCurrentView().getElement().getTextRecursively()).contains("€27.00");
+        findButton().withText("Save").click();
+
+        assertThat(service.findMine(id).perDiemTotal()).isEqualByComparingTo("27.00");
+    }
+
+    @Test
+    void removingATripRemovesItsPerDiemOnSave() {
+        var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(11));
+        navigate(ReportDetailView.class, id);
+
+        assertThat(getCurrentView().getElement().getTextRecursively())
+                .contains("Per diem allowance");
+
+        findButton().withAriaLabel("Remove trip").click();
+        findButton().withText("Save").click();
+
+        assertThat(service.findMine(id).travels()).isEmpty();
+        assertThat(service.findMine(id).perDiemTotal()).isEqualByComparingTo("0.00");
+    }
+
+    @Test
+    void choosingADepartureConstrainsTheReturnPickerRangeAndViceVersa() {
+        navigate(ReportDetailView.class);
+
+        findButton().withText("Insert travel info").click();
+        findDateTimePicker().withLabel("Departure").setValue(DEP);
+        findDateTimePicker().withLabel("Return").setValue(DEP.plusHours(11));
+
+        // The overlay can no longer offer an invalid range: the return can't go
+        // before the departure, nor the departure after the return.
+        var ret = (DateTimePicker) findDateTimePicker().withLabel("Return")
+                .getComponent();
+        var dep = (DateTimePicker) findDateTimePicker().withLabel("Departure")
+                .getComponent();
+        assertThat(ret.getMin()).isEqualTo(DEP);
+        assertThat(dep.getMax()).isEqualTo(DEP.plusHours(11));
+    }
+
+    @Test
+    void anIncompleteTripShowsTheErrorSummaryAndGeneratesNothing() {
+        // The reciprocal min/max on the pickers means an invalid *range* can't be
+        // produced through the UI (see the constraint test above); the return-
+        // before-departure guard itself is covered at the domain/service layers.
+        // Here we prove the always-enabled Save + error-summary rule (ADR-0020) on
+        // the reachable invalid case: missing required fields.
+        navigate(ReportDetailView.class);
+
+        findButton().withText("Insert travel info").click();
+        findButton().withText("Save trip").click();
+
+        // The dialog overlay carries the reasons and stays open; nothing generated.
+        assertThat(UI.getCurrent().getElement().getTextRecursively()).contains(
+                "Departure date & time is required", "Destinations are required");
+        assertThat(findButton().withText("Save trip").exists()).isTrue();
+        assertThat(findSpan().withText("Per diem allowance").exists()).isFalse();
+    }
+
+    @Test
+    void aSubmittedReportShowsTheTripButHidesEveryTripAction() {
+        var id = seedSubmittedReportWithTravel(LocalDate.of(2026, 7, 10), DEP,
+                DEP.plusHours(11));
+        navigate(ReportDetailView.class, id);
+
+        // The trip info and its per-diem are still visible (read path)…
+        var text = getCurrentView().getElement().getTextRecursively();
+        assertThat(text).contains("Client visit", "Per diem allowance", "€54.00");
+        // …a trip-only read-only report must not prompt "add your first": the empty
+        // state is hidden, so no visible span carries it (ADR-0020)…
+        assertThat(findSpan().withText("No expenses yet — add your first.").exists())
+                .isFalse();
+        // …and every mutation surface is gone on a read-only report.
+        assertThat(findButton().withText("Insert travel info").exists()).isFalse();
+        assertThat(findButton().withText("Edit").exists()).isFalse();
+        assertThat(findButton().withAriaLabel("Remove trip").exists()).isFalse();
     }
 
     @Test

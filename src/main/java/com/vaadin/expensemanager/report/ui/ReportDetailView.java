@@ -16,6 +16,7 @@ import com.vaadin.expensemanager.report.service.ExpenseLineDto;
 import com.vaadin.expensemanager.report.service.ExpenseReportService;
 import com.vaadin.expensemanager.report.service.ReceiptUpload;
 import com.vaadin.expensemanager.report.service.ReportDetailDto;
+import com.vaadin.expensemanager.report.service.TravelDto;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
@@ -102,16 +103,26 @@ public class ReportDetailView extends VerticalLayout
     private final TextArea additionalInformation = new TextArea("Additional information");
     private final Span netDisplay = new Span();
     private final Span vatDisplay = new Span();
+    private final Span perDiemDisplay = new Span();
     private final Span grossDisplay = new Span();
     private final Button save = new Button("Save");
     private final Button submit = new Button("Submit for approval");
     private final Button addLine = new Button("Add expense", VaadinIcon.PLUS.create());
+    private final Button addTravel =
+            new Button("Insert travel info", VaadinIcon.AIRPLANE.create());
     private final Button delete = new Button("Delete");
     private final Binder<ReportFormModel> binder = new Binder<>();
     private final ReportFormModel model = new ReportFormModel();
 
     /** Working lines, the reactive source for both the cards and live totals. */
     private final transient ListSignal<ExpenseLineDto> lines = new ListSignal<>();
+
+    /** Working trips, the reactive source for the trip cards and the per-diem row. */
+    private final transient ListSignal<TravelDto> travels = new ListSignal<>();
+
+    /** Whether the loaded report is editable, as a signal so bound UI reacts on load. */
+    private final transient ValueSignal<Boolean> editableSignal =
+            new ValueSignal<>(Boolean.TRUE);
 
     /**
      * Buffered receipt mutations keyed by their working-line entry (ADR-0021):
@@ -163,6 +174,8 @@ public class ReportDetailView extends VerticalLayout
         delete.addClickListener(event -> confirmDelete());
         addLine.addThemeVariants(ButtonVariant.TERTIARY);
         addLine.addClickListener(event -> addLine());
+        addTravel.addThemeVariants(ButtonVariant.TERTIARY);
+        addTravel.addClickListener(event -> addTravel());
 
         // Submit is the full-width forward action; Save keeps working, Delete is
         // the quiet destructive one — a footer action bar (the mockup's footer).
@@ -173,7 +186,8 @@ public class ReportDetailView extends VerticalLayout
         actions.addClassName("detail-actions");
 
         add(headerRow(), errorSummary, statusCallout, reportDate,
-                additionalInformation, linesSection(), totalsCard(), actions);
+                additionalInformation, travelsSection(), linesSection(), totalsCard(),
+                actions);
     }
 
     @Override
@@ -211,10 +225,12 @@ public class ReportDetailView extends VerticalLayout
         // Set editability before repopulating so the card factory builds the
         // right (interactive vs read-only) cards.
         editable = dto.status().isEditable();
+        editableSignal.set(editable);
         reportDate.setReadOnly(!editable);
         additionalInformation.setReadOnly(!editable);
         save.setVisible(editable);
         addLine.setVisible(editable);
+        addTravel.setVisible(editable);
         // Submit only for a persisted DRAFT: a brand-new report must be saved
         // first, and resubmitting a REJECTED report is Phase 5 (out of scope).
         submit.setVisible(dto.isPersisted() && dto.status() == ReportStatus.DRAFT);
@@ -225,6 +241,10 @@ public class ReportDetailView extends VerticalLayout
         lines.clear();
         if (!dto.lines().isEmpty()) {
             lines.insertAllLast(dto.lines());
+        }
+        travels.clear();
+        if (!dto.travels().isEmpty()) {
+            travels.insertAllLast(dto.travels());
         }
     }
 
@@ -237,8 +257,8 @@ public class ReportDetailView extends VerticalLayout
         }
         var edited = new ReportDetailDto(working.id(), model.getReportDate(),
                 model.getAdditionalInformation(), working.status(),
-                working.version(), currentLines(), working.total(),
-                working.netTotal(), working.vatTotal());
+                working.version(), currentLines(), currentTravels(), working.total(),
+                working.netTotal(), working.vatTotal(), working.perDiemTotal());
         var receipts = pendingReceiptsByLineIndex();
         try {
             if (!working.isPersisted()) {
@@ -280,6 +300,11 @@ public class ReportDetailView extends VerticalLayout
         return lines.peek().stream().map(ValueSignal::peek).toList();
     }
 
+    /** A snapshot of the working trips, in order, for a save. */
+    private List<TravelDto> currentTravels() {
+        return travels.peek().stream().map(ValueSignal::peek).toList();
+    }
+
     /**
      * Maps each buffered receipt mutation to its line's position in the save
      * snapshot (ADR-0021). Iterating {@code lines.peek()} shares the order with
@@ -310,6 +335,18 @@ public class ReportDetailView extends VerticalLayout
                         pendingReceipts.put(entry, receipt);
                     }
                 }).open();
+    }
+
+    /** Opens the trip editor to insert a new trip (glossary: Travel Calculator). */
+    private void addTravel() {
+        new TravelEditorDialog(null, service::previewDomesticTravel,
+                travels::insertLast).open();
+    }
+
+    /** Re-opens the trip editor pre-filled; a save regenerates the per-diem line. */
+    private void openTravelEditor(ValueSignal<TravelDto> entry) {
+        new TravelEditorDialog(entry.peek(), service::previewDomesticTravel,
+                entry::set).open();
     }
 
     private void openEditor(ValueSignal<ExpenseLineDto> entry) {
@@ -414,9 +451,15 @@ public class ReportDetailView extends VerticalLayout
     private Div totalsCard() {
         netDisplay.bindText(Signal.computed(() -> formatEur(currentTotals().net())));
         vatDisplay.bindText(Signal.computed(() -> formatEur(currentTotals().vat())));
-        grossDisplay.bindText(Signal.computed(
-                () -> formatEur(currentTotals().gross())));
+        perDiemDisplay.bindText(Signal.computed(() -> formatEur(currentAllowance())));
+        grossDisplay.bindText(Signal.computed(() -> formatEur(currentGrandTotal())));
         grossDisplay.addClassName("totals-grand");
+
+        // The tax-free per-diem allowance, broken out as its own subtotal row —
+        // shown only when a trip earned one (Phase 4.3).
+        var perDiemRow = breakdownRow("Per diem allowance", perDiemDisplay);
+        perDiemRow.bindVisible(
+                Signal.computed(() -> currentAllowance().signum() != 0));
 
         var totalLabel = new Span("Total to reimburse");
         var totalRow = new HorizontalLayout(totalLabel, grossDisplay);
@@ -426,7 +469,7 @@ public class ReportDetailView extends VerticalLayout
         totalRow.addClassName("totals-total-row");
 
         var card = new Div(breakdownRow("Net", netDisplay),
-                breakdownRow("VAT", vatDisplay), totalRow);
+                breakdownRow("VAT", vatDisplay), perDiemRow, totalRow);
         card.setWidthFull();
         card.addClassName("totals-card");
         return card;
@@ -442,10 +485,86 @@ public class ReportDetailView extends VerticalLayout
         return row;
     }
 
+    /**
+     * The trips section (Phase 4.2/4.3): the Trip & Allowance cards above the
+     * "Insert travel info" action. Both the cards' Edit/Remove affordances and the
+     * action are hidden on a read-only report (the {@link #addTravel} visibility is
+     * toggled in {@link #load}; the card factory reads {@link #editable}).
+     */
+    private Div travelsSection() {
+        var cardList = new VerticalLayout();
+        cardList.setPadding(false);
+        cardList.setSpacing("var(--vaadin-gap-m)");
+        cardList.setWidthFull();
+        cardList.bindChildren(travels, this::travelCard);
+
+        var section = new Div(cardList, addTravel);
+        section.setWidthFull();
+        return section;
+    }
+
+    /** One "Trip & Allowance" card — trip info only (no amounts), with Edit. */
+    private Component travelCard(ValueSignal<TravelDto> entry) {
+        var title = new Span();
+        title.bindText(entry.map(t -> t.purpose() == null || t.purpose().isBlank()
+                ? "Trip" : t.purpose()));
+        title.addClassName("line-name");
+        var where = new Span();
+        where.bindText(entry.map(ReportDetailView::tripWhere));
+        where.addClassName("muted");
+        var when = new Span();
+        when.bindText(entry.map(t -> ReportViewSupport.formatTripRange(
+                t.departureAt(), t.returnAt())));
+        when.addClassName("muted-xs");
+        var texts = new VerticalLayout(title, where, when);
+        texts.setPadding(false);
+        texts.setSpacing(false);
+
+        var icon = VaadinIcon.AIRPLANE.create();
+        icon.addClassName("travel-card-icon");
+
+        var body = new HorizontalLayout(icon, texts);
+        body.setWidthFull();
+        body.setAlignItems(FlexComponent.Alignment.CENTER);
+        body.expand(texts);
+
+        var card = new HorizontalLayout(body);
+        card.setWidthFull();
+        card.setAlignItems(FlexComponent.Alignment.CENTER);
+        card.expand(body);
+        card.addClassName("line-card");
+        card.addClassName("travel-card");
+        if (editable) {
+            var edit = new Button("Edit", event -> openTravelEditor(entry));
+            edit.addThemeVariants(ButtonVariant.TERTIARY);
+            var trash = new Button(VaadinIcon.TRASH.create(),
+                    event -> travels.remove(entry));
+            trash.addThemeVariants(ButtonVariant.TERTIARY, ButtonVariant.ERROR);
+            trash.getElement().setAttribute("aria-label", "Remove trip");
+            card.add(edit, trash);
+        }
+        return card;
+    }
+
+    /** "destinations, country" for a trip card — the trip's where-line. */
+    private static String tripWhere(TravelDto trip) {
+        var destinations = trip.destinations() == null ? "" : trip.destinations();
+        if (trip.country() == null || trip.country().isBlank()) {
+            return destinations;
+        }
+        return destinations.isBlank() ? trip.country()
+                : destinations + ", " + trip.country();
+    }
+
     private Div linesSection() {
         var emptyState = new Span("No expenses yet — add your first.");
         emptyState.addClassName("muted");
-        emptyState.bindVisible(Signal.computed(() -> lines.get().isEmpty()));
+        // Only invite adding when the report is editable — a read-only report that
+        // carries only a trip (no manual lines) must not prompt an action it can't
+        // offer (ADR-0020). Both are signals so the effect always reads at least one
+        // and re-runs when the report's editability flips on (re)load.
+        emptyState.bindVisible(Signal.computed(
+                () -> lines.get().isEmpty() && editableSignal.get()));
 
         var cardList = new VerticalLayout();
         cardList.setPadding(false);
@@ -549,6 +668,19 @@ public class ReportDetailView extends VerticalLayout
                 .filter(dto -> dto.amount() != null && dto.vatRatePercent() != null)
                 .map(dto -> LineAmounts.of(dto.amount(), dto.vatRatePercent()))
                 .reduce(LineAmounts.zero(), LineAmounts::add);
+    }
+
+    /** The tax-free per-diem allowance summed live from the working trips (Phase 4.3). */
+    private BigDecimal currentAllowance() {
+        return travels.get().stream().map(ValueSignal::get)
+                .map(t -> t.perDiemAmount() == null
+                        ? BigDecimal.ZERO.setScale(2) : t.perDiemAmount())
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+    }
+
+    /** Grand total = manual gross (Net + VAT) + the per-diem allowance. */
+    private BigDecimal currentGrandTotal() {
+        return currentTotals().gross().add(currentAllowance());
     }
 
     private static BigDecimal grossOf(ExpenseLineDto dto) {

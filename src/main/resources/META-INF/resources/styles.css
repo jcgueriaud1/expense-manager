@@ -139,6 +139,36 @@
 .line-amount { font-weight: var(--aura-font-weight-semibold); font-size: var(--aura-font-size-m); }
 .line-receipt { margin-top: var(--vaadin-gap-s); }
 
+/* ---- Trip & Allowance card (Phase 4.2/4.3) ---- */
+.travel-card {
+    /* A subtle accent-tinted surface so a trip reads as the report's headline,
+     * distinct from the plain expense-line cards below it. */
+    background: var(--aura-accent-surface);
+    border-color: var(--aura-accent-border-color);
+}
+.travel-card-icon {
+    color: var(--aura-accent-color);
+    width: 1.25rem;
+    height: 1.25rem;
+    flex: none;
+}
+
+/* The computed per-diem preview inside the trip dialog. */
+.travel-preview {
+    display: flex;
+    flex-direction: column;
+    gap: var(--vaadin-gap-xs);
+    margin-top: var(--vaadin-gap-m);
+    padding: var(--vaadin-padding-m);
+    border-radius: var(--vaadin-radius-m);
+    background: var(--aura-accent-surface);
+    border: 1px solid var(--aura-accent-border-color);
+}
+.travel-preview-amount {
+    font-weight: var(--aura-font-weight-semibold);
+    font-size: var(--aura-font-size-l);
+}
+
 .totals-card {
     padding: var(--vaadin-padding-l);
     border: 1px solid var(--vaadin-border-color);

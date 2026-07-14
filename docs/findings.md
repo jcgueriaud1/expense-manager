@@ -1089,3 +1089,89 @@ Deployment/Observability · UX-spec
   value-bearing locators or surface the locator method list in the browserless
   testing docs so the tester vocabulary is discoverable without reading jars.
 - Owner / next step: none.
+
+### F-034 — Generated per-diem line is coupled to reference data by name/value, with no first-class marker
+- Date: 2026-07-14
+- Area: Spec
+- Severity: Medium
+- Task being attempted: generating the read-only 0 %-VAT per-diem line from a
+  Travel (#49). Every `expense_line` row needs a non-null `expense_type_id` and
+  `vat_rate_id` (V5), so the generated line must reference a real reference-data
+  type + rate — but there is no first-class way to say "this is *the* per-diem
+  type / the 0 % rate".
+- Expected vs actual: expected a stable, semantic hook (e.g. a `system`/`kind`
+  marker on `ExpenseType`/`VatRate`, or a dedicated allowance category). Actual:
+  the service resolves the type by the literal name `"Travel allowance"`
+  (`findFirstByNameIgnoreCaseAndActiveTrue…`) and the rate by value `0.00`
+  (`findFirstByValueAndActiveTrue…`). Both are admin-editable (ADR-0018), so a
+  rename or deactivation of that seed row breaks per-diem generation with a
+  runtime `IllegalStateException` at save time.
+- Workaround used: constant `PER_DIEM_EXPENSE_TYPE = "Travel allowance"` +
+  `ZERO_VAT` in `ExpenseReportService`, resolved unfiltered-by-name; a clear
+  `IllegalStateException` if the row is missing so the failure is legible.
+- Evidence: `report/service/ExpenseReportService` (`perDiemExpenseType()`,
+  `zeroVatRate()`), `reference/ExpenseTypeRepository`,
+  `reference/VatRateRepository`; seed in `db/migration/V3__reference_data.sql`.
+- Impact: a hidden coupling between admin-editable reference data and allowance
+  generation. Low blast radius today (the seed exists and tests cover the happy
+  path), but an admin action can break a core flow with no compile-time signal.
+- Suggested Vaadin/product improvement: none (domain-modelling gap, not a
+  framework one). Product next step: add a `system`/`purpose` marker to the
+  reference tables (Phase 4.4/5) so allowance lines bind to a role, not a label.
+- Owner / next step: revisit when the approval/export slices need to recognise
+  allowance lines by kind rather than by expense-type name.
+
+### F-035 — `Signal.computed` throws `MissingSignalUsageException` when a `&&` short-circuits the signal read away
+- Date: 2026-07-14
+- Area: Vaadin
+- Severity: Low
+- Task being attempted: binding an empty-state's visibility to "no manual lines
+  *and* the report is editable" — `Signal.computed(() -> editable && lines.get().isEmpty())`.
+- Expected vs actual: expected the computed to evaluate normally. Actual: when
+  `editable` was `false`, Java short-circuited the `&&` and never called
+  `lines.get()`, so the effect read *zero* signals and Vaadin threw
+  `MissingSignalUsageException: Effect action must read at least one signal
+  value.` — surfacing as an `ErrorView` on a read-only report, not a validation
+  message.
+- Workaround used: read a signal unconditionally first
+  (`lines.get().isEmpty() && editableSignal.get()`), and promote the plain
+  `editable` boolean to a `ValueSignal<Boolean>` so the computed is both
+  side-effect-safe *and* re-runs when editability flips on (re)load (a plain
+  field wouldn't trigger recomputation).
+- Evidence: `report/ui/ReportDetailView` (`editableSignal`, `linesSection()`);
+  failing then passing `ReportDetailViewUiTest.aSubmittedReportShowsTheTripBut…`.
+- Impact: an easy trap — a perfectly reasonable boolean guard placed *before* the
+  signal read turns a computed into a crash, and only on the branch that
+  short-circuits (so it can pass in draft and fail read-only). The runtime
+  message is good once you see it, but the failure mode (whole-view error) is
+  disproportionate.
+- Suggested Vaadin/product improvement: either treat "no signal read this run"
+  as a stable/`false` computed rather than an exception, or document the
+  short-circuit hazard in the Signals guide with this exact example.
+- Owner / next step: none.
+
+### F-036 — Browserless: dialog/overlay text is not under `getCurrentView()`, and `getTextRecursively()` includes hidden elements
+- Date: 2026-07-14
+- Area: Verification
+- Severity: Low
+- Task being attempted: asserting the trip dialog's computed per-diem preview
+  and that a hidden empty-state is not shown, in `ReportDetailViewUiTest`.
+- Expected vs actual: (1) `getCurrentView().getElement().getTextRecursively()`
+  did **not** contain the open dialog's text — a `Dialog` overlay attaches to the
+  `UI`, not the routed view — so preview/error assertions saw nothing. (2)
+  `getTextRecursively()` **does** include `setVisible(false)` elements (visibility
+  is a client concern; the server element tree still carries them), so a
+  `doesNotContain(...)` assertion can't prove something is hidden.
+- Workaround used: assert open-dialog text against
+  `UI.getCurrent().getElement().getTextRecursively()`; assert a component is
+  hidden via the locator instead (`findSpan().withText(...).exists()` is `false`
+  for an invisible span, mirroring how the hidden-button tests use `.exists()`).
+- Evidence: `report/ui/ReportDetailViewUiTest`
+  (`insertingADomesticTrip…`, `aSubmittedReportShowsTheTrip…`).
+- Impact: two non-obvious verification pitfalls; each cost one red run to
+  diagnose. The locator's "invisible ⇒ absent" rule is the reliable primitive
+  for both existence and visibility assertions.
+- Suggested Vaadin/product improvement: note in the browserless docs that
+  overlays live under the `UI` (not the view) and that text-tree assertions
+  ignore visibility, pointing to the locator `.exists()` idiom for visibility.
+- Owner / next step: none.
