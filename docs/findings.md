@@ -1034,3 +1034,58 @@ Deployment/Observability · UX-spec
   `Page.setColorScheme`/`WebStorage` APIs from the Aura light/dark page, so the
   idiomatic path is discoverable at the point of need.
 - Owner / next step: none — `ThemeSwitcher` now uses the idiomatic APIs.
+
+### F-032 — Allowance rate seed values are provisional (verify against Verohallinto)
+- Date: 2026-07-14
+- Area: Spec
+- Severity: Medium
+- Task being attempted: standing up the Phase 4.1/4.4 allowance rate config
+  (issue #48) — the per-year reference data the Travel Calculator will cost
+  against — seeded from the "Verohallinto 2026 decision".
+- Expected vs actual: Expected an authoritative, confirmed 2026 rate table to
+  seed from. Actual: the PRD carries **provisional** domestic/km/meal figures
+  (full €54 / partial €25 / meal €13.50 / km €0.59, thresholds 10 h / 6 h) and
+  no confirmed foreign per-diem table, so the V7 foreign seed is a
+  representative ~12-country **starter sample** at plausible amounts, not the
+  real decision. The domain memory flags Finnish statutory rates as
+  trust-the-user / verify-before-shipping.
+- Workaround used: seeded the provisional values, modelled history **by year**
+  (not by an `active` flag — the deliberate contrast with ADR-0018) so a
+  corrected year is just a new/edited row that never mutates a prior year, and
+  gave the admin a runtime settings screen (`AllowanceRatesView`) to fix any
+  figure and add a country/year. The caveat is repeated in the V7 migration
+  header comment and the entity Javadoc.
+- Evidence: `db/migration/V7__allowance_rates.sql` (header + seed),
+  `allowance/AllowanceRateService`, `allowance/ui/AllowanceRatesView`;
+  [[user-finnish-tax-domain]] memory.
+- Impact: until an admin verifies each year's figures against the published
+  Verohallinto decision, calculator output (Phase 4.2) is indicative only. The
+  by-year model means verification is a data task, not a code change.
+- Suggested Vaadin/product improvement: none (domain/data caveat). Product
+  next step: confirm the 2026 foreign per-diem table before the calculator
+  slice (#49) ships user-visible allowance amounts.
+- Owner / next step: admin verifies 2026 figures; the config screen is the fix
+  surface.
+
+### F-033 — Browserless `ComboBoxLocator` has no `getValue()`; the selection getter is `getSelected()`
+- Date: 2026-07-14
+- Area: Verification
+- Severity: Low
+- Task being attempted: asserting the selected year in the allowance-rate view
+  test (`findComboBox(Integer.class)` then read the current value).
+- Expected vs actual: Expected the browserless `ComboBoxLocator` to expose a
+  `getValue()` mirroring `HasValue#getValue()` (the field locators read as if
+  they proxy the component). Actual: it exposes `getSelected()` (and
+  `getSuggestions()`/`selectItem(String)`); `getValue()` does not compile. The
+  locator is a *tester*, not the component, so its API is its own vocabulary.
+- Workaround used: `findComboBox(Integer.class).getSelected()`.
+- Evidence: `allowance/ui/AllowanceRatesViewUiTest`;
+  `com.vaadin.flow.component.combobox.ComboBoxLocator` (browserless-test-shared
+  sources).
+- Impact: a small compile-time speed bump; the error message
+  ("cannot find symbol getValue()") points the right way once you read the
+  locator source.
+- Suggested Vaadin/product improvement: either add a `getValue()` alias on the
+  value-bearing locators or surface the locator method list in the browserless
+  testing docs so the tester vocabulary is discoverable without reading jars.
+- Owner / next step: none.
