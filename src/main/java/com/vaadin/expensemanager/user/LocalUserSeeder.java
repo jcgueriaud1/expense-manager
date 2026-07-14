@@ -24,7 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
  * are auto-provisioned by real Google login (ADR-0007).
  */
 @Component
-@Profile({"local", "test", "vherd"})
+@Profile({"local", "test"})
 public class LocalUserSeeder implements ApplicationRunner {
 
     /** Well-known email for the seeded plain user; the login password is the shared dev password. */

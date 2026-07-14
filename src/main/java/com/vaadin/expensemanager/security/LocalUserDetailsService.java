@@ -25,7 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
  * {@code UserDetailsService} is wired.
  */
 @Service
-@Profile({"local", "test", "vherd"})
+@Profile({"local", "test"})
 public class LocalUserDetailsService implements UserDetailsService {
 
     private final UserRepository userRepository;
