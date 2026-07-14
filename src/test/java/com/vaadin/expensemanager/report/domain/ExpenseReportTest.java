@@ -3,6 +3,7 @@ package com.vaadin.expensemanager.report.domain;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 
@@ -235,7 +236,121 @@ class ExpenseReportTest {
                 .isInstanceOf(IllegalStateException.class);
     }
 
+    // --- Travel / per-diem generated lines (Phase 4.2/4.3) ---
+
+    private static final ExpenseType TRAVEL_TYPE =
+            new ExpenseType("Travel allowance", 0, RATE_0);
+    private static final LocalDateTime DEP = LocalDateTime.of(2026, 7, 1, 8, 0);
+
+    @Test
+    void reconcilingATripGeneratesAReadOnlyPerDiemLine() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+
+        report.reconcileTravels(List.of(travelSpec(null, "54.00", "one full day")));
+
+        // The trip is tracked and a single generated line carries the per-diem.
+        assertThat(report.getTravels()).hasSize(1);
+        assertThat(report.getLines()).hasSize(1);
+        var line = report.getLines().getFirst();
+        assertThat(line.isGenerated()).isTrue();
+        assertThat(line.getVatRate()).isSameAs(RATE_0);
+        assertThat(line.getComment()).isEqualTo("one full day");
+        assertThat(line.getAmount()).isEqualByComparingTo("54.00");
+        // Broken out of Net/VAT, surfaced as its own allowance subtotal.
+        assertThat(report.perDiemTotal()).isEqualByComparingTo("54.00");
+        assertThat(report.netTotal()).isEqualByComparingTo("0.00");
+        assertThat(report.total()).isEqualByComparingTo("54.00");
+    }
+
+    @Test
+    void editingATripRegeneratesItsLineInPlace() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+        report.reconcileTravels(List.of(travelSpec(null, "54.00", "full")));
+        // Stamp a persisted id so the edit matches the existing trip (a pure
+        // unit test never flushes, so the trip's id would otherwise stay null).
+        setId(report.getTravels().getFirst());
+        var persistedId = report.getTravels().getFirst().getId();
+
+        report.reconcileTravels(List.of(travelSpec(persistedId, "79.00", "full + partial")));
+
+        assertThat(report.getTravels()).hasSize(1);
+        assertThat(report.getLines()).hasSize(1);
+        assertThat(report.getLines().getFirst().getAmount()).isEqualByComparingTo("79.00");
+        assertThat(report.perDiemTotal()).isEqualByComparingTo("79.00");
+    }
+
+    @Test
+    void removingATripRemovesItsGeneratedLine() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+        report.reconcileTravels(List.of(travelSpec(null, "54.00", "full")));
+        assertThat(report.getLines()).hasSize(1);
+
+        report.reconcileTravels(List.of());
+
+        assertThat(report.getTravels()).isEmpty();
+        assertThat(report.getLines()).isEmpty();
+        assertThat(report.perDiemTotal()).isEqualByComparingTo("0.00");
+    }
+
+    @Test
+    void aTripEarningNoPerDiemGeneratesNoLine() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+
+        // A not-eligible / too-short trip: zero per-diem → tracked trip, no line.
+        report.reconcileTravels(List.of(travelSpec(null, "0.00", "not eligible")));
+
+        assertThat(report.getTravels()).hasSize(1);
+        assertThat(report.getLines()).isEmpty();
+        assertThat(report.perDiemTotal()).isEqualByComparingTo("0.00");
+    }
+
+    @Test
+    void manualAndGeneratedLinesCoexistWithSplitTotals() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+
+        report.reconcile(
+                List.of(spec(null, "100.00", RATE_255)),
+                List.of(travelSpec(null, "54.00", "full")));
+
+        assertThat(report.getLines()).hasSize(2);
+        // Manual line first, generated per-diem line trailing.
+        assertThat(report.manualLines()).hasSize(1);
+        assertThat(report.getLines().get(0).isGenerated()).isFalse();
+        assertThat(report.getLines().get(1).isGenerated()).isTrue();
+        // Net/VAT exclude the tax-free per-diem; Total = Net + VAT + allowance.
+        assertThat(report.netTotal()).isEqualByComparingTo("79.68");
+        assertThat(report.vatTotal()).isEqualByComparingTo("20.32");
+        assertThat(report.perDiemTotal()).isEqualByComparingTo("54.00");
+        assertThat(report.total()).isEqualByComparingTo("154.00");
+    }
+
+    @Test
+    void reconcileTravelsWithAnUnknownIdIsRejected() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+
+        assertThatThrownBy(() -> report.reconcileTravels(
+                List.of(travelSpec(999L, "54.00", "x"))))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
     private static ExpenseLineSpec spec(Long id, String amount, VatRate rate) {
         return new ExpenseLineSpec(id, TYPE, new BigDecimal(amount), rate, null);
+    }
+
+    private static TravelSpec travelSpec(Long id, String perDiem, String explanation) {
+        return new TravelSpec(id, DEP, DEP.plusHours(11), "Helsinki", "Client visit",
+                "Finland", false, false, false, TRAVEL_TYPE, RATE_0,
+                new BigDecimal(perDiem), explanation);
+    }
+
+    /** Reflectively stamps a generated id on a transient travel, to model persistence. */
+    private static void setId(Travel travel) {
+        try {
+            var field = Travel.class.getDeclaredField("id");
+            field.setAccessible(true);
+            field.set(travel, 1L);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
     }
 }

@@ -2,6 +2,7 @@ package com.vaadin.expensemanager.report.service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -492,6 +493,136 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
     @Test
     void receiptForDownloadIsEmptyForAMissingId() {
         assertThat(service.receiptForDownload(-1L)).isEmpty();
+    }
+
+    // --- Travel / domestic per-diem (Phase 4.2/4.3) ---
+
+    private static final LocalDateTime DEP = LocalDateTime.of(2026, 7, 1, 8, 0);
+
+    @Test
+    void previewComputesTheServerAuthoritativePerDiemWithoutPersisting() {
+        // 11 h (> 10 h) → one full day at the seeded 2026 rate (€54.00).
+        var preview = service.previewDomesticTravel(
+                domesticTravel(null, DEP, DEP.plusHours(11), false, false));
+
+        assertThat(preview.perDiemAmount()).isEqualByComparingTo("54.00");
+        assertThat(preview.perDiemExplanation()).contains("full day");
+        // Nothing was persisted by a preview.
+        assertThat(service.listMine()).isEmpty();
+    }
+
+    @Test
+    void createWithATripPersistsTheTravelAndItsGeneratedPerDiemLine() {
+        var id = service.create(dtoWithTravels(LocalDate.of(2026, 7, 10),
+                List.of(domesticTravel(null, DEP, DEP.plusHours(11), false, false))));
+
+        var loaded = service.findMine(id);
+        // The trip round-trips; the manual line list stays empty (no cards).
+        assertThat(loaded.travels()).hasSize(1);
+        assertThat(loaded.lines()).isEmpty();
+        var trip = loaded.travels().getFirst();
+        assertThat(trip.destinations()).isEqualTo("Helsinki");
+        assertThat(trip.country()).isEqualTo("Finland");
+        assertThat(trip.perDiemAmount()).isEqualByComparingTo("54.00");
+        // The per-diem is broken out of Net/VAT and into its own subtotal.
+        assertThat(loaded.perDiemTotal()).isEqualByComparingTo("54.00");
+        assertThat(loaded.netTotal()).isEqualByComparingTo("0.00");
+        assertThat(loaded.total()).isEqualByComparingTo("54.00");
+    }
+
+    @Test
+    void editingATripRecostsAndRegeneratesItsLine() {
+        var id = service.create(dtoWithTravels(LocalDate.of(2026, 7, 10),
+                List.of(domesticTravel(null, DEP, DEP.plusHours(11), false, false))));
+        var loaded = service.findMine(id);
+        var trip = loaded.travels().getFirst();
+
+        // Free lunch now halves it: €54.00 → €27.00.
+        var edited = domesticTravel(trip.id(), DEP, DEP.plusHours(11), false, true);
+        service.update(id, dtoWithTravels(id, LocalDate.of(2026, 7, 10),
+                loaded.version(), List.of(edited)), loaded.version());
+
+        var reloaded = service.findMine(id);
+        assertThat(reloaded.travels()).hasSize(1);
+        assertThat(reloaded.travels().getFirst().perDiemAmount())
+                .isEqualByComparingTo("27.00");
+        assertThat(reloaded.perDiemTotal()).isEqualByComparingTo("27.00");
+    }
+
+    @Test
+    void deletingATripRemovesItsGeneratedLine() {
+        var id = service.create(dtoWithTravels(LocalDate.of(2026, 7, 10),
+                List.of(domesticTravel(null, DEP, DEP.plusHours(11), false, false))));
+        var loaded = service.findMine(id);
+
+        entityManager.clear();
+        service.update(id, dtoWithTravels(id, LocalDate.of(2026, 7, 10),
+                loaded.version(), List.of()), loaded.version());
+
+        var reloaded = service.findMine(id);
+        assertThat(reloaded.travels()).isEmpty();
+        assertThat(reloaded.perDiemTotal()).isEqualByComparingTo("0.00");
+        // No dangling generated line left behind on the aggregate.
+        assertThat(reportRepository.findById(id).orElseThrow().getLines()).isEmpty();
+    }
+
+    @Test
+    void aNotEligibleTripPersistsTheTravelButGeneratesNoLine() {
+        var id = service.create(dtoWithTravels(LocalDate.of(2026, 7, 10),
+                List.of(domesticTravel(null, DEP, DEP.plusHours(11), true, false))));
+
+        var loaded = service.findMine(id);
+        assertThat(loaded.travels()).hasSize(1);
+        assertThat(loaded.perDiemTotal()).isEqualByComparingTo("0.00");
+        assertThat(reportRepository.findById(id).orElseThrow().getLines()).isEmpty();
+    }
+
+    @Test
+    void aTripAndAManualLineCoexistWithSplitTotals() {
+        var type = firstActiveType();
+        var rate255 = rateByValue("25.5");
+        var dto = new ReportDetailDto(null, LocalDate.of(2026, 7, 10), "trip",
+                ReportStatus.DRAFT, 0L, List.of(newLine(type, rate255, "100.00", "hotel")),
+                List.of(domesticTravel(null, DEP, DEP.plusHours(11), false, false)),
+                ZERO, ZERO, ZERO, ZERO);
+
+        var id = service.create(dto);
+
+        var loaded = service.findMine(id);
+        assertThat(loaded.lines()).hasSize(1);
+        assertThat(loaded.travels()).hasSize(1);
+        // Net/VAT from the VAT-bearing line; per-diem broken out; Total sums all.
+        assertThat(loaded.netTotal()).isEqualByComparingTo("79.68");
+        assertThat(loaded.vatTotal()).isEqualByComparingTo("20.32");
+        assertThat(loaded.perDiemTotal()).isEqualByComparingTo("54.00");
+        assertThat(loaded.total()).isEqualByComparingTo("154.00");
+    }
+
+    @Test
+    void savingATripWithReturnBeforeDepartureIsRejected() {
+        assertThatThrownBy(() -> service.create(dtoWithTravels(LocalDate.of(2026, 7, 10),
+                List.of(domesticTravel(null, DEP, DEP.minusHours(1), false, false)))))
+                .isInstanceOf(IllegalArgumentException.class);
+        // Rejected before persistence — no partial report left behind.
+        assertThat(service.listMine()).isEmpty();
+    }
+
+    private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);
+
+    private static TravelDto domesticTravel(Long id, LocalDateTime departure,
+            LocalDateTime returnAt, boolean notEligible, boolean freeLunch) {
+        return TravelDto.domestic(id, departure, returnAt, "Helsinki", "Client visit",
+                notEligible, freeLunch, false);
+    }
+
+    private static ReportDetailDto dtoWithTravels(LocalDate date, List<TravelDto> travels) {
+        return dtoWithTravels(null, date, 0L, travels);
+    }
+
+    private static ReportDetailDto dtoWithTravels(Long id, LocalDate date, long version,
+            List<TravelDto> travels) {
+        return new ReportDetailDto(id, date, "trip", ReportStatus.DRAFT, version,
+                List.of(), travels, ZERO, ZERO, ZERO, ZERO);
     }
 
     private static byte[] pad(byte... magic) {

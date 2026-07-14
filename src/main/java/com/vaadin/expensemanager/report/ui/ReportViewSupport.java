@@ -2,6 +2,9 @@ package com.vaadin.expensemanager.report.ui;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 
 import com.vaadin.expensemanager.report.domain.ReportStatus;
 import com.vaadin.flow.component.badge.Badge;
@@ -79,5 +82,26 @@ final class ReportViewSupport {
     /** VAT rate percent without trailing zeros, e.g. {@code "25.5 %"}. */
     static String formatPercent(BigDecimal percent) {
         return percent.stripTrailingZeros().toPlainString() + " %";
+    }
+
+    private static final DateTimeFormatter TRIP_DATE_TIME =
+            DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm", Locale.ENGLISH);
+    private static final DateTimeFormatter TRIP_TIME =
+            DateTimeFormatter.ofPattern("HH:mm", Locale.ENGLISH);
+
+    /**
+     * A trip's date range for a Trip & Allowance card, e.g.
+     * {@code "1 Jul 2026, 08:00 – 19:00"} for a same-day trip or
+     * {@code "1 Jul 2026, 08:00 – 3 Jul 2026, 10:00"} across days. Returns an empty
+     * string if either endpoint is missing.
+     */
+    static String formatTripRange(LocalDateTime departure, LocalDateTime returnAt) {
+        if (departure == null || returnAt == null) {
+            return "";
+        }
+        String start = TRIP_DATE_TIME.format(departure);
+        String end = departure.toLocalDate().equals(returnAt.toLocalDate())
+                ? TRIP_TIME.format(returnAt) : TRIP_DATE_TIME.format(returnAt);
+        return start + " – " + end;
     }
 }

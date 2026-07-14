@@ -34,10 +34,17 @@ import jakarta.persistence.Table;
  * copied): a rate the admin later deactivates is retained, so a historical line
  * keeps its filed rate (ADR-0018).
  *
+ * <p>A line may be <strong>manual</strong> (user-entered, {@link #travel}
+ * {@code null}) or <strong>generated</strong> — a read-only per-diem line linked
+ * to the {@link Travel} that produced it (Phase 4.2/4.3). A generated line is
+ * created via {@link #generated} and regenerated in place via
+ * {@link #updateGenerated}; it is never edited or removed on its own, only
+ * through its travel.
+ *
  * <p>Created and mutated only through the aggregate
- * ({@link ExpenseReport#reconcileLines}); the constructor and the
- * {@link #update} seam are package-visible so the invariants stay under the
- * aggregate's control (ADR-0006).
+ * ({@link ExpenseReport#reconcile}); the constructor and the {@link #update}
+ * seam are package-visible so the invariants stay under the aggregate's control
+ * (ADR-0006).
  */
 @Entity
 @Table(name = "expense_line")
@@ -61,6 +68,15 @@ public class ExpenseLine extends AuditedEntity {
     @Column(name = "comment")
     private String comment;
 
+    /**
+     * The travel that generated this line, or {@code null} for a manual line
+     * (glossary: Travel Calculator). A non-null value marks the line as a
+     * read-only generated per-diem line owned by its {@link Travel} (Phase 4.2).
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "travel_id")
+    private Travel travel;
+
     /** JPA constructor. */
     protected ExpenseLine() {
     }
@@ -73,6 +89,18 @@ public class ExpenseLine extends AuditedEntity {
         this.comment = normalize(comment);
     }
 
+    /**
+     * Creates a read-only generated per-diem line linked to {@code travel}
+     * (Phase 4.2). The amount must be non-zero — the aggregate only generates a
+     * line when the trip earned an allowance.
+     */
+    static ExpenseLine generated(Travel travel, ExpenseType expenseType,
+            BigDecimal amount, VatRate vatRate, String comment) {
+        var line = new ExpenseLine(expenseType, amount, vatRate, comment);
+        line.travel = travel;
+        return line;
+    }
+
     /** Applies edited values to an existing line (aggregate reconciliation seam). */
     void update(ExpenseType expenseType, BigDecimal amount, VatRate vatRate,
             String comment) {
@@ -80,6 +108,23 @@ public class ExpenseLine extends AuditedEntity {
         this.vatRate = requireRate(vatRate);
         this.amount = requireNonZeroAmount(amount);
         this.comment = normalize(comment);
+    }
+
+    /** Regenerates this line's figures from its (re-costed) travel. */
+    void updateGenerated(Travel travel, ExpenseType expenseType, BigDecimal amount,
+            VatRate vatRate, String comment) {
+        update(expenseType, amount, vatRate, comment);
+        this.travel = travel;
+    }
+
+    /** The travel that generated this line, or {@code null} if it is manual. */
+    public Travel getTravel() {
+        return travel;
+    }
+
+    /** Whether this is a read-only generated per-diem line (ADR-0006). */
+    public boolean isGenerated() {
+        return travel != null;
     }
 
     /** The derived net/VAT/gross figures of this line (ADR-0010). */

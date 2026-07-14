@@ -1,6 +1,8 @@
 package com.vaadin.expensemanager.reference;
 
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -19,4 +21,11 @@ public interface VatRateRepository extends JpaRepository<VatRate, Long> {
      * the table but excluded here.
      */
     List<VatRate> findByActiveTrueOrderByDisplayOrderAscIdAsc();
+
+    /**
+     * The active VAT rate of a given percent, e.g. the 0 % rate for generated
+     * per-diem lines (Phase 4.2). Lowest display order wins if duplicated.
+     */
+    Optional<VatRate> findFirstByValueAndActiveTrueOrderByDisplayOrderAscIdAsc(
+            BigDecimal value);
 }

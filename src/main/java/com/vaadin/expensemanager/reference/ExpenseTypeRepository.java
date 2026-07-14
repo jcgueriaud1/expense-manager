@@ -1,6 +1,7 @@
 package com.vaadin.expensemanager.reference;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -19,4 +20,12 @@ public interface ExpenseTypeRepository extends JpaRepository<ExpenseType, Long> 
      * the table but excluded here.
      */
     List<ExpenseType> findByActiveTrueOrderByDisplayOrderAscIdAsc();
+
+    /**
+     * The active expense type used for generated per-diem lines (Phase 4.2),
+     * resolved by name (e.g. {@code "Travel allowance"}). See finding F-034 on the
+     * name coupling.
+     */
+    Optional<ExpenseType> findFirstByNameIgnoreCaseAndActiveTrueOrderByDisplayOrderAscIdAsc(
+            String name);
 }

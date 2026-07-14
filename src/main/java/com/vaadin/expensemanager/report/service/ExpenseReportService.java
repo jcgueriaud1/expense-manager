@@ -9,12 +9,20 @@ import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import java.math.BigDecimal;
+
+import com.vaadin.expensemanager.allowance.AllowanceCalculator;
+import com.vaadin.expensemanager.allowance.AllowanceRateService;
+import com.vaadin.expensemanager.allowance.DomesticPerDiemDto;
+import com.vaadin.expensemanager.allowance.DomesticPerDiemResult;
 import com.vaadin.expensemanager.report.domain.ExpenseLine;
 import com.vaadin.expensemanager.report.domain.ExpenseLineSpec;
 import com.vaadin.expensemanager.report.domain.ExpenseReport;
 import com.vaadin.expensemanager.report.domain.Receipt;
 import com.vaadin.expensemanager.report.domain.ReceiptType;
 import com.vaadin.expensemanager.report.domain.ReceiptValidator;
+import com.vaadin.expensemanager.report.domain.Travel;
+import com.vaadin.expensemanager.report.domain.TravelSpec;
 import com.vaadin.expensemanager.reference.ExpenseType;
 import com.vaadin.expensemanager.reference.ExpenseTypeRepository;
 import com.vaadin.expensemanager.reference.VatRate;
@@ -61,24 +69,34 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ExpenseReportService {
 
+    /** The tax-free expense type generated per-diem lines are filed under (F-034). */
+    private static final String PER_DIEM_EXPENSE_TYPE = "Travel allowance";
+    private static final BigDecimal ZERO_VAT = BigDecimal.ZERO.setScale(2);
+
     private final ExpenseReportRepository reportRepository;
     private final ReceiptRepository receiptRepository;
     private final UserRepository userRepository;
     private final ExpenseTypeRepository expenseTypeRepository;
     private final VatRateRepository vatRateRepository;
+    private final AllowanceRateService allowanceRateService;
     private final CurrentUserProvider currentUserProvider;
+
+    /** Pure, stateless per-diem maths (ADR-0006) — a plain instance, not a bean. */
+    private final AllowanceCalculator calculator = new AllowanceCalculator();
 
     public ExpenseReportService(ExpenseReportRepository reportRepository,
             ReceiptRepository receiptRepository,
             UserRepository userRepository,
             ExpenseTypeRepository expenseTypeRepository,
             VatRateRepository vatRateRepository,
+            AllowanceRateService allowanceRateService,
             CurrentUserProvider currentUserProvider) {
         this.reportRepository = reportRepository;
         this.receiptRepository = receiptRepository;
         this.userRepository = userRepository;
         this.expenseTypeRepository = expenseTypeRepository;
         this.vatRateRepository = vatRateRepository;
+        this.allowanceRateService = allowanceRateService;
         this.currentUserProvider = currentUserProvider;
     }
 
@@ -103,6 +121,24 @@ public class ExpenseReportService {
     @Transactional(readOnly = true)
     public ReportDetailDto findMine(Long id) {
         return toDetail(requireOwned(id));
+    }
+
+    /**
+     * Previews the domestic per-diem for a trip's inputs without persisting
+     * anything (Phase 4.2/4.3, the dialog's "Continue"). Amounts are
+     * <strong>server-authoritative</strong>: the client sends inputs, this
+     * recomputes the money from the trip-year rate and returns the trip with its
+     * per-diem and explanation filled in. Invalid input (return before departure,
+     * or no rate configured for the trip year) throws with a message the caller
+     * surfaces in the error summary (ADR-0020).
+     *
+     * @throws IllegalArgumentException if the inputs are invalid or no rate exists
+     */
+    @RolesAllowed("USER")
+    @Transactional(readOnly = true)
+    public TravelDto previewDomesticTravel(TravelDto input) {
+        DomesticPerDiemResult result = costDomestic(input);
+        return input.withPerDiem(result.amount(), result.explanation());
     }
 
     /**
@@ -179,7 +215,7 @@ public class ExpenseReportService {
                 () -> new IllegalStateException("Current user no longer exists"));
         var report = new ExpenseReport(owner, dto.reportDate(),
                 dto.additionalInformation());
-        report.reconcileLines(toSpecs(dto.lines()));
+        report.reconcile(toSpecs(dto.lines()), toTravelSpecs(dto.travels()));
         // Persist then flush (not saveAndFlush → merge): the aggregate stays the
         // managed instance, so its new lines get ids and orphan-removals run
         // before receipts are applied against those lines.
@@ -219,7 +255,7 @@ public class ExpenseReportService {
             throw new ObjectOptimisticLockingFailureException(ExpenseReport.class, id);
         }
         report.updateDetails(dto.reportDate(), dto.additionalInformation());
-        report.reconcileLines(toSpecs(dto.lines()));
+        report.reconcile(toSpecs(dto.lines()), toTravelSpecs(dto.travels()));
         // The aggregate is already managed; flush (don't merge) so reconciled
         // new lines get ids and orphan-removals execute before receipts apply.
         reportRepository.flush();
@@ -278,7 +314,9 @@ public class ExpenseReportService {
         if (receipts == null || receipts.isEmpty()) {
             return;
         }
-        List<ExpenseLine> lines = report.getLines();
+        // Receipts map to positions in dto.lines() — the MANUAL lines — never the
+        // generated per-diem lines (which have no receipts).
+        List<ExpenseLine> lines = report.manualLines();
         receipts.forEach((index, upload) -> {
             if (index == null || index < 0 || index >= lines.size()) {
                 throw new IllegalArgumentException("No line at index " + index);
@@ -346,7 +384,9 @@ public class ExpenseReportService {
     }
 
     private ReportDetailDto toDetail(ExpenseReport r) {
-        var lines = r.getLines();
+        // Only the manual lines become line DTOs / cards; the generated per-diem
+        // lines are represented by their travels and summed into perDiemTotal.
+        var lines = r.manualLines();
         var lineIds = lines.stream().map(ExpenseLine::getId)
                 .filter(Objects::nonNull).toList();
         // One blob-free projection query for the whole report's receipts — the
@@ -357,9 +397,81 @@ public class ExpenseReportService {
                                 Function.identity()));
         var lineDtos = lines.stream()
                 .map(line -> toLineDto(line, byLine.get(line.getId()))).toList();
+        var travelDtos = r.getTravels().stream()
+                .map(travel -> toTravelDto(r, travel)).toList();
         return new ReportDetailDto(r.getId(), r.getReportDate(),
                 r.getAdditionalInformation(), r.getStatus(), r.getVersion(), lineDtos,
-                r.total(), r.netTotal(), r.vatTotal());
+                travelDtos, r.total(), r.netTotal(), r.vatTotal(), r.perDiemTotal());
+    }
+
+    /**
+     * Maps a persisted trip to its working-copy DTO, reading the per-diem
+     * amount/explanation off its generated line (or zero/none if the trip earned
+     * no allowance).
+     */
+    private static TravelDto toTravelDto(ExpenseReport r, Travel t) {
+        var line = r.perDiemLineFor(t);
+        BigDecimal amount = line.map(ExpenseLine::gross).orElse(ZERO_VAT);
+        String explanation = line.map(ExpenseLine::getComment).orElse(null);
+        return new TravelDto(t.getId(), t.getDepartureAt(), t.getReturnAt(),
+                t.getDestinations(), t.getPurpose(), t.getCountry(),
+                t.isNotEligibleForAllowance(), t.isFreeLunch(), t.isChargeToCustomer(),
+                amount, explanation);
+    }
+
+    /**
+     * Resolves each incoming trip DTO to a {@link TravelSpec}, recomputing the
+     * per-diem server-side (the client never sends money) and resolving the
+     * generated line's reference data once. Empty when there are no trips — so a
+     * report without trips never touches the per-diem reference lookups.
+     */
+    private List<TravelSpec> toTravelSpecs(List<TravelDto> travels) {
+        if (travels == null || travels.isEmpty()) {
+            return List.of();
+        }
+        ExpenseType type = perDiemExpenseType();
+        VatRate rate = zeroVatRate();
+        return travels.stream().map(t -> toTravelSpec(t, type, rate)).toList();
+    }
+
+    private TravelSpec toTravelSpec(TravelDto t, ExpenseType type, VatRate rate) {
+        DomesticPerDiemResult result = costDomestic(t);
+        String country = (t.country() == null || t.country().isBlank())
+                ? TravelDto.DOMESTIC_COUNTRY : t.country();
+        return new TravelSpec(t.id(), t.departureAt(), t.returnAt(), t.destinations(),
+                t.purpose(), country, t.notEligibleForAllowance(), t.freeLunch(),
+                t.chargeToCustomer(), type, rate, result.amount(),
+                result.explanation());
+    }
+
+    /** Server-authoritative domestic per-diem for a trip's inputs (ADR-0006). */
+    private DomesticPerDiemResult costDomestic(TravelDto t) {
+        if (t.departureAt() == null || t.returnAt() == null) {
+            throw new IllegalArgumentException(
+                    "Departure and return date & time are required");
+        }
+        int year = t.departureAt().getYear();
+        DomesticPerDiemDto rate = allowanceRateService.domesticPerDiem(year)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "No domestic per-diem rate is configured for " + year));
+        return calculator.domesticPerDiem(t.departureAt(), t.returnAt(),
+                t.notEligibleForAllowance(), t.freeLunch(), rate);
+    }
+
+    private ExpenseType perDiemExpenseType() {
+        return expenseTypeRepository
+                .findFirstByNameIgnoreCaseAndActiveTrueOrderByDisplayOrderAscIdAsc(
+                        PER_DIEM_EXPENSE_TYPE)
+                .orElseThrow(() -> new IllegalStateException("No active '"
+                        + PER_DIEM_EXPENSE_TYPE
+                        + "' expense type is configured for per-diem lines"));
+    }
+
+    private VatRate zeroVatRate() {
+        return vatRateRepository
+                .findFirstByValueAndActiveTrueOrderByDisplayOrderAscIdAsc(ZERO_VAT)
+                .orElseThrow(() -> new IllegalStateException(
+                        "No active 0% VAT rate is configured for per-diem lines"));
     }
 
     private static ExpenseLineDto toLineDto(ExpenseLine line,

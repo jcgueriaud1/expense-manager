@@ -91,6 +91,19 @@ public class ExpenseReport extends AuditedEntity {
     private List<ExpenseLine> lines = new ArrayList<>();
 
     /**
+     * The report's trips in insertion order, owned by the aggregate (cascade +
+     * orphan removal, order persisted via {@link OrderColumn}), like {@link
+     * #lines}. Each {@link Travel} owns a generated per-diem line inside {@link
+     * #lines} linked back to it; {@link #reconcile} keeps the two in step —
+     * editing a trip regenerates its line, removing a trip orphan-removes it
+     * (Phase 4.2/4.3). Empty until the first trip is added.
+     */
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
+    @JoinColumn(name = "report_id", nullable = false)
+    @OrderColumn(name = "travel_index")
+    private List<Travel> travels = new ArrayList<>();
+
+    /**
      * Ordered status-history log, owned by the aggregate (cascade + orphan
      * removal, insertion order persisted via {@link OrderColumn}). Empty until
      * the first transition is recorded (Phase 2.4).
@@ -197,27 +210,38 @@ public class ExpenseReport extends AuditedEntity {
     }
 
     /**
-     * Reconciles the line collection against the desired set (ADR-0019). Matches
-     * each spec on its nullable line id — non-null updates the existing line,
-     * {@code null} inserts a new one — and orphan-removes any existing line whose
-     * id is absent from {@code specs}. The resulting collection order follows the
-     * spec order (the {@link OrderColumn} is rewritten to match).
+     * Reconciles the whole aggregate against the desired sets in one shot
+     * (ADR-0019): the manual line specs and the trip specs. Convenience for the
+     * common create/update path; equivalent to {@link #reconcileTravels} then
+     * {@link #reconcileLines}. Trips are reconciled first so a manual-line
+     * reorder sees the up-to-date generated lines.
+     */
+    public void reconcile(List<ExpenseLineSpec> lineSpecs, List<TravelSpec> travelSpecs) {
+        reconcileTravels(travelSpecs);
+        reconcileLines(lineSpecs);
+    }
+
+    /**
+     * Reconciles the <strong>manual</strong> lines against the desired set
+     * (ADR-0019), leaving the travel-generated lines untouched. Matches each spec
+     * on its nullable line id — non-null updates the existing manual line,
+     * {@code null} inserts a new one — and orphan-removes any existing manual line
+     * whose id is absent from {@code specs}. The {@link OrderColumn} is rewritten
+     * so manual lines follow the spec order and the generated per-diem lines trail
+     * them in trip order.
      *
      * <p>Editable only while the report is a {@code DRAFT}/{@code REJECTED}
      * (ADR-0006); a locked report rejects the change. Per-line invariants
      * (required type/rate, non-zero amount) are enforced by {@link ExpenseLine}.
      *
      * @throws IllegalStateException    if the report is not editable
-     * @throws IllegalArgumentException if a spec references a line id not on this
-     *                                  report
+     * @throws IllegalArgumentException if a spec references a manual line id not on
+     *                                  this report
      */
     public void reconcileLines(List<ExpenseLineSpec> specs) {
-        if (!status.isEditable()) {
-            throw new IllegalStateException(
-                    "Report " + id + " is " + status + " and its lines cannot be edited");
-        }
+        assertLinesEditable();
         Map<Long, ExpenseLine> existingById = lines.stream()
-                .filter(line -> line.getId() != null)
+                .filter(line -> !line.isGenerated() && line.getId() != null)
                 .collect(Collectors.toMap(ExpenseLine::getId, Function.identity()));
 
         List<ExpenseLine> desired = new ArrayList<>(specs.size());
@@ -236,43 +260,170 @@ public class ExpenseReport extends AuditedEntity {
                         spec.vatRate(), spec.comment()));
             }
         }
-        // Orphan-remove existing lines absent from the desired set (identity
-        // match — ExpenseLine has no value equality), then append the new ones,
-        // then reorder in place so line_index follows the spec order.
-        lines.removeIf(line -> !desired.contains(line));
+        // Orphan-remove manual lines absent from the desired set (identity match —
+        // ExpenseLine has no value equality); never touch generated lines. Then
+        // append the new manual lines and reorder [manual…, generated…].
+        lines.removeIf(line -> !line.isGenerated() && !desired.contains(line));
         for (ExpenseLine line : desired) {
             if (!lines.contains(line)) {
                 lines.add(line);
             }
         }
-        lines.sort(Comparator.comparingInt(desired::indexOf));
+        orderLines(desired);
     }
 
     /**
-     * The derived report total (gross) — never stored (ADR-0010, ADR-0019). Sums
-     * each line's gross; {@code 0.00} with no lines.
+     * Reconciles the trips against the desired set and regenerates their per-diem
+     * lines (Phase 4.2/4.3, ADR-0019). Each spec matches on its nullable travel id
+     * (non-null → update the trip, {@code null} → insert); a trip absent from the
+     * set is orphan-removed along with its generated line. A trip that earned a
+     * per-diem ({@link TravelSpec#hasPerDiem()}) gets a read-only 0 %-VAT generated
+     * line created or regenerated in place; a trip that earned nothing (not-eligible
+     * or too short) has any prior generated line removed. The manual lines and their
+     * order are preserved; the generated lines trail them in trip order.
+     *
+     * @throws IllegalStateException    if the report is not editable
+     * @throws IllegalArgumentException if a spec references a travel id not on this
+     *                                  report
      */
-    public BigDecimal total() {
-        return totals().gross();
+    public void reconcileTravels(List<TravelSpec> specs) {
+        assertLinesEditable();
+        Map<Long, Travel> existingById = travels.stream()
+                .filter(travel -> travel.getId() != null)
+                .collect(Collectors.toMap(Travel::getId, Function.identity()));
+
+        List<Travel> desired = new ArrayList<>(specs.size());
+        for (TravelSpec spec : specs) {
+            if (spec.id() != null) {
+                Travel travel = existingById.get(spec.id());
+                if (travel == null) {
+                    throw new IllegalArgumentException(
+                            "No travel with id " + spec.id() + " on report " + id);
+                }
+                travel.update(spec);
+                desired.add(travel);
+            } else {
+                desired.add(new Travel(spec));
+            }
+        }
+        travels.removeIf(travel -> !desired.contains(travel));
+        for (Travel travel : desired) {
+            if (!travels.contains(travel)) {
+                travels.add(travel);
+            }
+        }
+        travels.sort(Comparator.comparingInt(desired::indexOf));
+
+        regeneratePerDiemLines(specs, desired);
     }
 
-    /** The derived report net total (sum of per-line net), scale 2. */
+    /**
+     * Creates/regenerates/removes the generated per-diem line for each reconciled
+     * trip (parallel to {@code desired}/{@code specs} by index). Existing generated
+     * lines are matched to their trip by reference so a re-cost updates in place.
+     */
+    private void regeneratePerDiemLines(List<TravelSpec> specs, List<Travel> desired) {
+        Map<Travel, ExpenseLine> byTravel = lines.stream()
+                .filter(ExpenseLine::isGenerated)
+                .collect(Collectors.toMap(ExpenseLine::getTravel, Function.identity()));
+
+        List<ExpenseLine> desiredGenerated = new ArrayList<>();
+        for (int i = 0; i < desired.size(); i++) {
+            Travel travel = desired.get(i);
+            TravelSpec spec = specs.get(i);
+            if (!spec.hasPerDiem()) {
+                continue; // not-eligible / too short → no generated line
+            }
+            ExpenseLine line = byTravel.get(travel);
+            if (line == null) {
+                line = ExpenseLine.generated(travel, spec.perDiemType(),
+                        spec.perDiemAmount(), spec.perDiemRate(),
+                        spec.perDiemExplanation());
+            } else {
+                line.updateGenerated(travel, spec.perDiemType(), spec.perDiemAmount(),
+                        spec.perDiemRate(), spec.perDiemExplanation());
+            }
+            desiredGenerated.add(line);
+        }
+        // Drop generated lines for removed trips or trips that no longer earn a
+        // per-diem; keep every manual line.
+        lines.removeIf(line -> line.isGenerated() && !desiredGenerated.contains(line));
+        for (ExpenseLine line : desiredGenerated) {
+            if (!lines.contains(line)) {
+                lines.add(line);
+            }
+        }
+        orderLines(lines.stream().filter(line -> !line.isGenerated()).toList());
+    }
+
+    /**
+     * Rewrites the {@link OrderColumn} so the collection reads [manual lines in
+     * {@code manualOrder}, then generated per-diem lines in trip order]. Keeps the
+     * generated lines grouped after the manual ones regardless of which reconcile
+     * ran, so {@link #manualLines()} indexing (used for receipt mapping) is stable.
+     */
+    private void orderLines(List<ExpenseLine> manualOrder) {
+        List<ExpenseLine> ordered = new ArrayList<>(manualOrder);
+        for (Travel travel : travels) {
+            lines.stream()
+                    .filter(line -> line.isGenerated() && travel == line.getTravel())
+                    .findFirst().ifPresent(ordered::add);
+        }
+        for (ExpenseLine line : lines) {
+            if (!ordered.contains(line)) {
+                ordered.add(line);
+            }
+        }
+        lines.sort(Comparator.comparingInt(ordered::indexOf));
+    }
+
+    private void assertLinesEditable() {
+        if (!status.isEditable()) {
+            throw new IllegalStateException(
+                    "Report " + id + " is " + status + " and its lines cannot be edited");
+        }
+    }
+
+    /**
+     * The derived report grand total (gross) — never stored (ADR-0010, ADR-0019):
+     * the VAT-bearing manual lines plus the tax-free per-diem allowance. Equals the
+     * sum of every line's gross; {@code 0.00} with no lines.
+     */
+    public BigDecimal total() {
+        return totals().gross().add(perDiemTotal());
+    }
+
+    /** The derived net total of the VAT-bearing (manual) lines, scale 2. */
     public BigDecimal netTotal() {
         return totals().net();
     }
 
-    /** The derived report VAT total (sum of per-line VAT), scale 2. */
+    /** The derived VAT total of the VAT-bearing (manual) lines, scale 2. */
     public BigDecimal vatTotal() {
         return totals().vat();
     }
 
     /**
-     * The report's derived net/VAT/gross figures — sum-per-line then total, so a
-     * report with mixed VAT rates carries no rounding drift (ADR-0010).
+     * The manual (VAT-bearing) lines' derived net/VAT/gross — sum-per-line then
+     * total, so a report with mixed VAT rates carries no rounding drift (ADR-0010).
+     * The tax-free per-diem allowance is broken out separately ({@link
+     * #perDiemTotal()}), so Net/VAT here exclude it (Phase 4.3).
      */
     public LineAmounts totals() {
-        return lines.stream().map(ExpenseLine::amounts)
+        return lines.stream().filter(line -> !line.isGenerated())
+                .map(ExpenseLine::amounts)
                 .reduce(LineAmounts.zero(), LineAmounts::add);
+    }
+
+    /**
+     * The tax-free per-diem allowance subtotal (Phase 4.3): the sum of the
+     * generated per-diem lines' gross; {@code 0.00} when there are no trips (or
+     * none earned an allowance).
+     */
+    public BigDecimal perDiemTotal() {
+        return lines.stream().filter(ExpenseLine::isGenerated)
+                .map(ExpenseLine::gross)
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
     public Long getId() {
@@ -307,6 +458,27 @@ public class ExpenseReport extends AuditedEntity {
     /** Unmodifiable view of the expense lines in insertion order. */
     public List<ExpenseLine> getLines() {
         return Collections.unmodifiableList(lines);
+    }
+
+    /**
+     * The manual (user-entered, non-generated) lines in order — the ones the
+     * detail view shows as editable cards and maps receipts against by position
+     * (ADR-0021). The generated per-diem lines are excluded.
+     */
+    public List<ExpenseLine> manualLines() {
+        return lines.stream().filter(line -> !line.isGenerated()).toList();
+    }
+
+    /** Unmodifiable view of the trips in insertion order. */
+    public List<Travel> getTravels() {
+        return Collections.unmodifiableList(travels);
+    }
+
+    /** The generated per-diem line for {@code travel}, if the trip earned one. */
+    public java.util.Optional<ExpenseLine> perDiemLineFor(Travel travel) {
+        return lines.stream()
+                .filter(line -> line.isGenerated() && travel == line.getTravel())
+                .findFirst();
     }
 
     private static LocalDate requireDate(LocalDate reportDate) {
