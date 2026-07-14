@@ -44,16 +44,18 @@ import org.springframework.core.env.Environment;
 public class LoginView extends VerticalLayout implements BeforeEnterObserver {
 
     private final boolean oauthMode;
-    private final String contextPath;
+    private final String publicBasePath;
     private final LoginForm loginForm = new LoginForm();
     private final Paragraph errorMessage = new Paragraph();
 
     public LoginView(Environment environment) {
         this.oauthMode = environment.matchesProfiles("staging", "prod", "vherd");
-        // Empty at the root (staging/prod), "/expense-manager" under a sub-path
-        // deployment (vherd) — so the Google authorize link below stays correct
-        // whether or not the app runs under a servlet context path.
-        this.contextPath = environment.getProperty("server.servlet.context-path", "");
+        // Public reverse-proxy path prefix for browser-facing links: empty at the
+        // root (staging/prod), "/expense-manager" on vherd. NOT the servlet
+        // context-path — V-Herd serves the app under /expense-manager but strips
+        // that prefix before forwarding, so the container runs at root; only the
+        // browser needs the prefix (e.g. on the Google authorize link below).
+        this.publicBasePath = environment.getProperty("app.public-base-path", "");
 
         setSizeFull();
         setJustifyContentMode(JustifyContentMode.CENTER);
@@ -74,9 +76,10 @@ public class LoginView extends VerticalLayout implements BeforeEnterObserver {
 
         // A native <a href> (router-ignored) so the click reaches Spring's
         // authorization endpoint as a full navigation, not client-side routing.
-        // Prefixed with the context path so it resolves correctly under a
-        // sub-path deployment (e.g. /expense-manager/oauth2/authorization/google).
-        var googleLogin = new Anchor(contextPath + "/oauth2/authorization/google",
+        // Prefixed with the public base path so it resolves to the correct public
+        // URL under a sub-path deployment (e.g.
+        // https://v-herd.eu/expense-manager/oauth2/authorization/google on vherd).
+        var googleLogin = new Anchor(publicBasePath + "/oauth2/authorization/google",
                 new Button("Sign in with Google"));
         googleLogin.setRouterIgnore(true);
 
