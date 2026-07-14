@@ -2,6 +2,7 @@ package com.vaadin.expensemanager.report.ui;
 
 import java.math.BigDecimal;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
@@ -92,6 +93,26 @@ final class TravelEditorDialog extends Dialog {
         var freeLunch = new Checkbox("Free lunch provided?");
         var chargeToCustomer = new Checkbox("Charge expenses from customer?");
 
+        errorSummary.getElement().setAttribute("role", "alert");
+        errorSummary.addClassName("error-summary");
+        errorSummary.setVisible(false);
+        preview.addClassName("travel-preview");
+        preview.setVisible(false);
+
+        // The per-diem depends only on the two dates and the eligibility/free-lunch
+        // flags, so preview it live as the user fills those in — no separate
+        // "compute" step. Recompute server-side (money is never client-side) once
+        // both dates are set; while incomplete or invalid the preview simply hides
+        // (Save still surfaces any reason). Registered before readBean so an edited
+        // trip previews immediately on open.
+        Runnable recompute = () -> refreshPreview(departure.getValue(),
+                returnAt.getValue(), destinations.getValue(), purpose.getValue(),
+                notEligible.getValue(), freeLunch.getValue(), chargeToCustomer.getValue());
+        departure.addValueChangeListener(event -> recompute.run());
+        returnAt.addValueChangeListener(event -> recompute.run());
+        notEligible.addValueChangeListener(event -> recompute.run());
+        freeLunch.addValueChangeListener(event -> recompute.run());
+
         binder.forField(departure)
                 .asRequired("Departure date & time is required")
                 .bind(TravelFormModel::getDepartureAt, TravelFormModel::setDepartureAt);
@@ -122,16 +143,6 @@ final class TravelEditorDialog extends Dialog {
         }
         binder.readBean(model);
 
-        errorSummary.getElement().setAttribute("role", "alert");
-        errorSummary.addClassName("error-summary");
-        errorSummary.setVisible(false);
-
-        preview.addClassName("travel-preview");
-        preview.setVisible(false);
-        if (existing != null && existing.perDiemAmount() != null) {
-            renderPreview(existing);
-        }
-
         var form = new FormLayout(departure, returnAt, destinations, purpose,
                 notEligible, freeLunch, chargeToCustomer);
         form.setResponsiveSteps(new FormLayout.ResponsiveStep("0", 1),
@@ -143,19 +154,10 @@ final class TravelEditorDialog extends Dialog {
         form.setColspan(chargeToCustomer, 2);
         add(errorSummary, form, preview);
 
-        var continueButton = new Button("Continue", event -> onContinue());
         var save = new Button("Save trip", event -> onSave(onSave));
         save.addThemeVariants(ButtonVariant.PRIMARY);
         var cancel = new Button("Cancel", event -> close());
-        getFooter().add(cancel, continueButton, save);
-    }
-
-    /** Computes and previews the per-diem without committing (dialog "Continue"). */
-    private void onContinue() {
-        TravelDto computed = validateAndCompute();
-        if (computed != null) {
-            renderPreview(computed);
-        }
+        getFooter().add(cancel, save);
     }
 
     /** Commits the trip with its server-authoritative per-diem (dialog "Save"). */
@@ -164,6 +166,28 @@ final class TravelEditorDialog extends Dialog {
         if (computed != null) {
             onSave.accept(computed);
             close();
+        }
+    }
+
+    /**
+     * Recomputes and shows the live per-diem preview from the current inputs. The
+     * amount is always the server's ({@link #costPreview}); the preview hides while
+     * the dates are incomplete or the range is invalid (Save surfaces any reason).
+     */
+    private void refreshPreview(LocalDateTime departure, LocalDateTime returnAt,
+            String destinations, String purpose, boolean notEligible, boolean freeLunch,
+            boolean chargeToCustomer) {
+        if (departure == null || returnAt == null) {
+            preview.setVisible(false);
+            return;
+        }
+        var input = TravelDto.domestic(existing == null ? null : existing.id(),
+                departure, returnAt, destinations, purpose, notEligible, freeLunch,
+                chargeToCustomer);
+        try {
+            renderPreview(costPreview.apply(input));
+        } catch (IllegalArgumentException | IllegalStateException invalid) {
+            preview.setVisible(false);
         }
     }
 

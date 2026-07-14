@@ -307,10 +307,9 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findTextField().withLabel("Destinations").setValue("Helsinki");
         findTextField().withLabel("Travel purpose").setValue("Client visit");
 
-        // Continue previews the server-computed per-diem (11 h → one full day €54).
-        // The preview lives in the dialog overlay (attached to the UI, not the
-        // view), so assert against the whole UI tree.
-        findButton().withText("Continue").click();
+        // The per-diem previews live as the dates are filled — no separate compute
+        // step (11 h → one full day €54). The preview lives in the dialog overlay
+        // (attached to the UI, not the view), so assert against the whole UI tree.
         assertThat(UI.getCurrent().getElement().getTextRecursively())
                 .contains("Per diem: €54.00");
 
