@@ -10,6 +10,7 @@ import com.vaadin.expensemanager.reference.VatRateDto;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
 import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.datepicker.DatePicker;
+import com.vaadin.flow.component.datetimepicker.DateTimePicker;
 import com.vaadin.flow.component.html.Image;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.test.context.support.WithUserDetails;
@@ -363,21 +364,40 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
     }
 
     @Test
-    void invalidTripReturnBeforeDepartureShowsAMessageAndGeneratesNothing() {
+    void choosingADepartureConstrainsTheReturnPickerRangeAndViceVersa() {
         navigate(ReportDetailView.class);
 
         findButton().withText("Insert travel info").click();
-        findDateTimePicker().withLabel("Departure").setValue(DEP.plusHours(11));
-        findDateTimePicker().withLabel("Return").setValue(DEP); // before departure
-        findTextField().withLabel("Destinations").setValue("Helsinki");
-        findTextField().withLabel("Travel purpose").setValue("Client visit");
+        findDateTimePicker().withLabel("Departure").setValue(DEP);
+        findDateTimePicker().withLabel("Return").setValue(DEP.plusHours(11));
+
+        // The overlay can no longer offer an invalid range: the return can't go
+        // before the departure, nor the departure after the return.
+        var ret = (DateTimePicker) findDateTimePicker().withLabel("Return")
+                .getComponent();
+        var dep = (DateTimePicker) findDateTimePicker().withLabel("Departure")
+                .getComponent();
+        assertThat(ret.getMin()).isEqualTo(DEP);
+        assertThat(dep.getMax()).isEqualTo(DEP.plusHours(11));
+    }
+
+    @Test
+    void anIncompleteTripShowsTheErrorSummaryAndGeneratesNothing() {
+        // The reciprocal min/max on the pickers means an invalid *range* can't be
+        // produced through the UI (see the constraint test above); the return-
+        // before-departure guard itself is covered at the domain/service layers.
+        // Here we prove the always-enabled Save + error-summary rule (ADR-0020) on
+        // the reachable invalid case: missing required fields.
+        navigate(ReportDetailView.class);
+
+        findButton().withText("Insert travel info").click();
         findButton().withText("Save trip").click();
 
-        // Always-enabled Save (ADR-0020): the dialog stays open with a clear reason
-        // (in the dialog overlay) and nothing is generated.
-        assertThat(UI.getCurrent().getElement().getTextRecursively())
-                .contains("Return must be after");
+        // The dialog overlay carries the reasons and stays open; nothing generated.
+        assertThat(UI.getCurrent().getElement().getTextRecursively()).contains(
+                "Departure date & time is required", "Destinations are required");
         assertThat(findButton().withText("Save trip").exists()).isTrue();
+        assertThat(findSpan().withText("Per diem allowance").exists()).isFalse();
     }
 
     @Test

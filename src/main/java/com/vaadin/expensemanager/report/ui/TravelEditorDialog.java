@@ -74,6 +74,14 @@ final class TravelEditorDialog extends Dialog {
         returnAt.setStep(Duration.ofMinutes(15));
         returnAt.setRequiredIndicatorVisible(true);
 
+        // Keep the range valid from the pickers themselves: once a departure is
+        // chosen the return overlay can't go earlier than it, and vice versa — so
+        // the "Return must be after the departure" error only ever appears if the
+        // user types an invalid date/time by hand (the overlay can't produce one).
+        // Registered before readBean so an edited trip's values initialise them.
+        departure.addValueChangeListener(event -> returnAt.setMin(event.getValue()));
+        returnAt.addValueChangeListener(event -> departure.setMax(event.getValue()));
+
         var destinations = new TextField("Destinations");
         destinations.setRequiredIndicatorVisible(true);
         destinations.setPlaceholder("e.g. Helsinki, Espoo");
