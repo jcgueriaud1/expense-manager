@@ -29,7 +29,7 @@ import org.springframework.security.web.SecurityFilterChain;
  * still renders; the health-probe chain ({@code @Order(1)}) keeps precedence.
  */
 @Configuration
-@Profile({"staging", "prod"})
+@Profile({"staging", "prod", "vherd"})
 public class OAuthLoginSecurityConfig {
 
     @Bean

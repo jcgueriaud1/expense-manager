@@ -32,7 +32,7 @@ import org.springframework.security.web.SecurityFilterChain;
  * OAuth (ADR-0007, ADR-0013, Phase 1.2).
  */
 @Configuration
-@Profile({"local", "test", "vherd"})
+@Profile({"local", "test"})
 @EnableConfigurationProperties(DevLoginProperties.class)
 public class LocalLoginSecurityConfig {
 

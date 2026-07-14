@@ -49,7 +49,7 @@ public class LoginView extends VerticalLayout implements BeforeEnterObserver {
     private final Paragraph errorMessage = new Paragraph();
 
     public LoginView(Environment environment) {
-        this.oauthMode = environment.matchesProfiles("staging", "prod"); // , "vherd"
+        this.oauthMode = environment.matchesProfiles("staging", "prod", "vherd");
         // Empty at the root (staging/prod), "/expense-manager" under a sub-path
         // deployment (vherd) — so the Google authorize link below stays correct
         // whether or not the app runs under a servlet context path.
