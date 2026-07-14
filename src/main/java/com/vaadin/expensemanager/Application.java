@@ -26,13 +26,21 @@ public class Application implements AppShellConfigurator {
      * before first paint. Prepending this to the page head means a reload — on any
      * page, including the login view outside the main layout — never flashes the
      * theme default before the switcher's client code runs.
+     *
+     * <p>Sets both the inline {@code color-scheme} and the {@code theme} attribute
+     * on {@code <html>}, mirroring what {@link com.vaadin.flow.component.page.Page#setColorScheme
+     * Page.setColorScheme} does at runtime, so a reload reconstructs the exact same
+     * document state a live switch produces (Aura re-themes off {@code color-scheme}
+     * alone, but the {@code theme} attribute keeps the two paths in lockstep for any
+     * {@code html[theme~="…"]} rules).
      */
     @Override
     public void configurePage(AppShellSettings settings) {
         settings.addInlineWithContents(Inline.Position.PREPEND,
                 "try{var s=localStorage.getItem('" + ThemeSwitcher.STORAGE_KEY + "');"
                         + "if(s==='light'||s==='dark'){"
-                        + "document.documentElement.style.colorScheme=s;}}catch(e){}",
+                        + "document.documentElement.style.colorScheme=s;"
+                        + "document.documentElement.setAttribute('theme',s);}}catch(e){}",
                 Inline.Wrapping.JAVASCRIPT);
     }
 
