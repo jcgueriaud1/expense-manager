@@ -204,6 +204,86 @@ class AllowanceCalculatorTest {
                 .hasMessageContaining("meal allowance");
     }
 
+    // --- Foreign per-diem (Phase 4.2/4.3) ---
+
+    // Germany 2026: flat €71.00 per allowance day (V7 seed). Day counting uses the
+    // domestic 10 h / 6 h thresholds.
+    private static final ForeignPerDiemDto GERMANY =
+            new ForeignPerDiemDto(1L, 2026, "Germany", new BigDecimal("71.00"));
+
+    private ForeignPerDiemResult foreign(LocalDateTime returnAt, boolean notEligible) {
+        return calculator.foreignPerDiem(START, returnAt, notEligible, GERMANY, 10, 6);
+    }
+
+    @Test
+    void foreignPerDiemIsCountryRateTimesAllowanceDayCount() {
+        // 24 h + 7 h leftover (> 6 h) → 2 allowance days × €71.00 = €142.00.
+        var result = foreign(START.plusHours(31), false);
+        assertThat(result.amount()).isEqualByComparingTo("142.00");
+        assertThat(result.dayCount()).isEqualTo(2);
+        assertThat(result.hasAllowance()).isTrue();
+        assertThat(result.explanation()).contains("Germany", "2 ×", "€71.00", "€142.00");
+    }
+
+    @Test
+    void foreignPerDiemLeftoverOverTenHoursCountsAsAnotherFullDay() {
+        // 24 h + 11 h leftover (> 10 h) → 2 allowance days × €71.00 = €142.00.
+        var result = foreign(START.plusHours(35), false);
+        assertThat(result.dayCount()).isEqualTo(2);
+        assertThat(result.amount()).isEqualByComparingTo("142.00");
+    }
+
+    @Test
+    void foreignPerDiemPartialLeftoverCountsAtTheFullCountryRate() {
+        // 8 h (> 6 h, ≤ 10 h) → 1 day at the full country rate (no partial fraction).
+        var result = foreign(START.plusHours(8), false);
+        assertThat(result.dayCount()).isEqualTo(1);
+        assertThat(result.amount()).isEqualByComparingTo("71.00");
+    }
+
+    @Test
+    void foreignSubSixHourTripEarnsNothing() {
+        var result = foreign(START.plusHours(5), false);
+        assertThat(result.amount()).isEqualByComparingTo("0.00");
+        assertThat(result.hasAllowance()).isFalse();
+        assertThat(result.explanation()).contains("too short");
+    }
+
+    @Test
+    void foreignNotEligibleEarnsNothing() {
+        var result = foreign(START.plusHours(48), true);
+        assertThat(result.amount()).isEqualByComparingTo("0.00");
+        assertThat(result.hasAllowance()).isFalse();
+        assertThat(result.explanation()).contains("not eligible");
+    }
+
+    @Test
+    void foreignFreeMealIsNotDeducted() {
+        // Foreign meal-deduction reductions are out of scope: freeLunch has no field
+        // here, so a foreign per-diem is never halved (contrast the domestic rule).
+        var result = calculator.foreignPerDiem(START, START.plusHours(11), false,
+                GERMANY, 10, 6);
+        assertThat(result.amount()).isEqualByComparingTo("71.00");
+    }
+
+    @Test
+    void foreignPerDiemRejectsAMissingRate() {
+        assertThatThrownBy(() -> calculator.foreignPerDiem(START, START.plusHours(11),
+                false, null, 10, 6))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("foreign per-diem rate");
+    }
+
+    @Test
+    void foreignPerDiemRejectsReturnBeforeDepartureAndNullDates() {
+        assertThatThrownBy(() -> calculator.foreignPerDiem(START, START.minusHours(1),
+                false, GERMANY, 10, 6))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Return must be after");
+        assertThatThrownBy(() -> calculator.foreignPerDiem(null, START, false, GERMANY,
+                10, 6)).isInstanceOf(IllegalArgumentException.class);
+    }
+
     // --- Parking (Phase 4.3) ---
 
     @Test

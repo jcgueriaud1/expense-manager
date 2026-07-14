@@ -1239,3 +1239,36 @@ Deployment/Observability · UX-spec
   receipt-carrying line is removed within the same transaction it was created in.
 - Suggested Vaadin/product improvement: none (JPA session semantics).
 - Owner / next step: none.
+
+### F-039 — A year-dependent ComboBox and `Binder.readBean` fight over ordering
+- Date: 2026-07-14
+- Area: Vaadin/Flow
+- Severity: Low
+- Task being attempted: adding the destination-country picker to the trip dialog
+  (Phase 4.2, #51). The list of countries is *year-dependent* — it must show only
+  the countries with a foreign per-diem rate for the **trip's year**, and the year
+  comes from the departure `DateTimePicker` in the same form.
+- Expected vs actual: expected to just `setItems(...)` once and bind. Actual: a
+  `ComboBox`'s `setValue` only preselects when the value is already among its
+  items, so an *edited* foreign trip whose stored country must be re-selected needs
+  the item list populated **before** `binder.readBean(model)` runs — but the
+  departure field's value (which decides the year) isn't set until `readBean` runs.
+  Chicken-and-egg: populate-from-field is too late, and `setItems` itself clears the
+  current selection.
+- Workaround used: drive the initial population from the *model's* departure
+  (`model.getDepartureAt()`), not the field, so it works before `readBean`; refresh
+  the list on every departure change; and capture/restore the current selection
+  around `setItems` so a still-valid country survives a re-populate. Registered the
+  refresh before `readBean` (the same ordering the existing preview listeners rely
+  on).
+- Evidence: `report/ui/TravelEditorDialog` (`refreshCountries`, the pre-`readBean`
+  call, the departure listener); `ReportDetailViewUiTest.insertingAForeignTrip...`.
+- Impact: a small but non-obvious wrinkle whenever a bound selection field's *items*
+  depend on another field in the same bean — easy to ship a dialog that silently
+  drops the edited value on open. The tell is "the combo opens empty only when
+  editing".
+- Suggested Vaadin/product improvement: a `Binder` hook (or `ComboBox` option) to
+  supply items lazily from the bean at `readBean` time would remove the ordering
+  dance; today the caller must sequence it by hand.
+- Owner / next step: none — the pattern is contained in the dialog. A later slice
+  that lets the per-diem year differ from the departure year would revisit it.
