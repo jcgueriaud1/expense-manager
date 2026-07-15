@@ -1,6 +1,7 @@
 package com.vaadin.expensemanager.security;
 
 import com.vaadin.expensemanager.base.AbstractIntegrationTest;
+import com.vaadin.expensemanager.user.UserAdminService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
@@ -14,20 +15,22 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * Method-security slice (pyramid layer 2, ADR-0008, ADR-0012): the reusable test
  * seam for two-layer authorization. It exercises the enforcement layer directly
- * against a real {@code @RolesAllowed}-guarded bean — {@link
- * StandInPrivilegedService} — using Spring Security's test authentication, not a
- * real login. Later phases point the same slice at their concrete admin services
- * (approve/reject, user management) once those replace the stand-in.
+ * against a real {@code @RolesAllowed}-guarded bean using Spring Security's test
+ * authentication, not a real login.
  *
- * <p>Covers the acceptance criteria: a plain USER is rejected from the
- * ADMIN-guarded operation; an ADMIN is allowed; and an ADMIN — who stores only
- * {@code {ADMIN}} — passes a USER-guarded operation through the {@code ADMIN >
- * USER} {@link RoleHierarchy} without holding a second role.
+ * <p>Anchored on {@link UserAdminService} — the concrete admin service that
+ * replaced the Phase 1.2 stand-in (issue #64) — this covers the config half of
+ * the contract: the {@code ADMIN > USER} {@link RoleHierarchy} bean, plus a
+ * representative check that an ADMIN-guarded operation admits an admin and
+ * rejects a plain USER. Per-service behaviour is covered by each service's own
+ * layer-2 test (e.g. {@code UserAdminServiceIntegrationTest},
+ * {@code ReferenceDataServiceIntegrationTest}, whose ADMIN reads reaching
+ * USER-guarded queries also prove the hierarchy at the method level).
  */
 class MethodSecurityIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
-    private StandInPrivilegedService privilegedService;
+    private UserAdminService userAdminService;
 
     @Autowired
     private RoleHierarchy roleHierarchy;
@@ -45,29 +48,13 @@ class MethodSecurityIntegrationTest extends AbstractIntegrationTest {
     @Test
     @WithMockUser(roles = "ADMIN")
     void adminMayCallAdminOperation() {
-        assertThat(privilegedService.privilegedAdminOperation())
-                .isEqualTo("privileged-admin-operation-executed");
-    }
-
-    @Test
-    @WithMockUser(roles = "ADMIN")
-    void adminMayCallUserOperationViaHierarchy() {
-        // The admin stores only ROLE_ADMIN; the hierarchy grants USER access.
-        assertThat(privilegedService.userLevelOperation())
-                .isEqualTo("user-level-operation-executed");
-    }
-
-    @Test
-    @WithMockUser(roles = "USER")
-    void userMayCallUserOperation() {
-        assertThat(privilegedService.userLevelOperation())
-                .isEqualTo("user-level-operation-executed");
+        assertThat(userAdminService.list()).isNotEmpty();
     }
 
     @Test
     @WithMockUser(roles = "USER")
     void userMayNotCallAdminOperation() {
-        assertThatThrownBy(privilegedService::privilegedAdminOperation)
+        assertThatThrownBy(userAdminService::list)
                 .isInstanceOf(AccessDeniedException.class);
     }
 }

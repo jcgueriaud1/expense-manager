@@ -1,5 +1,6 @@
 package com.vaadin.expensemanager.user;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -19,4 +20,11 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findBySub(String sub);
 
     boolean existsByEmail(String email);
+
+    /**
+     * Every user in a stable display order (by name, id as tie-breaker) for the
+     * ADMIN users list (issue #64). The internal user base is small, so the
+     * whole list is loaded and searched/filtered in memory.
+     */
+    List<User> findAllByOrderByNameAscIdAsc();
 }
