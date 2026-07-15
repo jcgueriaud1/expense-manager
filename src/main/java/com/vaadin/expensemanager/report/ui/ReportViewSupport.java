@@ -2,7 +2,9 @@ package com.vaadin.expensemanager.report.ui;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
@@ -99,6 +101,18 @@ public final class ReportViewSupport {
             DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm", Locale.ENGLISH);
     private static final DateTimeFormatter TRIP_TIME =
             DateTimeFormatter.ofPattern("HH:mm", Locale.ENGLISH);
+    private static final DateTimeFormatter TIMESTAMP =
+            DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm", Locale.ENGLISH)
+                    .withZone(ZoneId.systemDefault());
+
+    /**
+     * A status-history / rejection timestamp, e.g. {@code "14 Jul 2026, 08:00"},
+     * rendered in the app's local zone (the transition {@link Instant} is a UTC
+     * fact; the display is local, like the trip ranges).
+     */
+    public static String formatTimestamp(Instant instant) {
+        return instant == null ? "" : TIMESTAMP.format(instant);
+    }
 
     /**
      * A trip's date range for a Trip & Allowance card, e.g.

@@ -121,6 +121,29 @@ class ApprovalOptimisticLockIntegrationTest {
         assertThat(latest.version()).isGreaterThan(staleVersion);
     }
 
+    @Test
+    void aStaleRejectIsRejectedNotDoubleProcessed() {
+        var id = seedSubmittedReport();
+        // The reviewer captures the version before anyone acts.
+        var staleVersion = approvalService.findForReview(id).version();
+
+        // A first, committed reject advances the version in the DB.
+        approvalService.reject(id, "Please attach receipts.", staleVersion);
+
+        // The stale reviewer still holds the old version — rejecting again must be
+        // refused on the version pre-flight, never re-processing the report.
+        assertThatThrownBy(() -> approvalService.reject(id, "again", staleVersion))
+                .isInstanceOf(ObjectOptimisticLockingFailureException.class);
+
+        var latest = approvalService.findForReview(id);
+        assertThat(latest.status()).isEqualTo(ReportStatus.REJECTED);
+        // Exactly one rejection transition happened (submit + one reject).
+        assertThat(latest.statusHistory()).hasSize(2);
+        assertThat(latest.statusHistory().get(1).comment())
+                .isEqualTo("Please attach receipts.");
+        assertThat(latest.version()).isGreaterThan(staleVersion);
+    }
+
     private Long seedSubmittedReport() {
         var owner = userRepository.findByEmail(LocalUserSeeder.PLAIN_USER_EMAIL)
                 .orElseThrow();

@@ -210,6 +210,37 @@ public class ExpenseReport extends AuditedEntity {
     }
 
     /**
+     * Rejects a submitted report (glossary: Reject, ADR-0006): {@code SUBMITTED →
+     * REJECTED}, appending a {@link StatusChange} that carries the mandatory
+     * rejection reason as its comment (the acting admin, the reason). Mirrors
+     * {@link #approve}, with one extra invariant: a rejection <strong>must</strong>
+     * carry a non-blank comment — a blank or whitespace-only reason is a domain
+     * violation (not merely DB nullability), so it is rejected here rather than
+     * silently persisted. The stored reason is trimmed.
+     *
+     * <p>An illegal transition (rejecting anything but a {@code SUBMITTED} report)
+     * is rejected rather than silently ignored; authorization ("who may reject")
+     * stays in the security/service layer (ADR-0008).
+     *
+     * @param actingUser the admin performing the rejection
+     * @param comment    the mandatory rejection reason (non-blank; trimmed)
+     * @param at         when the transition happened (supplied by the caller so
+     *                   the domain stays free of the clock)
+     * @throws IllegalStateException    if the report is not {@code SUBMITTED}
+     * @throws IllegalArgumentException if {@code comment} is null/blank
+     */
+    public void reject(User actingUser, String comment, Instant at) {
+        if (status != ReportStatus.SUBMITTED) {
+            throw new IllegalStateException(
+                    "Report " + id + " is " + status + " and cannot be rejected");
+        }
+        String reason = requireComment(comment);
+        ReportStatus from = status;
+        status = ReportStatus.REJECTED;
+        recordStatusChange(from, status, actingUser, reason, at);
+    }
+
+    /**
      * Guards the draft-only delete invariant (ADR-0006, glossary): a report is
      * hard-deletable only while {@code DRAFT}. Submitted/approved/rejected
      * reports are retained for the audit trail.
@@ -535,6 +566,17 @@ public class ExpenseReport extends AuditedEntity {
                 .filter(line -> travel == line.getTravel()
                         && line.getGeneratedKind() == kind)
                 .findFirst();
+    }
+
+    /**
+     * Enforces the mandatory-reason invariant on reject: a null, blank, or
+     * whitespace-only comment is refused; a valid one is returned trimmed.
+     */
+    private static String requireComment(String comment) {
+        if (comment == null || comment.isBlank()) {
+            throw new IllegalArgumentException("A rejection comment is required.");
+        }
+        return comment.strip();
     }
 
     private static LocalDate requireDate(LocalDate reportDate) {

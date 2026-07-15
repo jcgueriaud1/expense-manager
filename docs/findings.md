@@ -1377,3 +1377,38 @@ Deployment/Observability · UX-spec
   would save the rediscovery.
 - Owner / next step: low priority; document the worktree recipe if multi-checkout
   dev becomes common.
+
+### F-043 — Admin review mode silently became editable once Reject moved the report to the (owner-)editable REJECTED state
+- Date: 2026-07-15
+- Area: Spec
+- Severity: Medium
+- Task being attempted: Phase 5.2/5.4 (#62) — the admin Reject action on
+  `ReportDetailView`'s review mode. `load()` derived interactivity purely from
+  status: `editable = dto.status().isEditable()`, then toggled Save/Add-expense/
+  Insert-travel/trash and per-card click editing off that flag.
+- Expected vs actual: the approve slice (#61) was safe only by accident — the only
+  review-reachable state was `SUBMITTED` (not editable), and approve moved it to
+  `APPROVED` (also not editable), so review mode was always read-only in practice.
+  Reject moves the report to `REJECTED`, which **is** editable (the owner resubmit
+  path). After a reject the same view reloaded `REJECTED` and flipped fully
+  interactive **for the admin** — Save, Add expense, Insert travel, and the line
+  trash all appeared on another user's report. Manually opening `/review/{id}` for
+  an already-`REJECTED` report showed the same. Caught in Playwright MCP
+  verification, not by the browserless tests (which only asserted the buttons that
+  existed pre-fix).
+- Root cause: "editable" conflated two questions — *is this status editable?* (a
+  domain fact) and *may the current viewer edit it?* (owner path only). Review mode
+  is read-only regardless of status, but that constraint lived implicitly in which
+  statuses happened to be reachable, not in the code.
+- Workaround used: `editable = dto.status().isEditable() && !reviewMode;` — review
+  mode is always read-only. Added regression assertions to the successful-reject UI
+  test (`Save`/`Add expense` absent after the transition).
+- Evidence: `report/ui/ReportDetailView#load`; `approval/ui/ApprovalQueueViewUiTest`
+  `rejectingWithAReasonRecordsItAndMovesTheReportToRejected`.
+- Impact: a reachable authority gap (an admin editing/saving someone else's report
+  through the review view) that stayed latent until the first review-reachable
+  state was itself editable. A reminder that "read-only" must be pinned to the
+  viewer's role, not inferred from the set of currently-reachable statuses.
+- Suggested Vaadin/product improvement: none — app-side. Worth a review-mode
+  read-only guard test even for statuses no queue currently routes to.
+- Owner / next step: none.

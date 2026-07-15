@@ -266,6 +266,68 @@ class ExpenseReportTest {
     }
 
     @Test
+    void rejectMovesSubmittedToRejectedAndAppendsAStatusChangeCarryingTheReason() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+        report.reconcileLines(List.of(spec(null, "100.00", RATE_255)));
+        report.submit(OWNER, Instant.parse("2026-07-13T09:30:00Z"));
+        var admin = new User("admin@vaadin.com", "The Admin", Set.of(Role.ADMIN));
+        var at = Instant.parse("2026-07-14T08:00:00Z");
+
+        report.reject(admin, "  Please attach the hotel receipt.  ", at);
+
+        assertThat(report.getStatus()).isEqualTo(ReportStatus.REJECTED);
+        assertThat(report.getStatusHistory()).hasSize(2);
+        var change = report.getStatusHistory().get(1);
+        assertThat(change.getFromStatus()).isEqualTo(ReportStatus.SUBMITTED);
+        assertThat(change.getToStatus()).isEqualTo(ReportStatus.REJECTED);
+        assertThat(change.getActingUser()).isSameAs(admin);
+        assertThat(change.getChangedAt()).isEqualTo(at);
+        // The mandatory reason is carried as the comment, trimmed.
+        assertThat(change.getComment()).isEqualTo("Please attach the hotel receipt.");
+    }
+
+    @Test
+    void rejectingWithABlankCommentIsRejectedAsADomainViolation() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+        report.reconcileLines(List.of(spec(null, "100.00", RATE_255)));
+        report.submit(OWNER, Instant.EPOCH);
+
+        // Null, empty, and whitespace-only are all refused — not just DB nullability.
+        assertThatThrownBy(() -> report.reject(OWNER, null, Instant.EPOCH))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> report.reject(OWNER, "   ", Instant.EPOCH))
+                .isInstanceOf(IllegalArgumentException.class);
+        // The report stays SUBMITTED and no spurious history entry is appended.
+        assertThat(report.getStatus()).isEqualTo(ReportStatus.SUBMITTED);
+        assertThat(report.getStatusHistory()).hasSize(1);
+    }
+
+    @Test
+    void rejectingANonSubmittedReportIsRejected() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+        report.reconcileLines(List.of(spec(null, "100.00", RATE_255)));
+
+        // A DRAFT cannot be rejected, and the guard fires before the comment check.
+        assertThatThrownBy(() -> report.reject(OWNER, "no", Instant.EPOCH))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(report.getStatus()).isEqualTo(ReportStatus.DRAFT);
+        assertThat(report.getStatusHistory()).isEmpty();
+    }
+
+    @Test
+    void rejectingAnAlreadyApprovedReportIsRejected() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+        report.reconcileLines(List.of(spec(null, "100.00", RATE_255)));
+        report.submit(OWNER, Instant.EPOCH);
+        report.approve(OWNER, Instant.EPOCH);
+
+        assertThatThrownBy(() -> report.reject(OWNER, "too late", Instant.EPOCH))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(report.getStatus()).isEqualTo(ReportStatus.APPROVED);
+        assertThat(report.getStatusHistory()).hasSize(2);
+    }
+
+    @Test
     void onlySubmittedIsReviewable() {
         assertThat(ReportStatus.DRAFT.isReviewable()).isFalse();
         assertThat(ReportStatus.SUBMITTED.isReviewable()).isTrue();

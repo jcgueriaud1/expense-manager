@@ -171,6 +171,23 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
     }
 
     @Test
+    void aRejectedReportShowsTheRealReasonRejecterAndDateToTheOwner() {
+        var id = seedRejectedReport(LocalDate.of(2026, 7, 1), "100",
+                "Please attach the hotel receipt.");
+        navigate(ReportDetailView.class, id);
+
+        // The owner's callout carries the real reason, who rejected it (the seeded
+        // admin), and when — replacing the placeholder note. The reason and the
+        // rejecter also appear in the status-history audit trail below.
+        var text = getCurrentView().getElement().getTextRecursively();
+        assertThat(text).contains("Rejected — changes requested",
+                "Please attach the hotel receipt.", "Expense Admin", "14 Jul 2026");
+        assertThat(text).contains("Status history");
+        // A rejected report is editable again (owner can resubmit), so Save shows.
+        assertThat(findButton().withText("Save").exists()).isTrue();
+    }
+
+    @Test
     void anAlreadySubmittedReportOpensReadOnly() {
         var id = seedSubmittedReport(LocalDate.of(2026, 7, 1), "80.00");
         navigate(ReportDetailView.class, id);
