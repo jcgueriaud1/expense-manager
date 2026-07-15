@@ -22,6 +22,11 @@ auto-starts the PostgreSQL service in [`compose.yaml`](compose.yaml) and wires
 the datasource to it — no manual DB setup. The app runs on port 8080
 (configurable via `PORT`).
 
+On an empty DB the `local` profile seeds labelled DRAFT/SUBMITTED/APPROVED
+report fixtures so you land directly on the screen under test — see
+[`docs/manual-verification.md`](docs/manual-verification.md) for the fixtures,
+logins, and the Playwright smoke-test pattern.
+
 ## Profiles
 
 Four profiles override a base `application.properties` (ADR-0013):
