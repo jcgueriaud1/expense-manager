@@ -54,11 +54,11 @@ class LocalReportSeederTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void seedsTheFourLabelledFixturesOnEmptyDb() {
+    void seedsTheFiveLabelledFixturesOnEmptyDb() {
         seeder.run(null);
 
         List<ExpenseReport> reports = reportRepository.findAll();
-        assertThat(reports).hasSize(4);
+        assertThat(reports).hasSize(5);
 
         String user = LocalUserSeeder.PLAIN_USER_EMAIL;
         assertThat(reports)
@@ -76,6 +76,17 @@ class LocalReportSeederTest extends AbstractIntegrationTest {
                 .filteredOn(r -> r.getStatus() == ReportStatus.APPROVED)
                 .singleElement()
                 .satisfies(r -> assertThat(r.getOwner().getEmail()).isEqualTo(user));
+
+        // The REJECTED fixture (Phase 5.5) is owned by the plain user and carries the
+        // admin's rejection reason in its status history, so the owner's resubmit
+        // path lands directly on it.
+        assertThat(reports)
+                .filteredOn(r -> r.getStatus() == ReportStatus.REJECTED)
+                .singleElement()
+                .satisfies(r -> {
+                    assertThat(r.getOwner().getEmail()).isEqualTo(user);
+                    assertThat(r.getStatusHistory().getLast().getComment()).isNotBlank();
+                });
     }
 
     @Test
@@ -93,6 +104,6 @@ class LocalReportSeederTest extends AbstractIntegrationTest {
 
         seeder.run(null);
 
-        assertThat(reportRepository.count()).isEqualTo(afterFirst).isEqualTo(4);
+        assertThat(reportRepository.count()).isEqualTo(afterFirst).isEqualTo(5);
     }
 }

@@ -80,9 +80,11 @@ import static com.vaadin.expensemanager.report.ui.ReportViewSupport.formatPercen
  * and <strong>Save is always enabled</strong> with a top-of-form error summary;
  * line-field validation lives in the dialog. Report-level fields, the card
  * actions, and Save show only while the report is editable ({@code DRAFT}/
- * {@code REJECTED}); <strong>Submit for approval</strong> (always enabled — a
- * zero-line submit surfaces the reason, never a silent no-op) only for a
- * persisted {@code DRAFT}, moving it to {@code SUBMITTED} and read-only;
+ * {@code REJECTED}); the forward action (always enabled — a
+ * zero-line submit surfaces the reason, never a silent no-op) shows on a
+ * persisted {@code DRAFT} (<strong>Submit for approval</strong>) and on a
+ * {@code REJECTED} report (<strong>Resubmit</strong>, Phase 5.5), both moving it
+ * to {@code SUBMITTED};
  * <strong>Delete</strong> only while a persisted {@code DRAFT} (the aggregate
  * enforces the guard, ADR-0006). Stale writes surface a "reload" affordance,
  * never a silent overwrite (ADR-0011). {@code @PermitAll}; owner-scoping is
@@ -340,10 +342,14 @@ public class ReportDetailView extends VerticalLayout
         save.setVisible(editable);
         addLine.setVisible(editable);
         addTravel.setVisible(editable);
-        // Submit only for a persisted DRAFT: a brand-new report must be saved
-        // first, and resubmitting a REJECTED report is Phase 5 (out of scope).
+        // The forward action shows on a persisted DRAFT (first submit) and on a
+        // persisted REJECTED report (resubmit, Phase 5.5) — a brand-new report must
+        // be saved first. Same button, relabelled/rerouted by status; SUBMITTED and
+        // APPROVED stay read-only with no forward action.
+        boolean rejected = dto.status() == ReportStatus.REJECTED;
         submit.setVisible(!reviewMode && dto.isPersisted()
-                && dto.status() == ReportStatus.DRAFT);
+                && (dto.status() == ReportStatus.DRAFT || rejected));
+        submit.setText(rejected ? "Resubmit" : "Submit for approval");
         // Delete only while DRAFT and already persisted (ADR-0006, glossary).
         delete.setVisible(!reviewMode && dto.isPersisted() && dto.status().isDeletable());
         // Approve/Reject are the review-mode actions, only while the report is still
@@ -396,16 +402,20 @@ public class ReportDetailView extends VerticalLayout
     }
 
     /**
-     * Submits the persisted report for approval (UC-003): {@code DRAFT →
-     * SUBMITTED}. The button is always enabled (ADR-0020) — a zero-line report
-     * is not silently no-op'd but surfaces the domain reason in the error
+     * Sends the persisted report to the admin queue (UC-003): a {@code DRAFT}
+     * submits, a {@code REJECTED} report resubmits (Phase 5.5) — both land in
+     * {@code SUBMITTED}. The button is always enabled (ADR-0020) — a zero-line
+     * report is not silently no-op'd but surfaces the domain reason in the error
      * summary. A stale write surfaces the reload affordance (ADR-0011).
      */
     private void onSubmit() {
         clearErrors();
+        boolean rejected = working.status() == ReportStatus.REJECTED;
         try {
-            load(service.submit(working.id(), working.version()));
-            Notification.show("Report submitted for approval.");
+            load(rejected ? service.resubmit(working.id(), working.version())
+                    : service.submit(working.id(), working.version()));
+            Notification.show(rejected ? "Report resubmitted for approval."
+                    : "Report submitted for approval.");
         } catch (ObjectOptimisticLockingFailureException stale) {
             showConflict();
         } catch (IllegalArgumentException | IllegalStateException invalid) {

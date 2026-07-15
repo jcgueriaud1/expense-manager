@@ -351,6 +351,31 @@ public class ExpenseReportService {
     }
 
     /**
+     * Resubmits one of the current user's rejected reports for approval (Phase
+     * 5.5, ADR-0006): {@code REJECTED → SUBMITTED}, appending a {@link
+     * com.vaadin.expensemanager.report.domain.StatusChange} so it re-enters the
+     * admin queue. Owner-scoped ({@code requireOwned}) and version-checked
+     * (ADR-0011) exactly like {@link #submit}: a different user — <strong>including
+     * an admin</strong> — cannot resubmit another owner's report through this
+     * method, and a stale resubmit surfaces as a conflict rather than acting on an
+     * outdated view. The aggregate enforces the "≥1 line, REJECTED-only" invariants.
+     *
+     * @param expectedVersion the {@code @Version} the UI last saw
+     * @throws ObjectOptimisticLockingFailureException if the report changed
+     *         underneath the editor
+     */
+    @RolesAllowed("USER")
+    @Transactional
+    public ReportDetailDto resubmit(Long id, long expectedVersion) {
+        var report = requireOwned(id);
+        if (report.getVersion() != expectedVersion) {
+            throw new ObjectOptimisticLockingFailureException(ExpenseReport.class, id);
+        }
+        report.resubmit(report.getOwner(), Instant.now());
+        return mapper.toDetail(report);
+    }
+
+    /**
      * Deletes one of the current user's reports. The aggregate rejects the
      * delete unless it is a {@code DRAFT} (ADR-0006); once submit exists (Phase
      * 2.4) this guard is exercised end-to-end.

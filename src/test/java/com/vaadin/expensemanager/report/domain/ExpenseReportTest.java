@@ -352,6 +352,77 @@ class ExpenseReportTest {
                 .isInstanceOf(IllegalStateException.class);
     }
 
+    // --- Resubmit (Phase 5.5) ---
+
+    /** Creates a REJECTED report with one line — the resubmit tests' fixture. */
+    private static ExpenseReport rejectedReport() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+        report.reconcileLines(List.of(spec(null, "100.00", RATE_255)));
+        report.submit(OWNER, Instant.parse("2026-07-11T09:00:00Z"));
+        var admin = new User("admin@vaadin.com", "The Admin", Set.of(Role.ADMIN));
+        report.reject(admin, "Please attach the receipt.",
+                Instant.parse("2026-07-12T09:00:00Z"));
+        return report;
+    }
+
+    @Test
+    void resubmitMovesRejectedToSubmittedAndAppendsAStatusChange() {
+        var report = rejectedReport();
+        var at = Instant.parse("2026-07-13T09:30:00Z");
+
+        report.resubmit(OWNER, at);
+
+        assertThat(report.getStatus()).isEqualTo(ReportStatus.SUBMITTED);
+        // Submit (1) + reject (2) + resubmit (3) — the loop is auditable.
+        assertThat(report.getStatusHistory()).hasSize(3);
+        var change = report.getStatusHistory().getLast();
+        assertThat(change.getFromStatus()).isEqualTo(ReportStatus.REJECTED);
+        assertThat(change.getToStatus()).isEqualTo(ReportStatus.SUBMITTED);
+        assertThat(change.getActingUser()).isSameAs(OWNER);
+        assertThat(change.getChangedAt()).isEqualTo(at);
+        assertThat(change.getComment()).isNull();
+    }
+
+    @Test
+    void resubmitRequiresAtLeastOneLine() {
+        var report = rejectedReport();
+        // Strip the report back to zero lines while REJECTED (still editable).
+        report.reconcileLines(List.of());
+        assertThat(report.getLines()).isEmpty();
+
+        assertThatThrownBy(() -> report.resubmit(OWNER, Instant.EPOCH))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("at least one line");
+        // Nothing changed: still REJECTED with no spurious history entry.
+        assertThat(report.getStatus()).isEqualTo(ReportStatus.REJECTED);
+        assertThat(report.getStatusHistory()).hasSize(2);
+    }
+
+    @Test
+    void resubmittingADraftIsRejected() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+        report.reconcileLines(List.of(spec(null, "100.00", RATE_255)));
+
+        assertThatThrownBy(() -> report.resubmit(OWNER, Instant.EPOCH))
+                .isInstanceOf(IllegalStateException.class);
+        // The illegal transition leaves the draft untouched, with no history.
+        assertThat(report.getStatus()).isEqualTo(ReportStatus.DRAFT);
+        assertThat(report.getStatusHistory()).isEmpty();
+    }
+
+    @Test
+    void resubmittingAReportAwaitingApprovalIsRejected() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+        report.reconcileLines(List.of(spec(null, "100.00", RATE_255)));
+        report.submit(OWNER, Instant.EPOCH);
+
+        // resubmit() only leaves REJECTED — a SUBMITTED report cannot be resubmitted.
+        assertThatThrownBy(() -> report.resubmit(OWNER, Instant.EPOCH))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(report.getStatus()).isEqualTo(ReportStatus.SUBMITTED);
+        assertThat(report.getStatusHistory()).hasSize(1);
+    }
+
     // --- Travel / per-diem generated lines (Phase 4.2/4.3) ---
 
     private static final ExpenseType TRAVEL_TYPE =

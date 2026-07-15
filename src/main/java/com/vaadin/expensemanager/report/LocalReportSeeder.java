@@ -43,7 +43,8 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li>a {@code DRAFT} owned by the plain user — edit path;</li>
  *   <li>a {@code SUBMITTED} owned by the plain user — queue + review + approve;</li>
  *   <li>a {@code SUBMITTED} owned by the admin — cross-owner queue visibility;</li>
- *   <li>an {@code APPROVED} owned by the plain user — owner-sees-approved.</li>
+ *   <li>an {@code APPROVED} owned by the plain user — owner-sees-approved;</li>
+ *   <li>a {@code REJECTED} owned by the plain user — edit + resubmit (Phase 5.5).</li>
  * </ul>
  *
  * <p><strong>Profile-scoped to {@code local}</strong>: never runs in
@@ -64,6 +65,7 @@ public class LocalReportSeeder implements ApplicationRunner {
 
     private static final Instant SUBMITTED_AT = Instant.parse("2026-07-12T09:00:00Z");
     private static final Instant APPROVED_AT = Instant.parse("2026-07-14T08:00:00Z");
+    private static final Instant REJECTED_AT = Instant.parse("2026-07-13T10:30:00Z");
 
     private final ExpenseReportRepository reportRepository;
     private final UserRepository userRepository;
@@ -105,9 +107,11 @@ public class LocalReportSeeder implements ApplicationRunner {
                 "[seed] SUBMITTED — admin-owned, cross-owner queue");
         seedApproved(user, admin, LocalDate.of(2026, 7, 8),
                 "[seed] APPROVED — plain user, owner-sees-approved");
+        seedRejected(user, admin, LocalDate.of(2026, 7, 7),
+                "[seed] REJECTED — plain user, edit + resubmit");
 
-        log.info("Seeded 4 local expense-report fixtures (1 DRAFT, 2 SUBMITTED, "
-                + "1 APPROVED)");
+        log.info("Seeded 5 local expense-report fixtures (1 DRAFT, 2 SUBMITTED, "
+                + "1 APPROVED, 1 REJECTED)");
     }
 
     private void seedDraft(User owner, LocalDate date, String info) {
@@ -125,6 +129,14 @@ public class LocalReportSeeder implements ApplicationRunner {
         var report = newReportWithLine(owner, date, info);
         report.submit(owner, SUBMITTED_AT);
         report.approve(admin, APPROVED_AT);
+        reportRepository.save(report);
+    }
+
+    private void seedRejected(User owner, User admin, LocalDate date, String info) {
+        var report = newReportWithLine(owner, date, info);
+        report.submit(owner, SUBMITTED_AT);
+        report.reject(admin, "Please attach the hotel receipt and split the "
+                + "restaurant line by VAT rate.", REJECTED_AT);
         reportRepository.save(report);
     }
 
