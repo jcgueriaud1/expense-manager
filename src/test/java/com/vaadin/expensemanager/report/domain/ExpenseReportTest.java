@@ -221,6 +221,59 @@ class ExpenseReportTest {
     }
 
     @Test
+    void approveMovesSubmittedToApprovedAndAppendsAStatusChange() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+        report.reconcileLines(List.of(spec(null, "100.00", RATE_255)));
+        report.submit(OWNER, Instant.parse("2026-07-13T09:30:00Z"));
+        var admin = new User("admin@vaadin.com", "The Admin", Set.of(Role.ADMIN));
+        var at = Instant.parse("2026-07-14T08:00:00Z");
+
+        report.approve(admin, at);
+
+        assertThat(report.getStatus()).isEqualTo(ReportStatus.APPROVED);
+        assertThat(report.getStatusHistory()).hasSize(2);
+        var change = report.getStatusHistory().get(1);
+        assertThat(change.getFromStatus()).isEqualTo(ReportStatus.SUBMITTED);
+        assertThat(change.getToStatus()).isEqualTo(ReportStatus.APPROVED);
+        assertThat(change.getActingUser()).isSameAs(admin);
+        assertThat(change.getChangedAt()).isEqualTo(at);
+        assertThat(change.getComment()).isNull();
+    }
+
+    @Test
+    void approvingADraftIsRejected() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+        report.reconcileLines(List.of(spec(null, "100.00", RATE_255)));
+
+        assertThatThrownBy(() -> report.approve(OWNER, Instant.EPOCH))
+                .isInstanceOf(IllegalStateException.class);
+        // The illegal transition leaves the report untouched, with no history.
+        assertThat(report.getStatus()).isEqualTo(ReportStatus.DRAFT);
+        assertThat(report.getStatusHistory()).isEmpty();
+    }
+
+    @Test
+    void approvingAnAlreadyApprovedReportIsRejected() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+        report.reconcileLines(List.of(spec(null, "100.00", RATE_255)));
+        report.submit(OWNER, Instant.EPOCH);
+        report.approve(OWNER, Instant.EPOCH);
+
+        assertThatThrownBy(() -> report.approve(OWNER, Instant.EPOCH))
+                .isInstanceOf(IllegalStateException.class);
+        // No spurious second APPROVED entry from the rejected transition.
+        assertThat(report.getStatusHistory()).hasSize(2);
+    }
+
+    @Test
+    void onlySubmittedIsReviewable() {
+        assertThat(ReportStatus.DRAFT.isReviewable()).isFalse();
+        assertThat(ReportStatus.SUBMITTED.isReviewable()).isTrue();
+        assertThat(ReportStatus.APPROVED.isReviewable()).isFalse();
+        assertThat(ReportStatus.REJECTED.isReviewable()).isFalse();
+    }
+
+    @Test
     void aSubmittedReportRejectsLineAndDetailEditsAndDelete() {
         // The read-only-after-submit guards, now exercised end-to-end through a
         // real submit() (Phase 2.4) rather than only via the enum.

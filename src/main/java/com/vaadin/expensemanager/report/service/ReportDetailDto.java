@@ -46,12 +46,29 @@ import com.vaadin.expensemanager.report.domain.ReportStatus;
  * @param perDiemTotal          derived tax-free per-diem subtotal, EUR scale 2
  * @param kilometreTotal        derived tax-free kilometre allowance subtotal, EUR scale 2
  * @param mealTotal             derived tax-free meal allowance subtotal, EUR scale 2
+ * @param statusHistory         the report's status-change log, oldest first (never null)
  */
 public record ReportDetailDto(Long id, LocalDate reportDate,
         String additionalInformation, ReportStatus status, long version,
         List<ExpenseLineDto> lines, List<TravelDto> travels, BigDecimal total,
         BigDecimal netTotal, BigDecimal vatTotal, BigDecimal perDiemTotal,
-        BigDecimal kilometreTotal, BigDecimal mealTotal) {
+        BigDecimal kilometreTotal, BigDecimal mealTotal,
+        List<StatusChangeDto> statusHistory) {
+
+    /**
+     * Constructor for a report whose status history is not needed by the caller
+     * (every save/edit path, where the working copy is written, not read for its
+     * audit trail): defaults {@link #statusHistory} empty.
+     */
+    public ReportDetailDto(Long id, LocalDate reportDate, String additionalInformation,
+            ReportStatus status, long version, List<ExpenseLineDto> lines,
+            List<TravelDto> travels, BigDecimal total, BigDecimal netTotal,
+            BigDecimal vatTotal, BigDecimal perDiemTotal, BigDecimal kilometreTotal,
+            BigDecimal mealTotal) {
+        this(id, reportDate, additionalInformation, status, version, lines, travels,
+                total, netTotal, vatTotal, perDiemTotal, kilometreTotal, mealTotal,
+                List.of());
+    }
 
     /**
      * Backward-compatible constructor for a report with no trips (seeds, tests,
