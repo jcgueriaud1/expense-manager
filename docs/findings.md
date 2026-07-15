@@ -1322,7 +1322,63 @@ Deployment/Observability · UX-spec
 - Owner / next step: reuse `AbstractApprovalViewUiTest`'s shape for future admin
   view tests (reject/resubmit, export).
 
-### F-041 — Admin review mode silently became editable once Reject moved the report to the (owner-)editable REJECTED state
+### F-041 — Manual/visual verification had no fixtures or economy guidance
+- Date: 2026-07-15
+- Area: Verification
+- Severity: Medium
+- Task being attempted: Issue #68 — making skill step 4 (drive the real app with
+  the Playwright MCP) cheap to set up and run.
+- Expected vs actual: Expected to land directly on the screen under test.
+  Actual: the local DB started empty, so verifying the Phase 5.1 approval flow
+  (#61) took ~52 Playwright calls — roughly half of them **setup** (clicking
+  create → add line → save → submit through the UI just to have a `SUBMITTED`
+  report), the rest inflated by full-tree `browser_snapshot` dumps used only to
+  find element refs. Nothing documented the fixtures or a cheaper pattern.
+- Workaround used: Added `LocalReportSeeder` (`@Profile("local")`, idempotent,
+  empty-DB only) that seeds four labelled DRAFT/SUBMITTED(×2)/APPROVED fixtures
+  straight through the repository + aggregate — the bypass-the-owner-scoped-service
+  technique from `AbstractApprovalViewUiTest`. Documented the fixtures, logins,
+  and a Playwright economy pattern (deep-link + stable selectors over snapshots,
+  `browser_fill_form`, screenshot only unique visual states) in
+  `docs/manual-verification.md`, and pointed `implement-use-case` step 4 at both.
+- Evidence: `report/LocalReportSeeder`, `report/LocalReportSeederTest`,
+  `docs/manual-verification.md`, `.claude/skills/implement-use-case/SKILL.md`;
+  the #61 verification transcript.
+- Impact: a login lands directly on the screen under test with zero setup clicks
+  — cheaper for both an agent and a human smoke test, and a pleasant local demo.
+- Suggested Vaadin/product improvement: a first-class "dev seed" story in the
+  starter (profile-guarded, idempotent `ApplicationRunner` convention) so every
+  app ships demo fixtures without hand-rolling one.
+- Owner / next step: Resolved in #68. Extend the fixture set if a later phase
+  (reject/resubmit) needs a `REJECTED` seed.
+
+### F-042 — Running the app from a git worktree collides with the main checkout
+- Date: 2026-07-15
+- Area: Tooling/Template
+- Severity: Low
+- Task being attempted: Starting the app from the `issue-68` worktree to visually
+  verify the seeder while the main checkout's stack was up.
+- Expected vs actual: Expected `./mvnw` to just run. Actual: two collisions — the
+  worktree's spring-boot-docker-compose tried to bind its own Postgres to host
+  port 5432, already held by the main checkout's `expense-manager-postgres-1`
+  ("port is already allocated"); and once that was bypassed, Tomcat failed on
+  port 8080, already held by the main dev server.
+- Workaround used: Ran against the shared already-running Postgres with
+  `-Dspring.docker.compose.enabled=false` and on a free port with
+  `-Dserver.port=8081`. The datasource default (`localhost:5432/expense_manager`)
+  already points at the running container, so no other wiring was needed.
+- Evidence: `application-local.properties` (compose auto-start + datasource
+  default); startup logs "Bind for 0.0.0.0:5432 failed" / "Port 8080 was already
+  in use".
+- Impact: a second checkout/worktree can't naively `./mvnw` alongside the primary
+  one; easy to misread as a broken change rather than a port clash.
+- Suggested Vaadin/product improvement: none for the product; a worktree note in
+  `DEVELOPMENT.md` ("reuse the running DB with compose disabled + a spare port")
+  would save the rediscovery.
+- Owner / next step: low priority; document the worktree recipe if multi-checkout
+  dev becomes common.
+
+### F-043 — Admin review mode silently became editable once Reject moved the report to the (owner-)editable REJECTED state
 - Date: 2026-07-15
 - Area: Spec
 - Severity: Medium
