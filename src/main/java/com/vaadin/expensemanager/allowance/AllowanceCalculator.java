@@ -76,18 +76,10 @@ public final class AllowanceCalculator {
                     "Trip not eligible for daily allowance — no per-diem.");
         }
 
-        Duration duration = Duration.between(departure, returnAt);
-        long fullDays = duration.toDays();
-        long leftoverMinutes = duration.toMinutes() - fullDays * 24 * 60;
-
-        int partialDays = 0;
-        int extraFullDays = 0;
-        if (leftoverMinutes > minutes(rate.fullDayMinHours())) {
-            extraFullDays = 1;
-        } else if (leftoverMinutes > minutes(rate.partialDayMinHours())) {
-            partialDays = 1;
-        }
-        long fullCount = fullDays + extraFullDays;
+        AllowanceDays days = allowanceDays(departure, returnAt, rate.fullDayMinHours(),
+                rate.partialDayMinHours());
+        long fullCount = days.fullDays();
+        int partialDays = days.partialDays();
 
         BigDecimal gross = rate.fullDayAmount().multiply(BigDecimal.valueOf(fullCount))
                 .add(rate.partialDayAmount().multiply(BigDecimal.valueOf(partialDays)));
@@ -100,6 +92,66 @@ public final class AllowanceCalculator {
                 freeLunch);
         return new DomesticPerDiemResult(amount, (int) fullCount, partialDays,
                 explanation);
+    }
+
+    /**
+     * Computes the foreign per-diem for a trip against the destination country's
+     * rate (Phase 4.2/4.3) — {@code country rate × allowance-day count}. Unlike the
+     * domestic per-diem there is a single flat amount per country (no full/partial
+     * split), so every allowance day the trip earns is valued at that one rate.
+     *
+     * <p>The allowance-day count is the same duration split the domestic per-diem
+     * uses (whole 24-hour periods plus a leftover over the partial-day threshold),
+     * but since partial foreign-day fractions are out of scope this slice every such
+     * day — full or leftover — counts once at the full country rate. A trip flagged
+     * not eligible, or too short to earn any day, earns <strong>nothing</strong>.
+     * Free-meal halving is <em>not</em> applied (foreign meal-deduction reductions
+     * are out of scope, manual-line territory).
+     *
+     * <p>A {@code null} rate is rejected — the caller looks the country's rate up for
+     * the trip year and must surface a missing one as a clear failure (never a
+     * silent Finnish default, ADR-0020).
+     *
+     * @param departure         trip departure date-and-time (required)
+     * @param returnAt          trip return date-and-time (required, after departure)
+     * @param notEligible       whether the trip earns no daily allowance
+     * @param rate              the destination country's trip-year rate (required)
+     * @param fullDayMinHours   the year's full-day threshold (hours) for day counting
+     * @param partialDayMinHours the year's partial-day threshold (hours) for day counting
+     * @throws IllegalArgumentException if an argument is {@code null} or the return
+     *                                  is not after the departure
+     */
+    public ForeignPerDiemResult foreignPerDiem(LocalDateTime departure,
+            LocalDateTime returnAt, boolean notEligible, ForeignPerDiemDto rate,
+            int fullDayMinHours, int partialDayMinHours) {
+        if (departure == null || returnAt == null) {
+            throw new IllegalArgumentException(
+                    "Departure and return date & time are required");
+        }
+        if (rate == null) {
+            throw new IllegalArgumentException(
+                    "No foreign per-diem rate for the destination country");
+        }
+        if (!returnAt.isAfter(departure)) {
+            throw new IllegalArgumentException(
+                    "Return must be after the departure");
+        }
+        if (notEligible) {
+            return new ForeignPerDiemResult(zero(), 0,
+                    "Trip not eligible for daily allowance — no per-diem.");
+        }
+
+        int dayCount = allowanceDays(departure, returnAt, fullDayMinHours,
+                partialDayMinHours).total();
+        if (dayCount == 0) {
+            return new ForeignPerDiemResult(zero(), 0,
+                    "Trip too short for a per-diem — no allowance.");
+        }
+        BigDecimal amount = rate.amount().multiply(BigDecimal.valueOf(dayCount))
+                .setScale(2, RoundingMode.HALF_UP);
+        String explanation = "Foreign per-diem (" + rate.country() + "): " + dayCount
+                + " × " + eur(rate.amount()) + " = " + eur(amount);
+        return new ForeignPerDiemResult(amount, dayCount, explanation);
     }
 
     /**
@@ -164,6 +216,41 @@ public final class AllowanceCalculator {
         }
         BigDecimal amount = fee.setScale(2, RoundingMode.HALF_UP);
         return new AllowanceAmount(amount, "Parking fees: " + eur(amount));
+    }
+
+    /**
+     * The full/partial allowance days a trip's duration earns against the given
+     * thresholds — the shared per-diem day split (domestic and foreign both use it).
+     * Whole 24-hour periods each earn a full day; a leftover over the full-day
+     * threshold earns an extra full day, over the partial-day threshold a partial
+     * day, and anything shorter nothing.
+     */
+    private static AllowanceDays allowanceDays(LocalDateTime departure,
+            LocalDateTime returnAt, int fullDayMinHours, int partialDayMinHours) {
+        Duration duration = Duration.between(departure, returnAt);
+        long fullDays = duration.toDays();
+        long leftoverMinutes = duration.toMinutes() - fullDays * 24 * 60;
+        int partialDays = 0;
+        int extraFullDays = 0;
+        if (leftoverMinutes > minutes(fullDayMinHours)) {
+            extraFullDays = 1;
+        } else if (leftoverMinutes > minutes(partialDayMinHours)) {
+            partialDays = 1;
+        }
+        return new AllowanceDays(fullDays + extraFullDays, partialDays);
+    }
+
+    /**
+     * The full and partial allowance days a trip earned. The domestic per-diem
+     * values them at the full/partial rate; the foreign per-diem counts every day
+     * once at the flat country rate ({@link #total()}).
+     */
+    private record AllowanceDays(long fullDays, int partialDays) {
+
+        /** Total allowance days — full plus partial (foreign counts each once). */
+        int total() {
+            return (int) fullDays + partialDays;
+        }
     }
 
     private static long minutes(int hours) {

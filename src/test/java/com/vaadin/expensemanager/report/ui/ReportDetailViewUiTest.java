@@ -304,6 +304,8 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findButton().withText("Insert travel info").click();
         findDateTimePicker().withLabel("Departure").setValue(DEP);
         findDateTimePicker().withLabel("Return").setValue(DEP.plusHours(11));
+        findComboBox(String.class).withLabel("Destination country")
+                .selectItem("Finland (domestic)");
         findTextField().withLabel("Destinations").setValue("Helsinki");
         findTextField().withLabel("Travel purpose").setValue("Client visit");
 
@@ -332,12 +334,63 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
     }
 
     @Test
+    void insertingAForeignTripCostsThePerDiemAgainstTheDestinationCountry() {
+        navigate(ReportDetailView.class);
+
+        findButton().withText("Insert travel info").click();
+        findDateTimePicker().withLabel("Departure").setValue(DEP);
+        findDateTimePicker().withLabel("Return").setValue(DEP.plusHours(11));
+        // The picker lists the seeded foreign countries alongside Finland; pick one.
+        var country = findComboBox(String.class).withLabel("Destination country");
+        assertThat(country.getSuggestions())
+                .contains("Finland (domestic)", "Germany", "Sweden");
+        country.selectItem("Germany");
+        findTextField().withLabel("Destinations").setValue("Berlin");
+        findTextField().withLabel("Travel purpose").setValue("Conference");
+
+        // Costed against Germany's €71.00/day, not the Finnish €54.00.
+        assertThat(UI.getCurrent().getElement().getTextRecursively())
+                .contains("Per diem allowance: €71.00", "Germany");
+
+        findButton().withText("Save trip").click();
+        // The chosen country shows on the Trip & Allowance card ("destinations, country").
+        assertThat(getCurrentView().getElement().getTextRecursively())
+                .contains("Berlin, Germany", "€71.00");
+
+        findButton().withText("Save").click();
+
+        var loaded = service.findMine(service.listMine().getFirst().id());
+        assertThat(loaded.travels().getFirst().country()).isEqualTo("Germany");
+        assertThat(loaded.perDiemTotal()).isEqualByComparingTo("71.00");
+    }
+
+    @Test
+    void aTripCannotBeSavedWithNoDestinationCountryChosen() {
+        navigate(ReportDetailView.class);
+
+        findButton().withText("Insert travel info").click();
+        findDateTimePicker().withLabel("Departure").setValue(DEP);
+        findDateTimePicker().withLabel("Return").setValue(DEP.plusHours(11));
+        findTextField().withLabel("Destinations").setValue("Helsinki");
+        findTextField().withLabel("Travel purpose").setValue("Client visit");
+        // Country left unchosen: Save surfaces a clear message and generates nothing.
+        findButton().withText("Save trip").click();
+
+        assertThat(UI.getCurrent().getElement().getTextRecursively())
+                .contains("Destination country is required");
+        assertThat(findButton().withText("Save trip").exists()).isTrue();
+        assertThat(findSpan().withText("Per diem allowance").exists()).isFalse();
+    }
+
+    @Test
     void insertingATripWithKmMealParkingShowsEachSubtotalAndFoldsParkingIntoNetVat() {
         navigate(ReportDetailView.class);
 
         findButton().withText("Insert travel info").click();
         findDateTimePicker().withLabel("Departure").setValue(DEP);
         findDateTimePicker().withLabel("Return").setValue(DEP.plusHours(11));
+        findComboBox(String.class).withLabel("Destination country")
+                .selectItem("Finland (domestic)");
         findTextField().withLabel("Destinations").setValue("Helsinki");
         findTextField().withLabel("Travel purpose").setValue("Client visit");
         findBigDecimalField().withLabel("Kilometre allowance (km)")

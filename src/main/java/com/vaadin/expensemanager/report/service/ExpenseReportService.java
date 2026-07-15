@@ -14,6 +14,8 @@ import com.vaadin.expensemanager.allowance.AllowanceCalculator;
 import com.vaadin.expensemanager.allowance.AllowanceRateService;
 import com.vaadin.expensemanager.allowance.DomesticPerDiemDto;
 import com.vaadin.expensemanager.allowance.DomesticPerDiemResult;
+import com.vaadin.expensemanager.allowance.ForeignPerDiemDto;
+import com.vaadin.expensemanager.allowance.ForeignPerDiemResult;
 import com.vaadin.expensemanager.allowance.KilometreRateDto;
 import com.vaadin.expensemanager.allowance.MealAllowanceDto;
 import com.vaadin.expensemanager.report.domain.ExpenseLine;
@@ -135,23 +137,40 @@ public class ExpenseReportService {
     }
 
     /**
-     * Previews the domestic trip outputs for a trip's inputs without persisting
-     * anything (Phase 4.2/4.3, the dialog preview). Amounts are
+     * Previews the trip outputs for a trip's inputs without persisting anything
+     * (Phase 4.2/4.3, the dialog preview). Amounts are
      * <strong>server-authoritative</strong>: the client sends inputs, this
      * recomputes every output (per-diem, kilometre, meal, parking) from the
-     * trip-year rates and returns the trip with its {@link TravelAllowances}
-     * breakdown filled in. Invalid input (return before departure, or no rate
-     * configured for a requested output's trip year) throws with a message the
-     * caller surfaces in the error summary (ADR-0020).
+     * trip-year rates and returns the trip with its generated-line breakdown filled
+     * in. The per-diem is costed domestically for a Finnish trip or against the
+     * destination country's rate for a foreign one (from {@link TravelDto#country()}).
+     * Invalid input (return before departure, or no rate configured for a requested
+     * output's trip year — including a foreign country with no rate for the year)
+     * throws with a message the caller surfaces in the error summary (ADR-0020) —
+     * never a silent Finnish default.
      *
      * @throws IllegalArgumentException if the inputs are invalid or a rate is missing
      */
     @RolesAllowed("USER")
     @Transactional(readOnly = true)
-    public TravelDto previewDomesticTravel(TravelDto input) {
+    public TravelDto previewTravel(TravelDto input) {
         var views = earnedLines(input, resolveGeneratedLineTypes()).stream()
                 .map(ExpenseReportService::toView).toList();
         return input.withGeneratedLines(views);
+    }
+
+    /**
+     * The destination countries that have a foreign per-diem rate configured for a
+     * year, in country order (Phase 4.2 picker input). The dialog lists these
+     * alongside Finland; a country absent here has no rate for the year, so picking
+     * it would surface the missing-rate failure on save rather than silently
+     * defaulting to the Finnish per-diem.
+     */
+    @RolesAllowed("USER")
+    @Transactional(readOnly = true)
+    public List<String> foreignDestinations(int year) {
+        return allowanceRateService.foreignPerDiems(year).stream()
+                .map(ForeignPerDiemDto::country).toList();
     }
 
     /**
@@ -489,9 +508,23 @@ public class ExpenseReportService {
                     "Departure and return date & time are required");
         }
         List<GeneratedLineSpec> lines = new ArrayList<>(4);
-        DomesticPerDiemResult perDiem = costDomestic(t);
+        // The destination country decides how the per-diem is costed: a Finnish trip
+        // against the domestic full/partial rate, a foreign one against the country's
+        // flat per-year rate (never a silent Finnish default). Both file the line
+        // under the same tax-free PER_DIEM kind (ADR-0006).
+        BigDecimal perDiemAmount;
+        String perDiemComment;
+        if (isForeign(t.country())) {
+            ForeignPerDiemResult foreign = costForeign(t);
+            perDiemAmount = foreign.amount();
+            perDiemComment = foreign.explanation();
+        } else {
+            DomesticPerDiemResult perDiem = costDomestic(t);
+            perDiemAmount = perDiem.amount();
+            perDiemComment = perDiem.explanation();
+        }
         addSpec(lines, GeneratedLineKind.PER_DIEM, types.perDiemType(), types.zeroVat(),
-                perDiem.amount(), perDiem.explanation());
+                perDiemAmount, perDiemComment);
         AllowanceAmount km = costKilometre(t);
         addSpec(lines, GeneratedLineKind.KILOMETRE, types.kilometreType(),
                 types.zeroVat(), km.amount(), km.explanation());
@@ -540,6 +573,34 @@ public class ExpenseReportService {
                         "No domestic per-diem rate is configured for " + year));
         return calculator.domesticPerDiem(t.departureAt(), t.returnAt(),
                 t.notEligibleForAllowance(), t.freeLunch(), rate);
+    }
+
+    /**
+     * Server-authoritative foreign per-diem for a trip's inputs (ADR-0006): the
+     * destination country's flat per-year rate × the allowance-day count. A country
+     * with no rate for the trip year surfaces a clear failure — never a silent
+     * Finnish default (the "do better than ProCountor" payoff). The day-count
+     * thresholds come from the year's domestic rate (the statutory 10 h / 6 h
+     * thresholds shared by every per-diem).
+     */
+    private ForeignPerDiemResult costForeign(TravelDto t) {
+        int year = t.departureAt().getYear();
+        ForeignPerDiemDto rate = allowanceRateService.foreignPerDiem(year, t.country())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "No foreign per-diem rate is configured for " + t.country()
+                                + " in " + year));
+        DomesticPerDiemDto thresholds = allowanceRateService.domesticPerDiem(year)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "No per-diem rate is configured for " + year));
+        return calculator.foreignPerDiem(t.departureAt(), t.returnAt(),
+                t.notEligibleForAllowance(), rate, thresholds.fullDayMinHours(),
+                thresholds.partialDayMinHours());
+    }
+
+    /** Whether a trip's country is a foreign destination (not domestic Finland). */
+    private static boolean isForeign(String country) {
+        return country != null && !country.isBlank()
+                && !country.strip().equalsIgnoreCase(TravelDto.DOMESTIC_COUNTRY);
     }
 
     /** Server-authoritative kilometre allowance; needs a rate only when km &gt; 0. */

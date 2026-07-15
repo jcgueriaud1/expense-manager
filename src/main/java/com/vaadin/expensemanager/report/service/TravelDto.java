@@ -14,7 +14,7 @@ import com.vaadin.expensemanager.report.domain.GeneratedLineKind;
  * purpose, the flags, and the kilometres / pay-meal-allowance / parking-fee
  * inputs — plus the <strong>server-computed</strong> {@link #generatedLines} the
  * trip earns (per-diem, kilometre, meal, parking). The client sends inputs, never
- * money: the amounts come from {@link ExpenseReportService#previewDomesticTravel}
+ * money: the amounts come from {@link ExpenseReportService#previewTravel}
  * (a preview) and are recomputed authoritatively on the report save. Each
  * generated line also carries its persistent id and any attached receipt, so the
  * detail view can list them under the trip and let a receipt be attached to any of
@@ -22,8 +22,9 @@ import com.vaadin.expensemanager.report.domain.GeneratedLineKind;
  *
  * <p>{@link #id} is the reconciliation key (ADR-0019): {@code null} for a
  * not-yet-persisted trip the service will insert, non-null for one it will match
- * and regenerate. This slice is domestic only — {@link #country} is
- * {@code "Finland"}; the foreign country picker is Slice 4.
+ * and regenerate. {@link #country} is {@link #DOMESTIC_COUNTRY} for a domestic trip
+ * or the chosen destination country for a foreign one (Phase 4.2 picker), which
+ * decides whether the per-diem is costed domestically or against the country rate.
  *
  * @param id                      persistent travel id, or {@code null} for a new trip
  * @param departureAt             departure date & time (required)
@@ -45,7 +46,7 @@ public record TravelDto(Long id, LocalDateTime departureAt, LocalDateTime return
         BigDecimal kilometres, boolean payMealAllowance, BigDecimal parkingFees,
         List<GeneratedLineView> generatedLines) {
 
-    /** The country used for a domestic trip until the Slice 4 picker lands. */
+    /** The sentinel country a domestic (Finnish) trip is costed against. */
     public static final String DOMESTIC_COUNTRY = "Finland";
 
     public TravelDto {
@@ -53,16 +54,31 @@ public record TravelDto(Long id, LocalDateTime departureAt, LocalDateTime return
     }
 
     /**
-     * A fresh domestic trip from the dialog's inputs, before the outputs have been
-     * computed (the service fills them in via {@link #withGeneratedLines}).
+     * A fresh trip from the dialog's inputs, before the outputs have been computed
+     * (the service fills them in via {@link #withGeneratedLines}). {@code country}
+     * is {@link #DOMESTIC_COUNTRY} for a domestic trip or a destination country name
+     * for a foreign one (Phase 4.2 picker).
+     */
+    public static TravelDto of(Long id, LocalDateTime departureAt,
+            LocalDateTime returnAt, String destinations, String purpose, String country,
+            boolean notEligibleForAllowance, boolean freeLunch, boolean chargeToCustomer,
+            BigDecimal kilometres, boolean payMealAllowance, BigDecimal parkingFees) {
+        return new TravelDto(id, departureAt, returnAt, destinations, purpose, country,
+                notEligibleForAllowance, freeLunch, chargeToCustomer, kilometres,
+                payMealAllowance, parkingFees, List.of());
+    }
+
+    /**
+     * A fresh domestic (Finland) trip from the dialog's inputs — {@link #of} with
+     * the country fixed to {@link #DOMESTIC_COUNTRY}.
      */
     public static TravelDto domestic(Long id, LocalDateTime departureAt,
             LocalDateTime returnAt, String destinations, String purpose,
             boolean notEligibleForAllowance, boolean freeLunch, boolean chargeToCustomer,
             BigDecimal kilometres, boolean payMealAllowance, BigDecimal parkingFees) {
-        return new TravelDto(id, departureAt, returnAt, destinations, purpose,
-                DOMESTIC_COUNTRY, notEligibleForAllowance, freeLunch, chargeToCustomer,
-                kilometres, payMealAllowance, parkingFees, List.of());
+        return of(id, departureAt, returnAt, destinations, purpose, DOMESTIC_COUNTRY,
+                notEligibleForAllowance, freeLunch, chargeToCustomer, kilometres,
+                payMealAllowance, parkingFees);
     }
 
     /** This trip with its computed generated lines attached (preview / load path). */
