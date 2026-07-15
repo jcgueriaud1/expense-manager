@@ -185,6 +185,31 @@ public class ExpenseReport extends AuditedEntity {
     }
 
     /**
+     * Approves a submitted report (glossary: Approve, ADR-0006): {@code SUBMITTED
+     * → APPROVED}, appending a {@link StatusChange} (the acting admin, no comment).
+     * Mirrors {@link #submit}: the transition itself is a domain fact, so it lives
+     * here, while authorization ("who may approve") stays in the security/service
+     * layer (ADR-0008).
+     *
+     * <p>An illegal transition (approving anything but a {@code SUBMITTED} report)
+     * is rejected rather than silently ignored.
+     *
+     * @param actingUser the admin performing the approval
+     * @param at         when the transition happened (supplied by the caller so
+     *                   the domain stays free of the clock)
+     * @throws IllegalStateException if the report is not {@code SUBMITTED}
+     */
+    public void approve(User actingUser, Instant at) {
+        if (status != ReportStatus.SUBMITTED) {
+            throw new IllegalStateException(
+                    "Report " + id + " is " + status + " and cannot be approved");
+        }
+        ReportStatus from = status;
+        status = ReportStatus.APPROVED;
+        recordStatusChange(from, status, actingUser, null, at);
+    }
+
+    /**
      * Guards the draft-only delete invariant (ADR-0006, glossary): a report is
      * hard-deletable only while {@code DRAFT}. Submitted/approved/rejected
      * reports are retained for the audit trail.

@@ -19,7 +19,7 @@ import com.vaadin.flow.component.badge.BadgeVariant;
  * (ADR-0020, no colour-only meaning): {@link #statusBadge} carries the label
  * text and only <em>adds</em> colour via the Vaadin badge theme.
  */
-final class ReportViewSupport {
+public final class ReportViewSupport {
 
     /**
      * Aura palette colours cycled through to give each expense type a stable
@@ -35,7 +35,7 @@ final class ReportViewSupport {
     }
 
     /** Title-cased status label, e.g. {@code "Draft"} — text, never colour alone. */
-    static String statusLabel(ReportStatus status) {
+    public static String statusLabel(ReportStatus status) {
         var name = status.name();
         return name.charAt(0) + name.substring(1).toLowerCase();
     }
@@ -50,7 +50,7 @@ final class ReportViewSupport {
      * title. (Aura has no accent/primary badge variant — {@code contrast} is
      * Lumo-only — so submitted uses the filled neutral rather than a blue tint.)
      */
-    static Badge statusBadge(ReportStatus status) {
+    public static Badge statusBadge(ReportStatus status) {
         var badge = new Badge(statusLabel(status));
         badge.addThemeVariants(BadgeVariant.SMALL);
         switch (status) {
@@ -86,7 +86,7 @@ final class ReportViewSupport {
     }
 
     /** EUR amount at scale 2, e.g. {@code "€0.00"} (ADR-0010). */
-    static String formatEur(BigDecimal amount) {
+    public static String formatEur(BigDecimal amount) {
         return "€" + amount.setScale(2, RoundingMode.HALF_UP).toPlainString();
     }
 

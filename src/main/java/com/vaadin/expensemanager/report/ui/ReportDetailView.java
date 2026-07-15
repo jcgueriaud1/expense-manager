@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.vaadin.expensemanager.approval.service.ApprovalService;
 import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.ReferenceDataService;
 import com.vaadin.expensemanager.reference.VatRateDto;
@@ -38,11 +39,13 @@ import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.textfield.TextArea;
 import com.vaadin.flow.data.binder.Binder;
 import com.vaadin.flow.data.binder.ValidationResult;
+import com.vaadin.expensemanager.security.CurrentUserProvider;
 import com.vaadin.flow.router.BeforeEvent;
 import com.vaadin.flow.router.HasUrlParameter;
 import com.vaadin.flow.router.OptionalParameter;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
+import com.vaadin.flow.router.RouteAlias;
 import com.vaadin.flow.signals.Signal;
 import com.vaadin.flow.signals.local.ListSignal;
 import com.vaadin.flow.signals.local.ValueSignal;
@@ -83,15 +86,40 @@ import static com.vaadin.expensemanager.report.ui.ReportViewSupport.formatPercen
  * enforces the guard, ADR-0006). Stale writes surface a "reload" affordance,
  * never a silent overwrite (ADR-0011). {@code @PermitAll}; owner-scoping is
  * enforced in the service.
+ *
+ * <p><strong>Admin review mode (Phase 5).</strong> The same view is reached from
+ * the approval queue at the {@code /review/{id}} alias to review another user's
+ * report. Review mode loads via the non-owner-scoped
+ * {@link ApprovalService#findForReview} (any owner), renders everything
+ * read-only, and offers <strong>Approve</strong> in place of Save/Submit/Delete
+ * — reusing the same {@link #showConflict()}/{@link #reload()} conflict UX
+ * (ADR-0011). The review alias is unreachable except by an admin: navigation is
+ * gated in {@link #setParameter} (a non-admin is forwarded away) and, as the real
+ * enforcement (ADR-0008), every {@code ApprovalService} method is
+ * {@code @RolesAllowed("ADMIN")}.
  */
 @Route("report")
+@RouteAlias("review")
 @PageTitle("Report")
 @PermitAll
 public class ReportDetailView extends VerticalLayout
         implements HasUrlParameter<Long> {
 
+    /** The URL path segment that enters admin review mode (vs the owner path). */
+    private static final String REVIEW_SEGMENT = "review";
+
+    /**
+     * The approval-queue route path, referenced as a string rather than the
+     * {@code approval.ui} view class so {@code report.ui} does not depend on
+     * {@code approval.ui} (which links back here for review — that would be a
+     * package cycle).
+     */
+    private static final String APPROVAL_QUEUE_PATH = "approvals";
+
     private final transient ExpenseReportService service;
     private final transient ReferenceDataService referenceData;
+    private final transient ApprovalService approvalService;
+    private final transient CurrentUserProvider currentUserProvider;
 
     private final Div errorSummary = new Div();
     /** Holds the freshly-built status badge; repopulated on each (re)load. */
@@ -112,6 +140,7 @@ public class ReportDetailView extends VerticalLayout
     private final Span grossDisplay = new Span();
     private final Button save = new Button("Save");
     private final Button submit = new Button("Submit for approval");
+    private final Button approve = new Button("Approve");
     private final Button addLine = new Button("Add expense", VaadinIcon.PLUS.create());
     private final Button addTravel =
             new Button("Insert travel info", VaadinIcon.AIRPLANE.create());
@@ -157,10 +186,16 @@ public class ReportDetailView extends VerticalLayout
     /** Whether the loaded report allows edits (drives card/actions interactivity). */
     private boolean editable = true;
 
+    /** Whether the view was entered via the admin {@code /review/{id}} alias. */
+    private boolean reviewMode = false;
+
     public ReportDetailView(ExpenseReportService service,
-            ReferenceDataService referenceData) {
+            ReferenceDataService referenceData, ApprovalService approvalService,
+            CurrentUserProvider currentUserProvider) {
         this.service = service;
         this.referenceData = referenceData;
+        this.approvalService = approvalService;
+        this.currentUserProvider = currentUserProvider;
         setPadding(true);
         setSpacing(true);
         setMaxWidth("46rem");
@@ -189,6 +224,10 @@ public class ReportDetailView extends VerticalLayout
         // "keep working" action beside it (two primaries would compete).
         submit.addThemeVariants(ButtonVariant.PRIMARY);
         submit.addClickListener(event -> onSubmit());
+        // Approve is the admin's forward action in review mode (mirrors Submit).
+        approve.addThemeVariants(ButtonVariant.PRIMARY, ButtonVariant.SUCCESS);
+        approve.addClickListener(event -> onApprove());
+        approve.setVisible(false);
         delete.addThemeVariants(ButtonVariant.ERROR, ButtonVariant.TERTIARY);
         delete.addClickListener(event -> confirmDelete());
         addLine.addThemeVariants(ButtonVariant.TERTIARY);
@@ -198,7 +237,7 @@ public class ReportDetailView extends VerticalLayout
 
         // Submit is the full-width forward action; Save keeps working, Delete is
         // the quiet destructive one — a footer action bar (the mockup's footer).
-        var actions = new HorizontalLayout(save, submit, delete);
+        var actions = new HorizontalLayout(save, submit, approve, delete);
         actions.setWidthFull();
         actions.setAlignItems(FlexComponent.Alignment.CENTER);
         actions.expand(submit);
@@ -211,6 +250,11 @@ public class ReportDetailView extends VerticalLayout
 
     @Override
     public void setParameter(BeforeEvent event, @OptionalParameter Long id) {
+        reviewMode = REVIEW_SEGMENT.equals(event.getLocation().getFirstSegment());
+        if (reviewMode) {
+            enterReviewMode(event, id);
+            return;
+        }
         if (id == null) {
             load(ReportDetailDto.forNew(LocalDate.now()));
             return;
@@ -225,6 +269,27 @@ public class ReportDetailView extends VerticalLayout
         }
     }
 
+    /**
+     * Enters admin review mode for {@code /review/{id}} (Phase 5). The alias shares
+     * the owner path's {@code @PermitAll}, so admin access is gated here — a
+     * non-admin is forwarded away — backed by {@link ApprovalService}'s
+     * {@code @RolesAllowed("ADMIN")} as the real enforcement (ADR-0008). Loads the
+     * report via the non-owner-scoped {@link ApprovalService#findForReview}.
+     */
+    private void enterReviewMode(BeforeEvent event, Long id) {
+        if (id == null || !currentUserProvider.get()
+                .map(user -> user.isAdmin()).orElse(false)) {
+            event.forwardTo("");
+            return;
+        }
+        try {
+            load(approvalService.findForReview(id));
+        } catch (IllegalArgumentException notFound) {
+            Notification.show("Report not found.");
+            event.forwardTo(APPROVAL_QUEUE_PATH);
+        }
+    }
+
     /** Populates the form from a working copy and reflects its editability/status. */
     private void load(ReportDetailDto dto) {
         this.working = dto;
@@ -235,7 +300,13 @@ public class ReportDetailView extends VerticalLayout
         clearErrors();
         statusBadgeSlot.removeAll();
         statusBadgeSlot.add(ReportViewSupport.statusBadge(dto.status()));
-        updateStatusCallout(dto.status());
+        // The status callout speaks to the owner ("you'll see feedback here"); in
+        // admin review mode the status badge carries the state instead.
+        if (reviewMode) {
+            statusCallout.setVisible(false);
+        } else {
+            updateStatusCallout(dto.status());
+        }
         headerId.setText(dto.isPersisted() ? "Report #" + dto.id() : "New report");
         headerName.setText(dto.additionalInformation() == null
                 || dto.additionalInformation().isBlank()
@@ -252,9 +323,13 @@ public class ReportDetailView extends VerticalLayout
         addTravel.setVisible(editable);
         // Submit only for a persisted DRAFT: a brand-new report must be saved
         // first, and resubmitting a REJECTED report is Phase 5 (out of scope).
-        submit.setVisible(dto.isPersisted() && dto.status() == ReportStatus.DRAFT);
+        submit.setVisible(!reviewMode && dto.isPersisted()
+                && dto.status() == ReportStatus.DRAFT);
         // Delete only while DRAFT and already persisted (ADR-0006, glossary).
-        delete.setVisible(dto.isPersisted() && dto.status().isDeletable());
+        delete.setVisible(!reviewMode && dto.isPersisted() && dto.status().isDeletable());
+        // Approve is the review-mode forward action, only while the report is still
+        // reviewable (SUBMITTED); once approved it stays visible as read-only.
+        approve.setVisible(reviewMode && dto.status().isReviewable());
 
         pendingReceipts.clear();
         pendingTravelReceipts.clear();
@@ -311,6 +386,25 @@ public class ReportDetailView extends VerticalLayout
         try {
             load(service.submit(working.id(), working.version()));
             Notification.show("Report submitted for approval.");
+        } catch (ObjectOptimisticLockingFailureException stale) {
+            showConflict();
+        } catch (IllegalArgumentException | IllegalStateException invalid) {
+            showErrors(List.of(invalid.getMessage()));
+        }
+    }
+
+    /**
+     * Approves the report under review (Phase 5): {@code SUBMITTED → APPROVED}.
+     * Admin-only (enforced in {@link ApprovalService}); a stale approve surfaces
+     * the same reload affordance as a stale save/submit (ADR-0011), never a silent
+     * double-processing. The illegal-transition guard is defensive — the button
+     * only shows while the report is reviewable.
+     */
+    private void onApprove() {
+        clearErrors();
+        try {
+            load(approvalService.approve(working.id(), working.version()));
+            Notification.show("Report approved.");
         } catch (ObjectOptimisticLockingFailureException stale) {
             showConflict();
         } catch (IllegalArgumentException | IllegalStateException invalid) {
@@ -472,8 +566,15 @@ public class ReportDetailView extends VerticalLayout
     }
 
     private HorizontalLayout headerRow() {
-        var back = new Button(VaadinIcon.ARROW_LEFT.create(),
-                event -> getUI().ifPresent(ui -> ui.navigate(MyReportsView.class)));
+        // Back returns to the approval queue in review mode, else the owner's list.
+        var back = new Button(VaadinIcon.ARROW_LEFT.create(), event -> getUI()
+                .ifPresent(ui -> {
+                    if (reviewMode) {
+                        ui.navigate(APPROVAL_QUEUE_PATH);
+                    } else {
+                        ui.navigate(MyReportsView.class);
+                    }
+                }));
         back.addThemeVariants(ButtonVariant.TERTIARY);
         back.getElement().setAttribute("aria-label", "Back to reports");
 
@@ -929,10 +1030,15 @@ public class ReportDetailView extends VerticalLayout
         errorSummary.setVisible(true);
     }
 
-    /** Re-fetches the persisted report, discarding the stale working copy. */
+    /**
+     * Re-fetches the persisted report, discarding the stale working copy. In
+     * review mode it reloads through the non-owner-scoped review path so an admin
+     * sees the latest committed version (ADR-0011), not the owner path.
+     */
     private void reload() {
         if (working.isPersisted()) {
-            load(service.findMine(working.id()));
+            load(reviewMode ? approvalService.findForReview(working.id())
+                    : service.findMine(working.id()));
             Notification.show("Reloaded the latest version.");
         }
     }

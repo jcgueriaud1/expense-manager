@@ -1272,3 +1272,52 @@ Deployment/Observability · UX-spec
   dance; today the caller must sequence it by hand.
 - Owner / next step: none — the pattern is contained in the dialog. A later slice
   that lets the per-diem year differ from the departure year would revisit it.
+
+### F-040 — A `@Transactional` browserless view test with `@WithUserDetails` renders `LoginView` once several browserless classes have run
+- Date: 2026-07-15
+- Area: Verification
+- Severity: Medium
+- Task being attempted: Phase 5.1 (#61) — browserless view tests for the admin
+  approval queue and the admin-review mode on `ReportDetailView`. The two new
+  classes extended the report feature's `@Transactional` `AbstractReportViewUiTest`
+  (for its report-seeding helpers) and authenticated with `@WithUserDetails`,
+  exactly like the existing `ReportDetailViewUiTest`.
+- Expected vs actual: green in isolation and in small combinations, but in the
+  **full suite** every navigation in the two new classes resolved to `LoginView`
+  (unauthenticated) — including `@PermitAll` targets. Reproducible by running
+  ≥4-5 browserless classes together (`ReportDetailViewUiTest`,
+  `MyReportsViewUiTest`, `AdminToolsViewUiTest`, + the two new ones): only the
+  later-ordered `@Transactional` classes failed, while the non-transactional
+  `AdminToolsViewUiTest` and the earlier-ordered transactional classes passed.
+- Root cause: the F-020 strategy-divergence, seen from the browserless side. The
+  browserless env installs Vaadin's session-aware `SecurityContextHolderStrategy`
+  as the global static and reads the request's principal from the `VaadinSession`.
+  `@WithUserDetails` writes the context via a `BeforeEachCallback`; once enough
+  browserless classes (and the `SecurityContextHolder.setContextHolderStrategy(...)`
+  pinning in the layer-2 service tests, F-020) have run in the JVM, the instance
+  `@WithUserDetails` writes to and the one the browserless request reads diverge,
+  so the session carries no authentication → `LoginView`. `@Transactional` made
+  it worse (its listener/thread interplay shifted class ordering into the bad
+  window); the non-transactional `AdminToolsViewUiTest` pattern never tripped it.
+- Workaround used: gave the approval view tests their own base,
+  `AbstractApprovalViewUiTest`, that extends `SpringBrowserlessTest` **directly and
+  is not `@Transactional`** (mirroring `AdminToolsViewUiTest`), keeps
+  `@WithUserDetails`, seeds reports straight through the repository + aggregate
+  (also the only way to reach another owner / a pre-approved state), and cleans
+  them up in an `@AfterEach` instead of by rollback. Order-independent and green in
+  the full 237-test suite. Attempts to keep the transactional base and authenticate
+  imperatively in `@BeforeEach` (pinning the bean, F-020 style) only fixed part of
+  it — a `@BeforeEach` runs after the browserless env's `BeforeEachCallback`, so the
+  timing is still fragile.
+- Evidence: `approval/ui/AbstractApprovalViewUiTest`, `ApprovalQueueViewUiTest`,
+  `ApprovalAccessUiTest`; contrast `report/ui/AbstractReportViewUiTest`
+  (`@Transactional`, stable only because it orders early).
+- Impact: a new browserless view test that both needs DB seeding and drives an
+  authenticated flow should extend `SpringBrowserlessTest` directly (non-transactional,
+  explicit cleanup), not the transactional report base — otherwise it is a
+  suite-ordering time bomb.
+- Suggested Vaadin/product improvement: the `@WithVaadinUser` utility floated in
+  F-020 (write the auth through the active session-aware strategy) would fix both
+  the headless and browserless sides of this footgun.
+- Owner / next step: reuse `AbstractApprovalViewUiTest`'s shape for future admin
+  view tests (reject/resubmit, export).

@@ -5,10 +5,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 import java.math.BigDecimal;
 
@@ -93,6 +90,7 @@ public class ExpenseReportService {
     private final VatRateRepository vatRateRepository;
     private final AllowanceRateService allowanceRateService;
     private final CurrentUserProvider currentUserProvider;
+    private final ReportDtoMapper mapper;
 
     /** Pure, stateless per-diem maths (ADR-0006) — a plain instance, not a bean. */
     private final AllowanceCalculator calculator = new AllowanceCalculator();
@@ -103,7 +101,8 @@ public class ExpenseReportService {
             ExpenseTypeRepository expenseTypeRepository,
             VatRateRepository vatRateRepository,
             AllowanceRateService allowanceRateService,
-            CurrentUserProvider currentUserProvider) {
+            CurrentUserProvider currentUserProvider,
+            ReportDtoMapper mapper) {
         this.reportRepository = reportRepository;
         this.receiptRepository = receiptRepository;
         this.userRepository = userRepository;
@@ -111,6 +110,7 @@ public class ExpenseReportService {
         this.vatRateRepository = vatRateRepository;
         this.allowanceRateService = allowanceRateService;
         this.currentUserProvider = currentUserProvider;
+        this.mapper = mapper;
     }
 
     /** The current user's reports, newest report-date first (My Reports, UC-002). */
@@ -119,7 +119,7 @@ public class ExpenseReportService {
     public List<ReportSummaryDto> listMine() {
         return reportRepository
                 .findByOwnerIdOrderByReportDateDescIdDesc(currentUserId()).stream()
-                .map(ExpenseReportService::toSummary)
+                .map(ReportDtoMapper::toSummary)
                 .toList();
     }
 
@@ -133,7 +133,7 @@ public class ExpenseReportService {
     @RolesAllowed("USER")
     @Transactional(readOnly = true)
     public ReportDetailDto findMine(Long id) {
-        return toDetail(requireOwned(id));
+        return mapper.toDetail(requireOwned(id));
     }
 
     /**
@@ -323,7 +323,7 @@ public class ExpenseReportService {
         reportRepository.flush();
         applyReceipts(report, receipts);
         applyTravelReceipts(report, travelReceipts);
-        return toDetail(report);
+        return mapper.toDetail(report);
     }
 
     /**
@@ -347,7 +347,7 @@ public class ExpenseReportService {
             throw new ObjectOptimisticLockingFailureException(ExpenseReport.class, id);
         }
         report.submit(report.getOwner(), Instant.now());
-        return toDetail(report);
+        return mapper.toDetail(report);
     }
 
     /**
@@ -470,58 +470,6 @@ public class ExpenseReportService {
         }
         return vatRateRepository.findById(id).orElseThrow(
                 () -> new IllegalArgumentException("No VAT rate with id " + id));
-    }
-
-    private static ReportSummaryDto toSummary(ExpenseReport r) {
-        return new ReportSummaryDto(r.getId(), r.getReportDate(),
-                r.getAdditionalInformation(), r.getStatus(), r.total());
-    }
-
-    private ReportDetailDto toDetail(ExpenseReport r) {
-        // The manual lines become editable cards; the generated lines ride their
-        // travels as read-only rows. Both can carry a receipt (Phase 4.3), so the
-        // one blob-free receipt query covers every line's id (ADR-0021).
-        var lineIds = r.getLines().stream().map(ExpenseLine::getId)
-                .filter(Objects::nonNull).toList();
-        Map<Long, ReceiptSummaryView> byLine = lineIds.isEmpty() ? Map.of()
-                : receiptRepository.findSummariesByExpenseLineIdIn(lineIds).stream()
-                        .collect(Collectors.toMap(ReceiptSummaryView::getExpenseLineId,
-                                Function.identity()));
-        var lineDtos = r.manualLines().stream()
-                .map(line -> toLineDto(line, byLine.get(line.getId()))).toList();
-        var travelDtos = r.getTravels().stream()
-                .map(travel -> toTravelDto(r, travel, byLine)).toList();
-        return new ReportDetailDto(r.getId(), r.getReportDate(),
-                r.getAdditionalInformation(), r.getStatus(), r.getVersion(), lineDtos,
-                travelDtos, r.total(), r.netTotal(), r.vatTotal(), r.perDiemTotal(),
-                r.kilometreTotal(), r.mealTotal());
-    }
-
-    /**
-     * Maps a persisted trip to its working-copy DTO, reading each generated line
-     * (per kind, in kind order) off the report into a {@link GeneratedLineView}
-     * with its amount, read-only explanation, id, and any attached receipt.
-     */
-    private static TravelDto toTravelDto(ExpenseReport r, Travel t,
-            Map<Long, ReceiptSummaryView> byLine) {
-        List<GeneratedLineView> generated = new ArrayList<>();
-        for (GeneratedLineKind kind : GeneratedLineKind.values()) {
-            r.generatedLineFor(t, kind).ifPresent(line -> {
-                var view = GeneratedLineView.of(kind, line.getExpenseType().getName(),
-                        line.gross(), line.getVatRate().getValue(), line.getComment(),
-                        line.getId());
-                var receipt = byLine.get(line.getId());
-                if (receipt != null) {
-                    view = view.withReceipt(receipt.getId(), receipt.getFilename(),
-                            receipt.getContentType(), receipt.getSizeBytes());
-                }
-                generated.add(view);
-            });
-        }
-        return new TravelDto(t.getId(), t.getDepartureAt(), t.getReturnAt(),
-                t.getDestinations(), t.getPurpose(), t.getCountry(),
-                t.isNotEligibleForAllowance(), t.isFreeLunch(), t.isChargeToCustomer(),
-                t.getKilometres(), t.isPayMealAllowance(), t.getParkingFees(), generated);
     }
 
     /**
@@ -694,16 +642,4 @@ public class ExpenseReportService {
                         "No active 0% VAT rate is configured for allowance lines"));
     }
 
-    private static ExpenseLineDto toLineDto(ExpenseLine line,
-            ReceiptSummaryView receipt) {
-        var type = line.getExpenseType();
-        var rate = line.getVatRate();
-        var dto = ExpenseLineDto.of(line.getId(), type.getId(), type.getName(),
-                rate.getId(), rate.getValue(), line.getAmount(), line.getComment());
-        if (receipt == null) {
-            return dto;
-        }
-        return dto.withReceipt(receipt.getId(), receipt.getFilename(),
-                receipt.getContentType(), receipt.getSizeBytes());
-    }
 }

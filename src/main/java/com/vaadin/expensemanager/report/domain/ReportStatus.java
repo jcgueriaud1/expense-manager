@@ -32,4 +32,13 @@ public enum ReportStatus {
     public boolean isDeletable() {
         return this == DRAFT;
     }
+
+    /**
+     * Whether an admin may review the report — i.e. act on it in the approval
+     * flow (approve/reject). Only a {@link #SUBMITTED} report is reviewable
+     * (Phase 5); a draft is still the owner's, an approved/rejected one is done.
+     */
+    public boolean isReviewable() {
+        return this == SUBMITTED;
+    }
 }
