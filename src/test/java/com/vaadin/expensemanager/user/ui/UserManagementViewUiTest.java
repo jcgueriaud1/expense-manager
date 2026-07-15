@@ -12,6 +12,8 @@ import com.vaadin.expensemanager.user.Role;
 import com.vaadin.expensemanager.user.User;
 import com.vaadin.expensemanager.user.UserRepository;
 import com.vaadin.expensemanager.user.UserSummaryDto;
+import com.vaadin.flow.component.UI;
+import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.grid.GridLocator;
 import com.vaadin.flow.component.sidenav.SideNavItem;
 import org.junit.jupiter.api.Test;
@@ -45,6 +47,7 @@ class UserManagementViewUiTest extends SpringBrowserlessTest implements Locators
     private static final int NAME_COL = 1;
     private static final int ROLE_COL = 2;
     private static final int STATUS_COL = 3;
+    private static final int ACTION_COL = 4;
 
     private static final String ADMIN_EMAIL = "admin@vaadin.com";
 
@@ -151,7 +154,73 @@ class UserManagementViewUiTest extends SpringBrowserlessTest implements Locators
         assertThat(findGrid(UserSummaryDto.class).size()).isZero();
     }
 
+    // ------------------------------------------------------- editor write path
+
+    @Test
+    @WithUserDetails(ADMIN_EMAIL)
+    void adminPromotesUserToAdminAndGridReflectsIt() {
+        navigate(UserManagementView.class);
+        var grid = findGrid(UserSummaryDto.class);
+
+        openEditorFor(grid, LocalUserSeeder.PLAIN_USER_EMAIL);
+        findRadioButtonGroup(Role.class).withLabel("Role").selectItem("ADMIN");
+        findButton().withText("Save").click();
+
+        assertThat(cellFor(findGrid(UserSummaryDto.class),
+                LocalUserSeeder.PLAIN_USER_EMAIL, ROLE_COL)).isEqualTo("ADMIN");
+    }
+
+    @Test
+    @WithUserDetails(ADMIN_EMAIL)
+    void adminRevokesUserAndGridReflectsIt() {
+        navigate(UserManagementView.class);
+        var grid = findGrid(UserSummaryDto.class);
+
+        openEditorFor(grid, LocalUserSeeder.PLAIN_USER_EMAIL);
+        // The seeded user starts enabled; clearing the checkbox revokes access.
+        findCheckbox().withLabel("Account enabled").click();
+        findButton().withText("Save").click();
+
+        assertThat(cellFor(findGrid(UserSummaryDto.class),
+                LocalUserSeeder.PLAIN_USER_EMAIL, STATUS_COL)).isEqualTo("Revoked");
+    }
+
+    @Test
+    @WithUserDetails(ADMIN_EMAIL)
+    void guardViolationShowsErrorSummaryAndLeavesStateUnchanged() {
+        navigate(UserManagementView.class);
+        var grid = findGrid(UserSummaryDto.class);
+
+        // The bootstrap admin is the only admin, so disabling itself is rejected.
+        openEditorFor(grid, ADMIN_EMAIL);
+        findCheckbox().withLabel("Account enabled").click();
+        findButton().withText("Save").click();
+
+        // The role=alert summary (in the dialog overlay) carries the guard message.
+        assertThat(UI.getCurrent().getElement().getTextRecursively())
+                .contains("last administrator");
+        // Dialog stays open (Save still present) and the grid is unchanged.
+        assertThat(findButton().withText("Save").exists()).isTrue();
+        assertThat(cellFor(findGrid(UserSummaryDto.class), ADMIN_EMAIL, STATUS_COL))
+                .isEqualTo("Enabled");
+    }
+
     // --------------------------------------------------------------- helpers
+
+    private void openEditorFor(GridLocator<?> grid, String email) {
+        var cell = grid.getCellComponent(rowIndexFor(grid, email), ACTION_COL);
+        test(find(Button.class, cell).withAriaLabel("Edit user " + email).single())
+                .click();
+    }
+
+    private static int rowIndexFor(GridLocator<?> grid, String email) {
+        for (int row = 0; row < grid.size(); row++) {
+            if (grid.getCellText(row, EMAIL_COL).equals(email)) {
+                return row;
+            }
+        }
+        throw new AssertionError("No row for " + email);
+    }
 
     private static List<String> columnText(GridLocator<?> grid, int column) {
         var values = new ArrayList<String>();

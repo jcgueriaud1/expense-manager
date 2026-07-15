@@ -1,6 +1,7 @@
 package com.vaadin.expensemanager.security;
 
 import com.vaadin.expensemanager.base.AbstractIntegrationTest;
+import com.vaadin.expensemanager.user.Role;
 import com.vaadin.expensemanager.user.UserAdminService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -55,6 +56,24 @@ class MethodSecurityIntegrationTest extends AbstractIntegrationTest {
     @WithMockUser(roles = "USER")
     void userMayNotCallAdminOperation() {
         assertThatThrownBy(userAdminService::list)
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    // The write-path mutators are guarded too (issue #65): a plain USER is
+    // rejected by @RolesAllowed before the method body runs, even if the
+    // ADMIN-only route is bypassed.
+
+    @Test
+    @WithMockUser(roles = "USER")
+    void userMayNotSetRole() {
+        assertThatThrownBy(() -> userAdminService.setRole(1L, Role.USER))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    @WithMockUser(roles = "USER")
+    void userMayNotSetEnabled() {
+        assertThatThrownBy(() -> userAdminService.setEnabled(1L, false))
                 .isInstanceOf(AccessDeniedException.class);
     }
 }

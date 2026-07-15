@@ -1432,3 +1432,32 @@ Deployment/Observability · UX-spec
   for the report under test.
 - Suggested Vaadin/product improvement: none — doc fix.
 - Owner / next step: none.
+
+### F-045 — The always-enabled-Save + error-summary editor scaffold is now hand-copied into a fourth place
+- Date: 2026-07-15
+- Area: Standards
+- Severity: Low
+- Task being attempted: Phase 6 write path (#65) — the Users role/access editor on
+  `UserManagementView`. The ticket pointed at reusing
+  `ReferenceViewSupport.openEditor` "or an analogous local helper".
+- Expected vs actual: expected to reuse the shared helper. Actual:
+  `ReferenceViewSupport` is package-private in `reference.ui`, so it is unreachable
+  from `user.ui`; the same Dialog + `role="alert"` error summary + always-enabled
+  Save + `writeBeanIfValid` + `IllegalArgumentException`→summary scaffold had to be
+  re-inlined. That makes **four** near-identical copies: `ReferenceViewSupport`,
+  `LineEditorDialog`, `TravelEditorDialog`, and now `UserManagementView`.
+- Workaround used: inlined a local `openEditor(...)` + `showErrors(...)` in
+  `UserManagementView`, matching the established idiom (F-013, ADR-0020) so the
+  behaviour and accessibility contract stay identical.
+- Evidence: `user/ui/UserManagementView#openEditor`;
+  `reference/ui/ReferenceViewSupport#openEditor`;
+  `report/ui/LineEditorDialog`; `report/ui/TravelEditorDialog`.
+- Impact: low functional risk (the copies agree today), but the error-summary
+  contract now lives in four spots — a fix or a11y tweak has to be applied four
+  times, and a new editor has no obvious shared home to reach for.
+- Suggested Vaadin/product improvement: none for Vaadin — app-side. Promote the
+  editor scaffold to a small cross-cutting helper (e.g. `base.ui` or a dedicated
+  `EditorDialogs` utility) that any feature package can call, and migrate the four
+  copies onto it.
+- Owner / next step: low priority; fold in when a fifth editor appears or during a
+  UI-consistency pass.
