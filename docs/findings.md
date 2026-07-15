@@ -1413,33 +1413,22 @@ Deployment/Observability · UX-spec
   read-only guard test even for statuses no queue currently routes to.
 - Owner / next step: none.
 
-### F-044 — The local seeder had no `REJECTED` fixture, and the deep-link route in the verification doc was wrong
+### F-044 — The single-report deep-link in the verification doc used a query param, not the path segment
 - Date: 2026-07-15
-- Area: Tooling/Docs
+- Area: Docs
 - Severity: Low
 - Task being attempted: Phase 5.5 (#63) — visually verifying the owner's edit +
   resubmit path (`REJECTED → SUBMITTED`) on `ReportDetailView` via Playwright MCP,
-  following the `visual-verification` skill's "seed, don't click" lever.
-- Expected vs actual: expected a labelled `REJECTED` fixture to land on directly
-  (the whole point of the seeder, F-041). Actual: `LocalReportSeeder` seeded only
-  DRAFT/SUBMITTED×2/APPROVED — no `REJECTED` — so the one state this phase exists
-  to exercise was the one state you could not reach without clicking through
-  create → line → submit, then logging in as the admin to reject. Separately, the
-  `docs/manual-verification.md` deep-link recipe read `/report?reportId=<id>`; the
-  route is `HasUrlParameter<Long>` (a path segment), so `?reportId=5` bound no id
-  and silently opened a *fresh transient* report — the correct form is `/report/5`.
-- Workaround used: added a fifth fixture (`seedRejected`, a real submit → admin
-  reject through the aggregate, mirroring `seedApproved`) and updated the seeder
-  count/log, the `LocalReportSeederTest` assertions, and the manual-verification
-  table. Corrected the deep-link to `/report/<id>` in the doc.
-- Evidence: `report/LocalReportSeeder#seedRejected`; `report/LocalReportSeederTest`;
-  `docs/manual-verification.md`; screenshots (rejected report showing the blue
-  full-width **Resubmit** button beside Save; post-resubmit `SUBMITTED` read-only
-  with a third status-history entry).
-- Impact: each new lifecycle phase must remember to extend the fixture set, or its
-  verification silently falls back to the expensive click-through path the seeder
-  was built to remove. The wrong deep-link is a quiet trap — it 200s onto a
-  plausible-looking (but wrong) new-report screen rather than erroring.
-- Suggested Vaadin/product improvement: none — app-side. A cheap guard would be a
-  seeder assertion that one fixture per terminal/edit-reachable status exists.
+  deep-linking to the seeded rejected report per `docs/manual-verification.md`.
+- Expected vs actual: expected the doc's `/report?reportId=<id>` recipe to open
+  that report. Actual: `ReportDetailView` binds its id via `HasUrlParameter<Long>`
+  (a path segment), so `?reportId=5` bound no id and silently opened a *fresh
+  transient* report — the correct form is `/report/5`.
+- Workaround used: corrected the deep-link to `/report/<id>` in the doc.
+- Evidence: `report/ui/ReportDetailView` (`implements HasUrlParameter<Long>`);
+  `docs/manual-verification.md`.
+- Impact: a quiet trap — the wrong URL 200s onto a plausible-looking (but wrong)
+  new-report screen rather than erroring, so a verifier can mistake an empty draft
+  for the report under test.
+- Suggested Vaadin/product improvement: none — doc fix.
 - Owner / next step: none.
