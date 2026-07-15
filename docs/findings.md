@@ -1412,3 +1412,23 @@ Deployment/Observability · UX-spec
 - Suggested Vaadin/product improvement: none — app-side. Worth a review-mode
   read-only guard test even for statuses no queue currently routes to.
 - Owner / next step: none.
+
+### F-044 — The single-report deep-link in the verification doc used a query param, not the path segment
+- Date: 2026-07-15
+- Area: Docs
+- Severity: Low
+- Task being attempted: Phase 5.5 (#63) — visually verifying the owner's edit +
+  resubmit path (`REJECTED → SUBMITTED`) on `ReportDetailView` via Playwright MCP,
+  deep-linking to the seeded rejected report per `docs/manual-verification.md`.
+- Expected vs actual: expected the doc's `/report?reportId=<id>` recipe to open
+  that report. Actual: `ReportDetailView` binds its id via `HasUrlParameter<Long>`
+  (a path segment), so `?reportId=5` bound no id and silently opened a *fresh
+  transient* report — the correct form is `/report/5`.
+- Workaround used: corrected the deep-link to `/report/<id>` in the doc.
+- Evidence: `report/ui/ReportDetailView` (`implements HasUrlParameter<Long>`);
+  `docs/manual-verification.md`.
+- Impact: a quiet trap — the wrong URL 200s onto a plausible-looking (but wrong)
+  new-report screen rather than erroring, so a verifier can mistake an empty draft
+  for the report under test.
+- Suggested Vaadin/product improvement: none — doc fix.
+- Owner / next step: none.

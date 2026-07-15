@@ -19,6 +19,7 @@ labelled expense reports via
 | `[seed] SUBMITTED — plain user, review + approve`  | `user@vaadin.com`             | `SUBMITTED` | approval queue → review → approve  |
 | `[seed] SUBMITTED — admin-owned, cross-owner queue`| `jean-christophe@vaadin.com`  | `SUBMITTED` | cross-owner queue visibility       |
 | `[seed] APPROVED — plain user, owner-sees-approved`| `user@vaadin.com`             | `APPROVED`  | owner opens an approved report     |
+| `[seed] REJECTED — plain user, edit + resubmit`    | `user@vaadin.com`             | `REJECTED`  | owner edits + resubmits (Phase 5.5)|
 
 **Guarantees:**
 
@@ -47,7 +48,8 @@ Deep-link straight to the screen you want — an unauthenticated hit redirects t
 
 - `/reports` — the owner's report list (log in as the user).
 - `/approvals` — the admin approval queue (log in as the admin).
-- `/report?reportId=<id>` — a single report.
+- `/report/<id>` — a single report (a path segment, e.g. `/report/5`; the
+  bare `/report` opens a fresh transient report).
 
 ## Lever 2 — Cheap Playwright interaction pattern
 

@@ -1,10 +1,13 @@
 package com.vaadin.expensemanager.report.service;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.vaadin.expensemanager.report.domain.ExpenseLineSpec;
+import com.vaadin.expensemanager.report.domain.ExpenseReport;
 import com.vaadin.expensemanager.report.domain.ReportStatus;
 import com.vaadin.expensemanager.reference.ExpenseType;
 import com.vaadin.expensemanager.reference.ExpenseTypeRepository;
@@ -12,6 +15,8 @@ import com.vaadin.expensemanager.reference.VatRate;
 import com.vaadin.expensemanager.reference.VatRateRepository;
 import com.vaadin.expensemanager.security.LocalUserDetailsService;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
+import com.vaadin.expensemanager.user.User;
+import com.vaadin.expensemanager.user.UserRepository;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -74,6 +79,9 @@ class ExpenseReportOptimisticLockIntegrationTest {
     private VatRateRepository vatRateRepository;
 
     @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
     private LocalUserDetailsService userDetailsService;
 
     @Autowired
@@ -132,6 +140,52 @@ class ExpenseReportOptimisticLockIntegrationTest {
         assertThat(latest.additionalInformation())
                 .isEqualTo("edited by the other session");
         assertThat(latest.version()).isGreaterThan(staleView.version());
+    }
+
+    @Test
+    void aStaleResubmitAfterACommittedEditIsRejectedNotOverwritten() {
+        // Seed a committed REJECTED report owned by the plain user (submit → reject
+        // driven through the domain, past the owner-scoped service).
+        var me = userRepository.findByEmail(LocalUserSeeder.PLAIN_USER_EMAIL)
+                .orElseThrow();
+        var id = seedRejectedReport(me);
+        createdReportIds.add(id);
+        var staleView = service.findMine(id);
+
+        // A concurrent, committed edit (still REJECTED, still editable) advances the
+        // version in the DB.
+        service.update(id, new ReportDetailDto(id, LocalDate.of(2026, 7, 20),
+                "edited by the other session", ReportStatus.REJECTED,
+                staleView.version(), staleView.lines(), staleView.total(),
+                staleView.netTotal(), staleView.vatTotal()), staleView.version());
+
+        // The stale editor's resubmit must be rejected, never silently overwriting
+        // the committed edit (ADR-0011).
+        assertThatThrownBy(() -> service.resubmit(id, staleView.version()))
+                .isInstanceOf(ObjectOptimisticLockingFailureException.class);
+
+        // The committed edit survived and the report is still REJECTED (not sent back
+        // to the queue on a stale view).
+        var latest = service.findMine(id);
+        assertThat(latest.status()).isEqualTo(ReportStatus.REJECTED);
+        assertThat(latest.additionalInformation())
+                .isEqualTo("edited by the other session");
+        assertThat(latest.version()).isGreaterThan(staleView.version());
+    }
+
+    /** Persists a committed {@code REJECTED} report with one line owned by {@code owner}. */
+    private Long seedRejectedReport(User owner) {
+        var type = expenseTypeRepository
+                .findByActiveTrueOrderByDisplayOrderAscIdAsc().getFirst();
+        var report = new ExpenseReport(owner, LocalDate.of(2026, 7, 10), "needs work");
+        report.reconcileLines(List.of(new ExpenseLineSpec(null, type,
+                new BigDecimal("100.00"), firstRate(), "hotel")));
+        var admin = userRepository.findByEmail("admin@vaadin.com").orElseThrow();
+        report.submit(owner, Instant.parse("2026-07-11T09:00:00Z"));
+        report.reject(admin, "Please attach the receipt.",
+                Instant.parse("2026-07-12T09:00:00Z"));
+        reportRepository.save(report);
+        return report.getId();
     }
 
     private VatRate firstRate() {

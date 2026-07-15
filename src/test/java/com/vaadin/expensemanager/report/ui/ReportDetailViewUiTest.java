@@ -187,6 +187,73 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         assertThat(findButton().withText("Save").exists()).isTrue();
     }
 
+    // --- Resubmit a rejected report (Phase 5.5) ---
+
+    @Test
+    void aRejectedReportOffersResubmitNotSubmit() {
+        var id = seedRejectedReport(LocalDate.of(2026, 7, 1), "100", "Fix the total.");
+        navigate(ReportDetailView.class, id);
+
+        // The forward action is relabelled "Resubmit" on a REJECTED report; the
+        // first-submit label is gone (same button, flipped by status).
+        assertThat(findButton().withText("Resubmit").exists()).isTrue();
+        assertThat(findButton().withText("Submit for approval").exists()).isFalse();
+    }
+
+    @Test
+    void resubmitIsNotOfferedOnDraftSubmittedOrApproved() {
+        // DRAFT offers the first-submit label, never "Resubmit".
+        var draft = seedReportWithLine(LocalDate.of(2026, 7, 1), "60.00");
+        navigate(ReportDetailView.class, draft);
+        assertThat(findButton().withText("Submit for approval").exists()).isTrue();
+        assertThat(findButton().withText("Resubmit").exists()).isFalse();
+
+        // SUBMITTED is read-only — no forward action of either label.
+        var submitted = seedSubmittedReport(LocalDate.of(2026, 7, 1), "60.00");
+        navigate(ReportDetailView.class, submitted);
+        assertThat(findButton().withText("Resubmit").exists()).isFalse();
+        assertThat(findButton().withText("Submit for approval").exists()).isFalse();
+
+        // APPROVED is terminal and read-only — likewise no forward action.
+        var approved = seedApprovedReport(LocalDate.of(2026, 7, 1), "60.00");
+        navigate(ReportDetailView.class, approved);
+        assertThat(findButton().withText("Resubmit").exists()).isFalse();
+        assertThat(findButton().withText("Submit for approval").exists()).isFalse();
+    }
+
+    @Test
+    void resubmittingARejectedReportSendsItBackToSubmittedAndLocksItReadOnly() {
+        var id = seedRejectedReport(LocalDate.of(2026, 7, 1), "100", "Fix the total.");
+        navigate(ReportDetailView.class, id);
+
+        findButton().withText("Resubmit").click();
+
+        // Back through the queue: REJECTED → SUBMITTED, and read-only to the owner
+        // again (the editing affordances and the forward action are gone).
+        assertThat(service.findMine(id).status()).isEqualTo(ReportStatus.SUBMITTED);
+        assertThat(getCurrentView().getElement().getTextRecursively())
+                .contains("Submitted");
+        assertThat(findButton().withText("Resubmit").exists()).isFalse();
+        assertThat(findButton().withText("Save").exists()).isFalse();
+        assertThat(findButton().withText("Add expense").exists()).isFalse();
+    }
+
+    @Test
+    void resubmittingAnEmptyRejectedReportShowsTheReasonAndStaysEnabled() {
+        var id = seedEmptyRejectedReport(LocalDate.of(2026, 7, 1), "Fix the total.");
+        navigate(ReportDetailView.class, id);
+
+        // Always-enabled Resubmit (ADR-0020): a zero-line resubmit is blocked with
+        // the reason in the top-of-form error summary, not a silent no-op.
+        findButton().withText("Resubmit").click();
+
+        assertThat(getCurrentView().getElement().getTextRecursively())
+                .contains("at least one line");
+        assertThat(service.findMine(id).status()).isEqualTo(ReportStatus.REJECTED);
+        // The button is still there (never disabled) so the owner can add a line and retry.
+        assertThat(findButton().withText("Resubmit").exists()).isTrue();
+    }
+
     @Test
     void anAlreadySubmittedReportOpensReadOnly() {
         var id = seedSubmittedReport(LocalDate.of(2026, 7, 1), "80.00");

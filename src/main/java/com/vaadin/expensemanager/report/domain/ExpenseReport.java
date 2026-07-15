@@ -185,6 +185,38 @@ public class ExpenseReport extends AuditedEntity {
     }
 
     /**
+     * Resubmits a rejected report for approval (glossary: Resubmit, ADR-0006):
+     * {@code REJECTED → SUBMITTED}, appending a {@link StatusChange} (the acting
+     * user is the owner; no comment). Mirrors {@link #submit} — same {@code ≥1 line}
+     * invariant, no total-sign guard — but guards the {@code REJECTED} origin state:
+     * this is the "address the feedback and send it back through the queue" step
+     * that closes the approval loop (Phase 5.5).
+     *
+     * <p>An illegal transition (resubmitting anything but a {@code REJECTED} report)
+     * is rejected rather than silently ignored; authorization ("who may resubmit")
+     * stays in the security/service layer (ADR-0008).
+     *
+     * @param actingUser the user performing the resubmit (the owner)
+     * @param at         when the transition happened (supplied by the caller so the
+     *                   domain stays free of the clock)
+     * @throws IllegalStateException if the report is not a {@code REJECTED} or has
+     *                               no lines
+     */
+    public void resubmit(User actingUser, Instant at) {
+        if (status != ReportStatus.REJECTED) {
+            throw new IllegalStateException(
+                    "Report " + id + " is " + status + " and cannot be resubmitted");
+        }
+        if (lines.isEmpty()) {
+            throw new IllegalStateException(
+                    "Add at least one line before resubmitting.");
+        }
+        ReportStatus from = status;
+        status = ReportStatus.SUBMITTED;
+        recordStatusChange(from, status, actingUser, null, at);
+    }
+
+    /**
      * Approves a submitted report (glossary: Approve, ADR-0006): {@code SUBMITTED
      * → APPROVED}, appending a {@link StatusChange} (the acting admin, no comment).
      * Mirrors {@link #submit}: the transition itself is a domain fact, so it lives

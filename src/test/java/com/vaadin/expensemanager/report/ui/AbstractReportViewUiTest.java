@@ -111,6 +111,37 @@ abstract class AbstractReportViewUiTest extends SpringBrowserlessTest
         return id;
     }
 
+    /**
+     * Seeds a report with one line, submits it, then has the seeded admin approve
+     * it — so a test can open its own {@code APPROVED} (terminal, read-only) report.
+     * Like {@link #seedRejectedReport} the transition goes through the aggregate
+     * directly; the report stays owned by the current user. Returns its id.
+     */
+    protected Long seedApprovedReport(LocalDate date, String amount) {
+        var id = seedSubmittedReport(date, amount);
+        var admin = userRepository.findByEmail("admin@vaadin.com").orElseThrow();
+        var report = reportRepository.findById(id).orElseThrow();
+        report.approve(admin, Instant.parse("2026-07-14T08:00:00Z"));
+        reportRepository.save(report);
+        return id;
+    }
+
+    /**
+     * Seeds a {@code REJECTED} report and then strips it back to zero lines while it
+     * is still (owner-)editable — the fixture for the empty-resubmit block. The line
+     * removal commits through the service, so the persisted report the resubmit acts
+     * on truly has no lines. Returns its id.
+     */
+    protected Long seedEmptyRejectedReport(LocalDate date, String reason) {
+        var id = seedRejectedReport(date, "100", reason);
+        var loaded = service.findMine(id);
+        var zero = BigDecimal.ZERO.setScale(2);
+        service.update(id, new ReportDetailDto(id, loaded.reportDate(),
+                loaded.additionalInformation(), loaded.status(), loaded.version(),
+                List.of(), zero, zero, zero), loaded.version());
+        return id;
+    }
+
     /** A minimal but valid JPEG (magic bytes {@code FF D8 FF} + padding). */
     protected static byte[] jpegBytes() {
         byte[] file = new byte[16];

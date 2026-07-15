@@ -1,6 +1,7 @@
 package com.vaadin.expensemanager.report.service;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -19,6 +20,7 @@ import com.vaadin.expensemanager.reference.VatRate;
 import com.vaadin.expensemanager.reference.VatRateRepository;
 import com.vaadin.expensemanager.security.LocalUserDetailsService;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
+import com.vaadin.expensemanager.user.User;
 import com.vaadin.expensemanager.user.UserRepository;
 
 import jakarta.persistence.EntityManager;
@@ -333,6 +335,74 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
 
         assertThatThrownBy(() -> service.submit(id, 999L))
                 .isInstanceOf(ObjectOptimisticLockingFailureException.class);
+    }
+
+    // --- Resubmit (Phase 5.5, ADR-0006) ---
+
+    @Test
+    void resubmitMovesRejectedToSubmittedAndReappearsInTheAdminQueue() {
+        var me = userRepository.findByEmail(LocalUserSeeder.PLAIN_USER_EMAIL)
+                .orElseThrow();
+        var id = seedRejectedReport(me);
+        var loaded = service.findMine(id);
+
+        var resubmitted = service.resubmit(id, loaded.version());
+
+        assertThat(resubmitted.status()).isEqualTo(ReportStatus.SUBMITTED);
+        // Round-trips as SUBMITTED with the loop's third status-change row, and so
+        // reappears in the admin queue (findByStatus, what listSubmitted reads).
+        var reloaded = reportRepository.findById(id).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo(ReportStatus.SUBMITTED);
+        assertThat(reloaded.getStatusHistory()).hasSize(3);
+        var change = reloaded.getStatusHistory().getLast();
+        assertThat(change.getFromStatus()).isEqualTo(ReportStatus.REJECTED);
+        assertThat(change.getToStatus()).isEqualTo(ReportStatus.SUBMITTED);
+        assertThat(change.getActingUser().getEmail())
+                .isEqualTo(LocalUserSeeder.PLAIN_USER_EMAIL);
+        assertThat(reportRepository.findByStatusOrderByIdDesc(ReportStatus.SUBMITTED))
+                .extracting(ExpenseReport::getId).contains(id);
+    }
+
+    @Test
+    void resubmittingAnotherUsersRejectedReportIsRejected() {
+        // A rejected report owned by the admin — the plain user is authenticated.
+        var admin = userRepository.findByEmail("admin@vaadin.com").orElseThrow();
+        var foreign = seedRejectedReport(admin);
+
+        // Owner-scoped exactly like submit: requireOwned hides it, so even though the
+        // report really is REJECTED, this user cannot resubmit it (ADR-0008).
+        assertThatThrownBy(() -> service.resubmit(foreign, 0L))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(reportRepository.findById(foreign).orElseThrow().getStatus())
+                .isEqualTo(ReportStatus.REJECTED);
+    }
+
+    @Test
+    void resubmitWithAStaleVersionThrowsOptimisticLockFailure() {
+        var me = userRepository.findByEmail(LocalUserSeeder.PLAIN_USER_EMAIL)
+                .orElseThrow();
+        var id = seedRejectedReport(me);
+
+        assertThatThrownBy(() -> service.resubmit(id, 999L))
+                .isInstanceOf(ObjectOptimisticLockingFailureException.class);
+    }
+
+    /**
+     * Persists a {@code REJECTED} report with one line owned by {@code owner},
+     * driving the real domain transitions (submit → reject) past the owner-scoped
+     * service so a rejected fixture exists to resubmit. The admin is the rejecter.
+     */
+    private Long seedRejectedReport(User owner) {
+        var report = new ExpenseReport(owner, LocalDate.of(2026, 7, 10), "needs work");
+        report.reconcileLines(List.of(new ExpenseLineSpec(null, firstActiveType(),
+                new BigDecimal("100.00"), rateByValue("25.5"), "hotel")));
+        var admin = userRepository.findByEmail("admin@vaadin.com").orElseThrow();
+        report.submit(owner, Instant.parse("2026-07-11T09:00:00Z"));
+        report.reject(admin, "Please attach the receipt.",
+                Instant.parse("2026-07-12T09:00:00Z"));
+        reportRepository.save(report);
+        reportRepository.flush();
+        return report.getId();
     }
 
     // --- Receipts (Phase 3.1, ADR-0021) ---
