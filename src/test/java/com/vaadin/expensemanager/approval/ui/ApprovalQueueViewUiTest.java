@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import com.vaadin.expensemanager.report.domain.ReportStatus;
 import com.vaadin.expensemanager.report.ui.ReportDetailView;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
+import com.vaadin.flow.component.UI;
 import com.vaadin.flow.router.RouterLink;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.test.context.support.WithUserDetails;
@@ -82,5 +83,50 @@ class ApprovalQueueViewUiTest extends AbstractApprovalViewUiTest {
         assertThat(getCurrentView().getElement().getTextRecursively())
                 .contains("Approved");
         assertThat(findButton().withText("Approve").exists()).isFalse();
+    }
+
+    @Test
+    void rejectingWithAnEmptyCommentShowsTheReasonRequiredErrorAndDoesNotSubmit() {
+        var id = seedSubmittedReportForOwner(LocalUserSeeder.PLAIN_USER_EMAIL,
+                LocalDate.of(2026, 6, 2), "user trip");
+
+        navigate("review/" + id, ReportDetailView.class);
+        findButton().withText("Reject").click();          // opens the reason dialog
+        findButton().withText("Reject report").click();   // confirm with empty comment
+
+        // The confirm stays enabled (ADR-0020) and the dialog's error summary shows
+        // the reason-required message — asserted under the UI, as the dialog overlay
+        // attaches to the UI, not the routed view (F-036).
+        assertThat(UI.getCurrent().getElement().getTextRecursively())
+                .contains("A rejection comment is required.");
+        // Still open, nothing submitted: the report is untouched.
+        assertThat(findButton().withText("Reject report").exists()).isTrue();
+        assertThat(reportRepository.findById(id).orElseThrow().getStatus())
+                .isEqualTo(ReportStatus.SUBMITTED);
+    }
+
+    @Test
+    void rejectingWithAReasonRecordsItAndMovesTheReportToRejected() {
+        var id = seedSubmittedReportForOwner(LocalUserSeeder.PLAIN_USER_EMAIL,
+                LocalDate.of(2026, 6, 2), "user trip");
+
+        navigate("review/" + id, ReportDetailView.class);
+        findButton().withText("Reject").click();
+        findTextArea().withLabel("Rejection comment")
+                .setValue("Please itemise the taxi fares.");
+        findButton().withText("Reject report").click();
+
+        assertThat(reportRepository.findById(id).orElseThrow().getStatus())
+                .isEqualTo(ReportStatus.REJECTED);
+        // The review actions drop (no longer reviewable) and the audit trail with the
+        // reason is shown to the admin too.
+        assertThat(findButton().withText("Reject").exists()).isFalse();
+        assertThat(findButton().withText("Approve").exists()).isFalse();
+        // Review mode stays read-only even though REJECTED is owner-editable — the
+        // admin must not gain edit/save affordances on another user's report.
+        assertThat(findButton().withText("Save").exists()).isFalse();
+        assertThat(findButton().withText("Add expense").exists()).isFalse();
+        assertThat(getCurrentView().getElement().getTextRecursively())
+                .contains("Rejected", "Please itemise the taxi fares.");
     }
 }

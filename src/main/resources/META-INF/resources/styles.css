@@ -97,6 +97,9 @@
 }
 
 .status-callout {
+    display: flex;
+    flex-direction: column;
+    gap: var(--vaadin-gap-xs);
     border-radius: var(--vaadin-radius-l);
     padding: var(--vaadin-padding-l);
     font-size: var(--aura-font-size-s);
@@ -106,6 +109,7 @@
     display: block;
     font-weight: var(--aura-font-weight-semibold);
 }
+.status-callout-reason { font-style: italic; }
 .status-callout--rejected {
     background: color-mix(in srgb, var(--aura-red) 8%, transparent);
     border: 1px solid color-mix(in srgb, var(--aura-red) 35%, transparent);
@@ -119,6 +123,30 @@
 .status-callout--submitted {
     background: var(--aura-accent-surface);
     border: 1px solid var(--aura-accent-border-color);
+}
+
+.status-history {
+    display: flex;
+    flex-direction: column;
+    gap: var(--vaadin-gap-s);
+    border-top: 1px solid var(--vaadin-border-color-secondary);
+    padding-top: var(--vaadin-padding-m);
+}
+.status-history-heading {
+    font-weight: var(--aura-font-weight-semibold);
+    font-size: var(--aura-font-size-s);
+}
+.status-history-entry {
+    padding: var(--vaadin-padding-s);
+    border-radius: var(--vaadin-radius-m);
+    background: var(--aura-surface-color);
+    border: 1px solid var(--vaadin-border-color);
+}
+.status-history-label { font-weight: var(--aura-font-weight-semibold); }
+.status-history-comment {
+    font-size: var(--aura-font-size-s);
+    font-style: italic;
+    margin-top: var(--vaadin-gap-xs);
 }
 
 .line-card {

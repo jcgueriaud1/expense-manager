@@ -1,6 +1,7 @@
 package com.vaadin.expensemanager.report.ui;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -90,6 +91,23 @@ abstract class AbstractReportViewUiTest extends SpringBrowserlessTest
     protected Long seedSubmittedReport(LocalDate date, String amount) {
         var id = seedReportWithLine(date, amount);
         service.submit(id, service.findMine(id).version());
+        return id;
+    }
+
+    /**
+     * Seeds a report owned by the current user, submits it, then has the seeded
+     * admin reject it with {@code reason} — so an owner test can open its own
+     * {@code REJECTED} report and see the real reason/rejecter/date. The reject
+     * goes through the aggregate directly (the owner-scoped service has no admin
+     * path); the report stays owned by the current user, so {@code findMine} loads
+     * it. Returns its id.
+     */
+    protected Long seedRejectedReport(LocalDate date, String amount, String reason) {
+        var id = seedSubmittedReport(date, amount);
+        var admin = userRepository.findByEmail("admin@vaadin.com").orElseThrow();
+        var report = reportRepository.findById(id).orElseThrow();
+        report.reject(admin, reason, Instant.parse("2026-07-14T08:00:00Z"));
+        reportRepository.save(report);
         return id;
     }
 

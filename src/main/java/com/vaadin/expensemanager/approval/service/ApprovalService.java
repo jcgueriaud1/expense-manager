@@ -106,6 +106,31 @@ public class ApprovalService {
         return mapper.toDetail(report);
     }
 
+    /**
+     * Rejects a submitted report with a mandatory reason (glossary: Reject):
+     * {@code SUBMITTED → REJECTED}, recording a status change whose actor is the
+     * reviewing admin and whose comment carries the reason (ADR-0006). Not
+     * owner-scoped; version-checked before the transition (ADR-0011). The
+     * aggregate rejects a non-{@code SUBMITTED} report and a blank comment.
+     *
+     * @param comment         the mandatory rejection reason (non-blank)
+     * @param expectedVersion the {@code @Version} the review last saw
+     * @throws ObjectOptimisticLockingFailureException if the report changed
+     *         underneath the reviewer
+     * @throws IllegalArgumentException if no report has that id or the comment is blank
+     * @throws IllegalStateException    if the report is not {@code SUBMITTED}
+     */
+    @RolesAllowed("ADMIN")
+    @Transactional
+    public ReportDetailDto reject(Long id, String comment, long expectedVersion) {
+        var report = require(id);
+        if (report.getVersion() != expectedVersion) {
+            throw new ObjectOptimisticLockingFailureException(ExpenseReport.class, id);
+        }
+        report.reject(currentAdmin(), comment, Instant.now());
+        return mapper.toDetail(report);
+    }
+
     private ExpenseReport require(Long id) {
         return reportRepository.findById(id).orElseThrow(
                 () -> new IllegalArgumentException("No report with id " + id));

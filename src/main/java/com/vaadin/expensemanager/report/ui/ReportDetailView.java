@@ -20,6 +20,7 @@ import com.vaadin.expensemanager.report.service.GeneratedLineRef;
 import com.vaadin.expensemanager.report.service.GeneratedLineView;
 import com.vaadin.expensemanager.report.service.ReceiptUpload;
 import com.vaadin.expensemanager.report.service.ReportDetailDto;
+import com.vaadin.expensemanager.report.service.StatusChangeDto;
 import com.vaadin.expensemanager.report.service.TravelDto;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
@@ -91,9 +92,11 @@ import static com.vaadin.expensemanager.report.ui.ReportViewSupport.formatPercen
  * the approval queue at the {@code /review/{id}} alias to review another user's
  * report. Review mode loads via the non-owner-scoped
  * {@link ApprovalService#findForReview} (any owner), renders everything
- * read-only, and offers <strong>Approve</strong> in place of Save/Submit/Delete
- * — reusing the same {@link #showConflict()}/{@link #reload()} conflict UX
- * (ADR-0011). The review alias is unreachable except by an admin: navigation is
+ * read-only, and offers <strong>Approve</strong> and <strong>Reject</strong> (the
+ * latter via a mandatory-reason dialog) in place of Save/Submit/Delete — both
+ * reusing the same {@link #showConflict()}/{@link #reload()} conflict UX
+ * (ADR-0011). The rejection reason, rejecter, and date then surface in the owner's
+ * status callout, and the full ordered status history is shown to both. The review alias is unreachable except by an admin: navigation is
  * gated in {@link #setParameter} (a non-admin is forwarded away) and, as the real
  * enforcement (ADR-0008), every {@code ApprovalService} method is
  * {@code @RolesAllowed("ADMIN")}.
@@ -126,6 +129,8 @@ public class ReportDetailView extends VerticalLayout
     private final Div statusBadgeSlot = new Div();
     /** The rejected/approved/submitted status callout; hidden while DRAFT. */
     private final Div statusCallout = new Div();
+    /** The ordered status-history log; hidden until the first transition is recorded. */
+    private final Div statusHistory = new Div();
     /** Header eyebrow: "New report" or "Report #{id}". */
     private final Span headerId = new Span();
     /** Header title: the note, or a generic label. */
@@ -141,6 +146,7 @@ public class ReportDetailView extends VerticalLayout
     private final Button save = new Button("Save");
     private final Button submit = new Button("Submit for approval");
     private final Button approve = new Button("Approve");
+    private final Button reject = new Button("Reject");
     private final Button addLine = new Button("Add expense", VaadinIcon.PLUS.create());
     private final Button addTravel =
             new Button("Insert travel info", VaadinIcon.AIRPLANE.create());
@@ -228,6 +234,11 @@ public class ReportDetailView extends VerticalLayout
         approve.addThemeVariants(ButtonVariant.PRIMARY, ButtonVariant.SUCCESS);
         approve.addClickListener(event -> onApprove());
         approve.setVisible(false);
+        // Reject is the admin's destructive review action — it opens a dialog for
+        // the mandatory reason rather than acting on the click (mirrors Delete).
+        reject.addThemeVariants(ButtonVariant.ERROR);
+        reject.addClickListener(event -> openRejectDialog());
+        reject.setVisible(false);
         delete.addThemeVariants(ButtonVariant.ERROR, ButtonVariant.TERTIARY);
         delete.addClickListener(event -> confirmDelete());
         addLine.addThemeVariants(ButtonVariant.TERTIARY);
@@ -237,15 +248,19 @@ public class ReportDetailView extends VerticalLayout
 
         // Submit is the full-width forward action; Save keeps working, Delete is
         // the quiet destructive one — a footer action bar (the mockup's footer).
-        var actions = new HorizontalLayout(save, submit, approve, delete);
+        var actions = new HorizontalLayout(save, submit, approve, reject, delete);
         actions.setWidthFull();
         actions.setAlignItems(FlexComponent.Alignment.CENTER);
         actions.expand(submit);
         actions.addClassName("detail-actions");
 
+        statusHistory.setWidthFull();
+        statusHistory.setVisible(false);
+        statusHistory.addClassName("status-history");
+
         add(headerRow(), errorSummary, statusCallout, reportDate,
                 additionalInformation, travelsSection(), linesSection(), totalsCard(),
-                actions);
+                statusHistory, actions);
     }
 
     @Override
@@ -305,16 +320,20 @@ public class ReportDetailView extends VerticalLayout
         if (reviewMode) {
             statusCallout.setVisible(false);
         } else {
-            updateStatusCallout(dto.status());
+            updateStatusCallout(dto);
         }
+        // The ordered audit trail is shown to both the owner and the admin reviewer.
+        renderStatusHistory(dto.statusHistory());
         headerId.setText(dto.isPersisted() ? "Report #" + dto.id() : "New report");
         headerName.setText(dto.additionalInformation() == null
                 || dto.additionalInformation().isBlank()
                 ? "Expense report" : dto.additionalInformation());
 
         // Set editability before repopulating so the card factory builds the
-        // right (interactive vs read-only) cards.
-        editable = dto.status().isEditable();
+        // right (interactive vs read-only) cards. An admin reviewing another user's
+        // report never edits it — review mode is always read-only, even once a
+        // reject moves the report to the (owner-)editable REJECTED state.
+        editable = dto.status().isEditable() && !reviewMode;
         editableSignal.set(editable);
         reportDate.setReadOnly(!editable);
         additionalInformation.setReadOnly(!editable);
@@ -327,9 +346,10 @@ public class ReportDetailView extends VerticalLayout
                 && dto.status() == ReportStatus.DRAFT);
         // Delete only while DRAFT and already persisted (ADR-0006, glossary).
         delete.setVisible(!reviewMode && dto.isPersisted() && dto.status().isDeletable());
-        // Approve is the review-mode forward action, only while the report is still
-        // reviewable (SUBMITTED); once approved it stays visible as read-only.
+        // Approve/Reject are the review-mode actions, only while the report is still
+        // reviewable (SUBMITTED); once acted on they drop and the view stays read-only.
         approve.setVisible(reviewMode && dto.status().isReviewable());
+        reject.setVisible(reviewMode && dto.status().isReviewable());
 
         pendingReceipts.clear();
         pendingTravelReceipts.clear();
@@ -408,6 +428,79 @@ public class ReportDetailView extends VerticalLayout
         } catch (ObjectOptimisticLockingFailureException stale) {
             showConflict();
         } catch (IllegalArgumentException | IllegalStateException invalid) {
+            showErrors(List.of(invalid.getMessage()));
+        }
+    }
+
+    /**
+     * Opens the reject dialog (Phase 5): a mandatory Rejection Comment above a
+     * Cancel / Reject footer. Following ADR-0020, the confirm button is
+     * <strong>always enabled</strong> — a blank comment does not submit but surfaces
+     * the reason-required message in the dialog's own error summary and focuses the
+     * field. A non-blank reason rejects the report ({@code SUBMITTED → REJECTED}),
+     * recording the reason; a stale reject reuses the same {@link #showConflict()}/
+     * {@link #reload()} conflict UX as save/submit/approve (ADR-0011).
+     */
+    private void openRejectDialog() {
+        var dialog = new Dialog();
+        dialog.setHeaderTitle("Reject report");
+
+        var summary = new Div();
+        summary.getElement().setAttribute("role", "alert");
+        summary.addClassName("error-summary");
+        summary.setVisible(false);
+
+        var comment = new TextArea("Rejection comment");
+        comment.setWidthFull();
+        comment.setRequiredIndicatorVisible(true);
+        comment.setMaxLength(2000);
+
+        var body = new VerticalLayout(summary, new Paragraph(
+                "Explain what needs to change — the owner will see this reason."),
+                comment);
+        body.setPadding(false);
+        body.setSpacing(false);
+        dialog.add(body);
+
+        var confirm = new Button("Reject report", event ->
+                submitReject(dialog, summary, comment));
+        confirm.addThemeVariants(ButtonVariant.ERROR, ButtonVariant.PRIMARY);
+        var cancel = new Button("Cancel", event -> dialog.close());
+        dialog.getFooter().add(cancel, confirm);
+        dialog.open();
+        comment.focus();
+    }
+
+    /**
+     * Handles the reject-dialog confirm: blocks a blank comment with the dialog's
+     * error summary (never a silent no-op, ADR-0020), otherwise rejects the report
+     * and closes the dialog. A stale reject closes the dialog and surfaces the
+     * shared reload affordance on the form (ADR-0011).
+     */
+    private void submitReject(Dialog dialog, Div summary, TextArea comment) {
+        var reason = comment.getValue();
+        if (reason == null || reason.isBlank()) {
+            summary.removeAll();
+            var heading = new Span("Please fix the following:");
+            heading.addClassName("summary-heading");
+            var list = new UnorderedList(
+                    new ListItem("A rejection comment is required."));
+            summary.add(heading, list);
+            summary.setVisible(true);
+            comment.focus();
+            return;
+        }
+        try {
+            var updated = approvalService.reject(working.id(), reason,
+                    working.version());
+            dialog.close();
+            load(updated);
+            Notification.show("Report rejected.");
+        } catch (ObjectOptimisticLockingFailureException stale) {
+            dialog.close();
+            showConflict();
+        } catch (IllegalArgumentException | IllegalStateException invalid) {
+            dialog.close();
             showErrors(List.of(invalid.getMessage()));
         }
     }
@@ -593,21 +686,29 @@ public class ReportDetailView extends VerticalLayout
 
     /**
      * Sets the coloured status note above the form: a red "changes requested"
-     * callout for a rejected report, a green approved note, a neutral
-     * "waiting for approval" note once submitted, and nothing while it is a
-     * draft. Only the status drives it — the approver identity, comment, and
-     * dates are surfaced when the approval flow lands (Phase 5); until then the
-     * note states where the report stands without inventing that data.
+     * callout for a rejected report — now carrying the <strong>real</strong>
+     * rejection reason, who rejected it, and when, read from the status history
+     * (Phase 5) — a green approved note, a neutral "waiting for approval" note
+     * once submitted, and nothing while it is a draft.
      */
-    private void updateStatusCallout(ReportStatus status) {
+    private void updateStatusCallout(ReportDetailDto dto) {
         statusCallout.removeAll();
         statusCallout.setClassName("status-callout");
-        switch (status) {
+        switch (dto.status()) {
             case REJECTED -> {
                 statusCallout.addClassName("status-callout--rejected");
                 var heading = new Span("Rejected — changes requested");
                 heading.addClassName("status-callout-heading");
-                statusCallout.add(heading, new Span(
+                statusCallout.add(heading);
+                lastRejection(dto).ifPresent(change -> {
+                    var reason = new Span(change.comment());
+                    reason.addClassName("status-callout-reason");
+                    var meta = new Span("Rejected by " + change.actorName() + " on "
+                            + ReportViewSupport.formatTimestamp(change.changedAt()));
+                    meta.addClassName("muted-xs");
+                    statusCallout.add(reason, meta);
+                });
+                statusCallout.add(new Span(
                         "Update this report to address the feedback, then resubmit."));
                 statusCallout.setVisible(true);
             }
@@ -627,6 +728,56 @@ public class ReportDetailView extends VerticalLayout
             }
             case DRAFT -> statusCallout.setVisible(false);
         }
+    }
+
+    /**
+     * The most recent {@code → REJECTED} transition in the history, if any — the
+     * one whose reason the callout surfaces. A report can be rejected, resubmitted,
+     * and rejected again, so the latest entry (history is oldest-first) wins.
+     */
+    private static java.util.Optional<StatusChangeDto> lastRejection(
+            ReportDetailDto dto) {
+        return dto.statusHistory().stream()
+                .filter(change -> change.toStatus() == ReportStatus.REJECTED)
+                .reduce((first, second) -> second);
+    }
+
+    /**
+     * Renders the ordered status history (glossary: Status History) as an audit
+     * trail — one entry per transition with its actor, time, and any comment —
+     * visible to both the owner and the admin reviewer. Hidden until the first
+     * transition is recorded (a fresh draft has none).
+     */
+    private void renderStatusHistory(List<StatusChangeDto> history) {
+        statusHistory.removeAll();
+        if (history.isEmpty()) {
+            statusHistory.setVisible(false);
+            return;
+        }
+        var heading = new Span("Status history");
+        heading.addClassName("status-history-heading");
+        statusHistory.add(heading);
+        history.forEach(change -> statusHistory.add(statusHistoryEntry(change)));
+        statusHistory.setVisible(true);
+    }
+
+    /** One status-history row: the transition label, actor and time, then any comment. */
+    private static Component statusHistoryEntry(StatusChangeDto change) {
+        var label = new Span(ReportViewSupport.statusLabel(change.toStatus()));
+        label.addClassName("status-history-label");
+        var meta = new Span("by " + change.actorName() + " · "
+                + ReportViewSupport.formatTimestamp(change.changedAt()));
+        meta.addClassName("muted-xs");
+        var row = new VerticalLayout(label, meta);
+        row.setPadding(false);
+        row.setSpacing(false);
+        row.addClassName("status-history-entry");
+        if (change.comment() != null && !change.comment().isBlank()) {
+            var comment = new Span(change.comment());
+            comment.addClassName("status-history-comment");
+            row.add(comment);
+        }
+        return row;
     }
 
     /**

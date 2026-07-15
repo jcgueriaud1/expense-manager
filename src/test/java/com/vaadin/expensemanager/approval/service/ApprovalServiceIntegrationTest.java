@@ -149,6 +149,64 @@ class ApprovalServiceIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void rejectMovesSubmittedToRejectedAndPersistsTheReasonAndAdmin() {
+        authenticateAs(ADMIN_EMAIL);
+        var userReport = seedSubmittedReport(LocalUserSeeder.PLAIN_USER_EMAIL,
+                LocalDate.of(2026, 6, 2), "user trip", Instant.parse("2026-07-12T09:00:00Z"));
+        var version = approvalService.findForReview(userReport).version();
+
+        var rejected = approvalService.reject(userReport,
+                "Please itemise the taxi fares.", version);
+
+        assertThat(rejected.status()).isEqualTo(ReportStatus.REJECTED);
+        var reloaded = reportRepository.findById(userReport).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo(ReportStatus.REJECTED);
+        assertThat(reloaded.getStatusHistory()).hasSize(2);
+        var change = reloaded.getStatusHistory().get(1);
+        assertThat(change.getFromStatus()).isEqualTo(ReportStatus.SUBMITTED);
+        assertThat(change.getToStatus()).isEqualTo(ReportStatus.REJECTED);
+        // The reason is persisted, and the actor is the reviewing ADMIN.
+        assertThat(change.getComment()).isEqualTo("Please itemise the taxi fares.");
+        assertThat(change.getActingUser().getEmail()).isEqualTo(ADMIN_EMAIL);
+    }
+
+    @Test
+    void rejectWithABlankCommentIsRejectedAndDoesNotTransition() {
+        authenticateAs(ADMIN_EMAIL);
+        var userReport = seedSubmittedReport(LocalUserSeeder.PLAIN_USER_EMAIL,
+                LocalDate.of(2026, 6, 2), "user trip", Instant.parse("2026-07-12T09:00:00Z"));
+        var version = approvalService.findForReview(userReport).version();
+
+        assertThatThrownBy(() -> approvalService.reject(userReport, "   ", version))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(reportRepository.findById(userReport).orElseThrow().getStatus())
+                .isEqualTo(ReportStatus.SUBMITTED);
+    }
+
+    @Test
+    void rejectWithAStaleVersionThrowsOptimisticLockFailure() {
+        authenticateAs(ADMIN_EMAIL);
+        var userReport = seedSubmittedReport(LocalUserSeeder.PLAIN_USER_EMAIL,
+                LocalDate.of(2026, 6, 2), "user trip", Instant.parse("2026-07-12T09:00:00Z"));
+
+        assertThatThrownBy(() -> approvalService.reject(userReport, "stale", 999L))
+                .isInstanceOf(ObjectOptimisticLockingFailureException.class);
+        assertThat(reportRepository.findById(userReport).orElseThrow().getStatus())
+                .isEqualTo(ReportStatus.SUBMITTED);
+    }
+
+    @Test
+    void rejectingANonSubmittedReportIsRejected() {
+        authenticateAs(ADMIN_EMAIL);
+        var draft = seedDraft(LocalUserSeeder.PLAIN_USER_EMAIL,
+                LocalDate.of(2026, 6, 3), "draft");
+        var version = reportRepository.findById(draft).orElseThrow().getVersion();
+
+        assertThatThrownBy(() -> approvalService.reject(draft, "no", version))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
     void approvingANonSubmittedReportIsRejected() {
         authenticateAs(ADMIN_EMAIL);
         var draft = seedDraft(LocalUserSeeder.PLAIN_USER_EMAIL,
@@ -168,6 +226,8 @@ class ApprovalServiceIntegrationTest extends AbstractIntegrationTest {
         assertThatThrownBy(() -> approvalService.findForReview(1L))
                 .isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> approvalService.approve(1L, 0L))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> approvalService.reject(1L, "denied", 0L))
                 .isInstanceOf(AccessDeniedException.class);
     }
 
