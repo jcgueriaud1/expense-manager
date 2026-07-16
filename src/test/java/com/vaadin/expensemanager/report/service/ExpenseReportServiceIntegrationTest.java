@@ -97,8 +97,12 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
         // overwrites the static), so pin the static to this context's bean, then
         // write the authentication through it — both readers now agree (F-020).
         SecurityContextHolder.setContextHolderStrategy(securityContextHolderStrategy);
-        var principal = userDetailsService.loadUserByUsername(
-                LocalUserSeeder.PLAIN_USER_EMAIL);
+        authenticateAs(LocalUserSeeder.PLAIN_USER_EMAIL);
+    }
+
+    /** Re-authenticate the current context as the given seeded user (F-020). */
+    private void authenticateAs(String email) {
+        var principal = userDetailsService.loadUserByUsername(email);
         var authentication = UsernamePasswordAuthenticationToken.authenticated(
                 principal, "n/a", principal.getAuthorities());
         var context = securityContextHolderStrategy.createEmptyContext();
@@ -622,6 +626,28 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
         // The current user is the plain user: the owner check in the query returns
         // nothing — a non-owner's receipt is never streamed (ADR-0008).
         assertThat(service.receiptForDownload(adminReceiptId)).isEmpty();
+    }
+
+    @Test
+    void receiptForDownloadLetsAnAdminSeeAnotherUsersReceipt() {
+        // A receipt on the plain user's report, created through the owner-scoped
+        // service while authenticated as that user.
+        var type = firstActiveType();
+        var rate = rateByValue("25.5");
+        var id = service.create(
+                dtoWithLines(null, LocalDate.of(2026, 7, 10), 0L,
+                        List.of(newLine(type, rate, "40.00", "taxi"))),
+                Map.of(0, new ReceiptUpload(JPEG, "taxi.jpg")));
+        var receiptId = service.findMine(id).lines().getFirst().receiptId();
+
+        // An admin reviews any user's report (Phase 5), so the read path is not
+        // owner-scoped for them: the plain user's receipt streams to the admin.
+        authenticateAs("admin@vaadin.com");
+        var content = service.receiptForDownload(receiptId);
+
+        assertThat(content).isPresent();
+        assertThat(content.get().data()).isEqualTo(JPEG);
+        assertThat(content.get().filename()).isEqualTo("taxi.jpg");
     }
 
     @Test
