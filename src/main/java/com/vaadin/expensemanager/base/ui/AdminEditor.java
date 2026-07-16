@@ -2,7 +2,6 @@ package com.vaadin.expensemanager.base.ui;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.function.Consumer;
 
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
@@ -36,8 +35,7 @@ import com.vaadin.flow.function.ValueProvider;
  *   <li>accessible, theme-agnostic action buttons — aria-labelled tertiary icon
  *       buttons — {@link #iconButton}; and</li>
  *   <li>the recurring required, non-negative decimal field so money/rate editors
- *       stop re-declaring the same field + validators — {@link #requiredDecimalField}
- *       / {@link #openDecimalEditor}.</li>
+ *       stop re-declaring the same field + validators — {@link #requiredDecimalField}.</li>
  * </ul>
  */
 public final class AdminEditor {
@@ -138,22 +136,6 @@ public final class AdminEditor {
             Binder<F> binder, ValueProvider<F, BigDecimal> getter, Setter<F, BigDecimal> setter) {
         return requiredDecimalField(label, noun + " is required",
                 noun + " must be zero or positive", binder, getter, setter);
-    }
-
-    /**
-     * Opens an editor for a single required, non-negative decimal value —
-     * collapses the several near-identical single-field money/rate editors into
-     * one call. {@code persist} receives the entered value on Save.
-     */
-    public static void openDecimalEditor(String title, String fieldLabel, String noun,
-            BigDecimal current, Consumer<BigDecimal> persist) {
-        var model = new DecimalHolder();
-        var binder = new Binder<DecimalHolder>();
-        var field = requiredDecimalField(fieldLabel, noun, binder,
-                DecimalHolder::getValue, DecimalHolder::setValue);
-        model.setValue(current);
-        binder.readBean(model);
-        openEditor(title, field, binder, model, () -> persist.accept(model.getValue()));
     }
 
     /** Single-value {@link BigDecimal} binding model (Binder needs a bean with a setter). */

@@ -32,6 +32,7 @@ import jakarta.annotation.security.RolesAllowed;
 
 import static com.vaadin.expensemanager.allowance.ui.AllowanceViewSupport.formatMoney;
 import static com.vaadin.expensemanager.allowance.ui.AllowanceViewSupport.formatRate;
+import static com.vaadin.expensemanager.allowance.ui.AllowanceViewSupport.openDecimalEditor;
 
 /**
  * ADMIN-only settings screen for the per-year allowance rate config (issue #48,
@@ -238,7 +239,7 @@ public class AllowanceRatesView extends VerticalLayout {
     }
 
     private void openKilometreEditor(int year, BigDecimal current) {
-        AdminEditor.openDecimalEditor("Edit kilometre allowance — " + year, "Rate (€/km)", "Rate",
+        openDecimalEditor("Edit kilometre allowance — " + year, "Rate (€/km)", "Rate",
                 current, value -> {
                     service.updateKilometreRate(year, value);
                     renderYear(year);
@@ -246,7 +247,7 @@ public class AllowanceRatesView extends VerticalLayout {
     }
 
     private void openMealEditor(int year, BigDecimal current) {
-        AdminEditor.openDecimalEditor("Edit meal allowance — " + year, "Amount (€)", "Amount",
+        openDecimalEditor("Edit meal allowance — " + year, "Amount (€)", "Amount",
                 current, value -> {
                     service.updateMealAllowance(year, value);
                     renderYear(year);
