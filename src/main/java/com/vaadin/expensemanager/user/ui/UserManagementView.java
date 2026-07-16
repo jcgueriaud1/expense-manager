@@ -3,6 +3,7 @@ package com.vaadin.expensemanager.user.ui;
 import java.util.List;
 import java.util.Locale;
 
+import com.vaadin.expensemanager.base.ui.ErrorSummary;
 import com.vaadin.expensemanager.user.Role;
 import com.vaadin.expensemanager.user.UserAdminService;
 import com.vaadin.expensemanager.user.UserSummaryDto;
@@ -12,12 +13,8 @@ import com.vaadin.flow.component.checkbox.Checkbox;
 import com.vaadin.flow.component.combobox.ComboBox;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.grid.Grid;
-import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.H2;
-import com.vaadin.flow.component.html.ListItem;
 import com.vaadin.flow.component.html.Paragraph;
-import com.vaadin.flow.component.html.Span;
-import com.vaadin.flow.component.html.UnorderedList;
 import com.vaadin.flow.component.icon.Icon;
 import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
@@ -25,7 +22,6 @@ import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.radiobutton.RadioButtonGroup;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.data.binder.Binder;
-import com.vaadin.flow.data.binder.ValidationResult;
 import com.vaadin.flow.data.value.ValueChangeMode;
 import com.vaadin.flow.router.Menu;
 import com.vaadin.flow.router.PageTitle;
@@ -129,10 +125,7 @@ public class UserManagementView extends VerticalLayout {
         var dialog = new Dialog();
         dialog.setHeaderTitle("Manage " + user.name());
 
-        var errorSummary = new Div();
-        errorSummary.getElement().setAttribute("role", "alert");
-        errorSummary.setVisible(false);
-        errorSummary.getStyle().set("color", "var(--aura-red-text)");
+        var errorSummary = new ErrorSummary();
 
         var roleField = new RadioButtonGroup<Role>();
         roleField.setLabel("Role");
@@ -157,18 +150,16 @@ public class UserManagementView extends VerticalLayout {
         form.setSpacing(true);
 
         var save = new Button("Save", event -> {
-            errorSummary.removeAll();
-            errorSummary.setVisible(false);
+            errorSummary.clear();
             if (binder.writeBeanIfValid(model)) {
                 try {
                     applyChanges(user, model);
                     dialog.close();
                 } catch (IllegalArgumentException ex) {
-                    showErrors(errorSummary, List.of(ex.getMessage()));
+                    errorSummary.show(ex.getMessage());
                 }
             } else {
-                showErrors(errorSummary, binder.validate().getValidationErrors()
-                        .stream().map(ValidationResult::getErrorMessage).toList());
+                errorSummary.showValidationErrors(binder.validate());
             }
         });
         save.addThemeVariants(ButtonVariant.PRIMARY);
@@ -199,20 +190,6 @@ public class UserManagementView extends VerticalLayout {
         } finally {
             refresh();
         }
-    }
-
-    private static void showErrors(Div summary, List<String> messages) {
-        summary.removeAll();
-        if (messages.isEmpty()) {
-            summary.setVisible(false);
-            return;
-        }
-        var heading = new Span("Please fix the following:");
-        heading.getStyle().setFontWeight("600");
-        var list = new UnorderedList();
-        messages.forEach(message -> list.add(new ListItem(message)));
-        summary.add(heading, list);
-        summary.setVisible(true);
     }
 
     /** Mutable editor bean bound to the role and enabled fields. */

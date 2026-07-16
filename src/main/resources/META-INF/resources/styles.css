@@ -85,8 +85,37 @@
 
 /* ---- Detail ---- */
 .report-detail { margin-inline: auto; }
-.error-summary { color: var(--aura-red-text); }
-.summary-heading { font-weight: var(--aura-font-weight-semibold); }
+.error-summary {
+    color: var(--aura-red-text);
+    border: 1px solid color-mix(in srgb, var(--aura-red) 40%, transparent);
+    background: color-mix(in srgb, var(--aura-red) 8%, transparent);
+    border-radius: var(--vaadin-radius-m);
+    padding: var(--vaadin-padding-m);
+}
+.error-summary:focus-visible {
+    outline: 2px solid var(--aura-red);
+    outline-offset: 2px;
+}
+.error-summary ul {
+    margin: 0;
+    padding-inline-start: var(--vaadin-padding-l);
+}
+.summary-heading {
+    font-weight: var(--aura-font-weight-semibold);
+    font-size: var(--aura-font-size-m);
+    margin: 0 0 var(--vaadin-gap-s) 0;
+}
+/* Field-linked summary entry: reads as an inline link, focuses its field on activation. */
+.error-summary-link {
+    color: var(--aura-red-text);
+    padding: 0;
+    min-width: 0;
+    min-height: 0;
+    height: auto;
+}
+.error-summary-link::part(label) {
+    text-decoration: underline;
+}
 .report-detail-eyebrow {
     color: var(--vaadin-text-color-secondary);
     font-size: var(--aura-font-size-xs);

@@ -1,18 +1,11 @@
 package com.vaadin.expensemanager.base.ui;
 
-import java.util.List;
-
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.dialog.Dialog;
-import com.vaadin.flow.component.html.Div;
-import com.vaadin.flow.component.html.ListItem;
-import com.vaadin.flow.component.html.Span;
-import com.vaadin.flow.component.html.UnorderedList;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.data.binder.Binder;
-import com.vaadin.flow.data.binder.ValidationResult;
 
 /**
  * A modal editor dialog with an <strong>always-enabled Save</strong> and a
@@ -41,7 +34,7 @@ public class EditorDialog<T> extends Dialog {
 
     private final Binder<T> binder;
     private final T model;
-    private final Div errorSummary = new Div();
+    private final ErrorSummary errorSummary = new ErrorSummary();
     private Runnable onSave = () -> {
     };
 
@@ -49,10 +42,6 @@ public class EditorDialog<T> extends Dialog {
         this.binder = binder;
         this.model = model;
         setHeaderTitle(title);
-
-        errorSummary.getElement().setAttribute("role", "alert");
-        errorSummary.setVisible(false);
-        errorSummary.getStyle().set("color", "var(--aura-red-text)");
 
         var save = new Button("Save", event -> save());
         save.addThemeVariants(ButtonVariant.PRIMARY);
@@ -72,32 +61,16 @@ public class EditorDialog<T> extends Dialog {
     }
 
     private void save() {
-        errorSummary.removeAll();
-        errorSummary.setVisible(false);
+        errorSummary.clear();
         if (binder.writeBeanIfValid(model)) {
             try {
                 onSave.run();
                 close();
             } catch (IllegalArgumentException ex) {
-                showErrors(List.of(ex.getMessage()));
+                errorSummary.show(ex.getMessage());
             }
         } else {
-            showErrors(binder.validate().getValidationErrors().stream()
-                    .map(ValidationResult::getErrorMessage).toList());
+            errorSummary.showValidationErrors(binder.validate());
         }
-    }
-
-    private void showErrors(List<String> messages) {
-        errorSummary.removeAll();
-        if (messages.isEmpty()) {
-            errorSummary.setVisible(false);
-            return;
-        }
-        var heading = new Span("Please fix the following:");
-        heading.getStyle().setFontWeight("600");
-        var list = new UnorderedList();
-        messages.forEach(message -> list.add(new ListItem(message)));
-        errorSummary.add(heading, list);
-        errorSummary.setVisible(true);
     }
 }

@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.vaadin.expensemanager.approval.service.ApprovalService;
+import com.vaadin.expensemanager.base.ui.ErrorSummary;
 import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.ReferenceDataService;
 import com.vaadin.expensemanager.reference.VatRateDto;
@@ -28,10 +29,8 @@ import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.datepicker.DatePicker;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.html.Div;
-import com.vaadin.flow.component.html.ListItem;
 import com.vaadin.flow.component.html.Paragraph;
 import com.vaadin.flow.component.html.Span;
-import com.vaadin.flow.component.html.UnorderedList;
 import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
@@ -39,7 +38,6 @@ import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.textfield.TextArea;
 import com.vaadin.flow.data.binder.Binder;
-import com.vaadin.flow.data.binder.ValidationResult;
 import com.vaadin.expensemanager.security.CurrentUserProvider;
 import com.vaadin.flow.router.BeforeEvent;
 import com.vaadin.flow.router.HasUrlParameter;
@@ -126,7 +124,7 @@ public class ReportDetailView extends VerticalLayout
     private final transient ApprovalService approvalService;
     private final transient CurrentUserProvider currentUserProvider;
 
-    private final Div errorSummary = new Div();
+    private final ErrorSummary errorSummary = new ErrorSummary();
     /** Holds the freshly-built status badge; repopulated on each (re)load. */
     private final Div statusBadgeSlot = new Div();
     /** The rejected/approved/submitted status callout; hidden while DRAFT. */
@@ -208,10 +206,6 @@ public class ReportDetailView extends VerticalLayout
         setSpacing(true);
         setMaxWidth("46rem");
         addClassName("report-detail");
-
-        errorSummary.getElement().setAttribute("role", "alert");
-        errorSummary.setVisible(false);
-        errorSummary.addClassName("error-summary");
 
         statusCallout.setWidthFull();
         statusCallout.setVisible(false);
@@ -391,7 +385,7 @@ public class ReportDetailView extends VerticalLayout
         } catch (ObjectOptimisticLockingFailureException stale) {
             showConflict();
         } catch (IllegalArgumentException | IllegalStateException invalid) {
-            showErrors(List.of(invalid.getMessage()));
+            errorSummary.show(invalid.getMessage());
         }
     }
 
@@ -404,8 +398,7 @@ public class ReportDetailView extends VerticalLayout
         if (binder.writeBeanIfValid(model)) {
             return true;
         }
-        showErrors(binder.validate().getValidationErrors().stream()
-                .map(ValidationResult::getErrorMessage).distinct().toList());
+        errorSummary.showValidationErrors(binder.validate());
         return false;
     }
 
@@ -483,7 +476,7 @@ public class ReportDetailView extends VerticalLayout
         } catch (ObjectOptimisticLockingFailureException stale) {
             showConflict();
         } catch (IllegalArgumentException | IllegalStateException invalid) {
-            showErrors(List.of(invalid.getMessage()));
+            errorSummary.show(invalid.getMessage());
         }
     }
 
@@ -502,7 +495,7 @@ public class ReportDetailView extends VerticalLayout
         } catch (ObjectOptimisticLockingFailureException stale) {
             showConflict();
         } catch (IllegalArgumentException | IllegalStateException invalid) {
-            showErrors(List.of(invalid.getMessage()));
+            errorSummary.show(invalid.getMessage());
         }
     }
 
@@ -519,10 +512,7 @@ public class ReportDetailView extends VerticalLayout
         var dialog = new Dialog();
         dialog.setHeaderTitle("Reject report");
 
-        var summary = new Div();
-        summary.getElement().setAttribute("role", "alert");
-        summary.addClassName("error-summary");
-        summary.setVisible(false);
+        var summary = new ErrorSummary();
 
         var comment = new TextArea("Rejection comment");
         comment.setWidthFull();
@@ -551,16 +541,10 @@ public class ReportDetailView extends VerticalLayout
      * and closes the dialog. A stale reject closes the dialog and surfaces the
      * shared reload affordance on the form (ADR-0011).
      */
-    private void submitReject(Dialog dialog, Div summary, TextArea comment) {
+    private void submitReject(Dialog dialog, ErrorSummary summary, TextArea comment) {
         var reason = comment.getValue();
         if (reason == null || reason.isBlank()) {
-            summary.removeAll();
-            var heading = new Span("Please fix the following:");
-            heading.addClassName("summary-heading");
-            var list = new UnorderedList(
-                    new ListItem("A rejection comment is required."));
-            summary.add(heading, list);
-            summary.setVisible(true);
+            summary.show("A rejection comment is required.");
             comment.focus();
             return;
         }
@@ -575,7 +559,7 @@ public class ReportDetailView extends VerticalLayout
             showConflict();
         } catch (IllegalArgumentException | IllegalStateException invalid) {
             dialog.close();
-            showErrors(List.of(invalid.getMessage()));
+            errorSummary.show(invalid.getMessage());
         }
     }
 
@@ -728,7 +712,7 @@ public class ReportDetailView extends VerticalLayout
             Notification.show("Report deleted.");
             getUI().ifPresent(ui -> ui.navigate(MyReportsView.class));
         } catch (IllegalStateException | IllegalArgumentException ex) {
-            showErrors(List.of(ex.getMessage()));
+            errorSummary.show(ex.getMessage());
         }
     }
 
@@ -1234,8 +1218,7 @@ public class ReportDetailView extends VerticalLayout
     }
 
     private void clearErrors() {
-        errorSummary.removeAll();
-        errorSummary.setVisible(false);
+        errorSummary.clear();
     }
 
     /**
@@ -1244,15 +1227,11 @@ public class ReportDetailView extends VerticalLayout
      * version into the form, so the owner can review it before acting again.
      */
     private void showConflict() {
-        errorSummary.removeAll();
-        var heading = new Span("This report was changed elsewhere.");
-        heading.addClassName("summary-heading");
         var detail = new Paragraph(
                 "Reload to see the latest version before saving again.");
         var reload = new Button("Reload", event -> reload());
         reload.addThemeVariants(ButtonVariant.TERTIARY);
-        errorSummary.add(heading, detail, reload);
-        errorSummary.setVisible(true);
+        errorSummary.showCustom("This report was changed elsewhere.", detail, reload);
     }
 
     /**
@@ -1268,17 +1247,4 @@ public class ReportDetailView extends VerticalLayout
         }
     }
 
-    private void showErrors(List<String> messages) {
-        errorSummary.removeAll();
-        if (messages.isEmpty()) {
-            errorSummary.setVisible(false);
-            return;
-        }
-        var heading = new Span("Please fix the following:");
-        heading.addClassName("summary-heading");
-        var list = new UnorderedList();
-        messages.forEach(message -> list.add(new ListItem(message)));
-        errorSummary.add(heading, list);
-        errorSummary.setVisible(true);
-    }
 }

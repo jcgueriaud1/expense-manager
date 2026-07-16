@@ -2,9 +2,9 @@ package com.vaadin.expensemanager.reference.ui;
 
 import java.math.BigDecimal;
 
+import com.vaadin.expensemanager.base.ui.ErrorSummary;
 import com.vaadin.expensemanager.reference.VatRateDto;
-import com.vaadin.flow.component.html.ListItem;
-import com.vaadin.flow.component.html.Span;
+import com.vaadin.flow.component.UI;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.test.context.support.WithUserDetails;
 
@@ -87,17 +87,26 @@ class ReferenceConfigViewUiTest extends AbstractReferenceDataViewUiTest {
         int before = findGrid(VatRateDto.class).size();
 
         // Always-enabled Save: submitting the empty required field surfaces the
-        // top-of-form summary (role="alert") and writes nothing (ADR-0020).
+        // top-of-form summary and writes nothing (ADR-0020).
         findButton().withText("Add VAT rate").click();
         findButton().withText("Save").click();
 
-        // The summary heading + the failed field's message appear in the dialog.
-        var summaryText = find(Span.class).all().stream()
-                .map(span -> span.getElement().getText()).toList();
-        assertThat(summaryText).contains("Please fix the following:");
-        var messages = find(ListItem.class).all().stream()
-                .map(item -> item.getElement().getText()).toList();
-        assertThat(messages).contains("Rate is required");
+        // The summary heading + the failed field's message appear in the dialog
+        // overlay (UI-rooted, since the dialog renders outside the view tree).
+        assertThat(UI.getCurrent().getElement().getTextRecursively())
+                .contains("Please fix the following:")
+                .contains("Rate is required");
+        // The field-level error is a focusable entry that navigates to its field
+        // (the accessible error-summary pattern), not plain text.
+        assertThat(findButton().withText("Rate is required").exists()).isTrue();
+        // The shared ErrorSummary carries the accessibility contract once, for
+        // every form: a labelled, programmatically-focusable group whose
+        // aria-labelledby names its own heading.
+        var summary = find(ErrorSummary.class).single();
+        assertThat(summary.getElement().getAttribute("role")).isEqualTo("group");
+        assertThat(summary.getElement().getAttribute("tabindex")).isEqualTo("-1");
+        assertThat(summary.getElement().getAttribute("aria-labelledby"))
+                .isNotBlank();
         // The dialog stays open (Save still present) and no row was added.
         assertThat(findButton().withText("Save").exists()).isTrue();
         assertThat(findGrid(VatRateDto.class).size()).isEqualTo(before);
