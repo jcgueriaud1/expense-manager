@@ -5,13 +5,12 @@ import java.math.BigDecimal;
 import com.vaadin.expensemanager.allowance.AllowanceRateService;
 import com.vaadin.expensemanager.allowance.DomesticPerDiemDto;
 import com.vaadin.expensemanager.allowance.ForeignPerDiemDto;
-import com.vaadin.expensemanager.base.ui.AdminEditor;
-import com.vaadin.expensemanager.base.ui.EditorFormSpec;
-import com.vaadin.expensemanager.base.ui.ReferenceConfigEditor;
+import com.vaadin.expensemanager.base.ui.EditorDialog;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.combobox.ComboBox;
+import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.H3;
 import com.vaadin.flow.component.html.Paragraph;
@@ -21,6 +20,7 @@ import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
+import com.vaadin.flow.component.textfield.BigDecimalField;
 import com.vaadin.flow.component.textfield.IntegerField;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.data.binder.Binder;
@@ -48,11 +48,10 @@ import static com.vaadin.expensemanager.allowance.ui.AllowanceViewSupport.openDe
  * <p>Two-layer authorization (ADR-0008): {@code @RolesAllowed("ADMIN")} gates
  * navigation (a USER can't reach the route and the auto-menu hides its
  * {@code @Menu} entry), while the real enforcement is
- * {@link AllowanceRateService}'s method security. All editors run through the
- * shared {@link AdminEditor} (always-enabled Save + top-of-form error summary);
- * the single-value rate editors collapse onto
- * {@link AdminEditor#openDecimalEditor}, and the foreign per-diem grid is a
- * {@link ReferenceConfigEditor} config.
+ * {@link AllowanceRateService}'s method security. Every editor is a shared
+ * {@link EditorDialog} (always-enabled Save + top-of-form error summary,
+ * ADR-0020); the single-value rate editors go through
+ * {@link AllowanceViewSupport#openDecimalEditor}.
  */
 @Route("allowance-rates")
 @PageTitle("Allowance rates")
@@ -64,6 +63,7 @@ public class AllowanceRatesView extends VerticalLayout {
 
     private final ComboBox<Integer> yearSelector = new ComboBox<>("Year");
     private final VerticalLayout yearSection = new VerticalLayout();
+    private final Grid<ForeignPerDiemDto> foreignGrid = new Grid<>();
 
     public AllowanceRatesView(AllowanceRateService service) {
         this.service = service;
@@ -145,37 +145,48 @@ public class AllowanceRatesView extends VerticalLayout {
         text.setPadding(false);
         text.setSpacing(false);
 
-        var row = new HorizontalLayout(text, AdminEditor.iconButton(VaadinIcon.EDIT, editAriaLabel, edit));
+        var editButton = new Button(new Icon(VaadinIcon.EDIT), event -> edit.run());
+        editButton.addThemeVariants(ButtonVariant.TERTIARY);
+        editButton.setAriaLabel(editAriaLabel);
+
+        var row = new HorizontalLayout(text, editButton);
         row.setWidthFull();
         row.setAlignItems(FlexComponent.Alignment.CENTER);
         row.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
         return row;
     }
 
-    /**
-     * The foreign per-diem list for {@code year} as a {@link ReferenceConfigEditor}
-     * config: an embedded (H3, tertiary-add) grid with add/edit only — no reorder
-     * or active-toggle, since foreign per-diems carry neither.
-     */
+    /** The foreign per-diem list for {@code year}: a titled grid with add/edit only. */
     private Component foreignSection(int year) {
-        var config = new ReferenceConfigEditor.Config<ForeignPerDiemDto>()
-                .heading("Foreign per diem")
-                .headingLevel(3)
-                .addButtonText("Add country")
-                .addButtonVariant(ButtonVariant.TERTIARY)
-                .actionsFlexGrow(0)
-                .column("Country", ForeignPerDiemDto::country, 1)
-                .column("Per-diem", dto -> formatMoney(dto.amount()), 0)
-                .id(ForeignPerDiemDto::id)
-                .items(() -> service.foreignPerDiems(year))
-                .editLabel(dto -> "Edit per-diem for " + dto.country())
-                .editorForm(existing -> foreignForm(year, existing));
+        var addCountry = new Button("Add country", new Icon(VaadinIcon.PLUS),
+                event -> openAddCountryEditor(year));
+        addCountry.addThemeVariants(ButtonVariant.TERTIARY);
 
-        var editor = new ReferenceConfigEditor<>(config);
-        editor.setPadding(false);
-        editor.setSpacing(true);
-        editor.setWidthFull();
-        return editor;
+        var header = new HorizontalLayout(new H3("Foreign per diem"), addCountry);
+        header.setWidthFull();
+        header.setAlignItems(FlexComponent.Alignment.CENTER);
+        header.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
+
+        foreignGrid.removeAllColumns();
+        foreignGrid.addColumn(ForeignPerDiemDto::country)
+                .setHeader("Country").setAutoWidth(true).setFlexGrow(1);
+        foreignGrid.addColumn(dto -> formatMoney(dto.amount()))
+                .setHeader("Per-diem").setAutoWidth(true).setFlexGrow(0);
+        foreignGrid.addComponentColumn(dto -> {
+            var edit = new Button(new Icon(VaadinIcon.EDIT),
+                    event -> openForeignEditor(year, dto));
+            edit.addThemeVariants(ButtonVariant.TERTIARY);
+            edit.setAriaLabel("Edit per-diem for " + dto.country());
+            return edit;
+        }).setHeader("Actions").setAutoWidth(true).setFlexGrow(0);
+        foreignGrid.setAllRowsVisible(true);
+        foreignGrid.setItems(service.foreignPerDiems(year));
+
+        var section = new VerticalLayout(header, foreignGrid);
+        section.setPadding(false);
+        section.setSpacing(true);
+        section.setWidthFull();
+        return section;
     }
 
     // -------------------------------------------------------------- editors
@@ -183,7 +194,6 @@ public class AllowanceRatesView extends VerticalLayout {
     private void openAddYearEditor() {
         var model = new IntField();
         var yearField = new IntegerField("Year");
-        yearField.setRequiredIndicatorVisible(true);
         yearField.setStepButtonsVisible(true);
 
         var binder = new Binder<IntField>();
@@ -194,26 +204,28 @@ public class AllowanceRatesView extends VerticalLayout {
                 .bind(IntField::getValue, IntField::setValue);
         binder.readBean(model);
 
-        AdminEditor.openEditor("Add year", yearField, binder, model, () -> {
-            service.addYear(model.getValue());
-            refreshYears(model.getValue());
-        });
+        new EditorDialog<>("Add year", yearField, binder, model)
+                .onSave(() -> {
+                    service.addYear(model.getValue());
+                    refreshYears(model.getValue());
+                })
+                .open();
     }
 
     private void openDomesticEditor(int year, DomesticPerDiemDto existing) {
         var model = new DomesticForm();
-        var binder = new Binder<DomesticForm>();
-
-        var full = AdminEditor.requiredDecimalField("Full-day amount (€)",
-                "Full-day amount is required", "Amount must be zero or positive", binder,
-                DomesticForm::getFullAmount, DomesticForm::setFullAmount);
-        var partial = AdminEditor.requiredDecimalField("Partial-day amount (€)",
-                "Partial-day amount is required", "Amount must be zero or positive", binder,
-                DomesticForm::getPartialAmount, DomesticForm::setPartialAmount);
+        var full = new BigDecimalField("Full-day amount (€)");
+        var partial = new BigDecimalField("Partial-day amount (€)");
         var fullHours = new IntegerField("Full-day hours");
         var partialHours = new IntegerField("Partial-day hours");
-        fullHours.setRequiredIndicatorVisible(true);
-        partialHours.setRequiredIndicatorVisible(true);
+
+        var binder = new Binder<DomesticForm>();
+        binder.forField(full).asRequired("Full-day amount is required")
+                .withValidator(v -> v.signum() >= 0, "Amount must be zero or positive")
+                .bind(DomesticForm::getFullAmount, DomesticForm::setFullAmount);
+        binder.forField(partial).asRequired("Partial-day amount is required")
+                .withValidator(v -> v.signum() >= 0, "Amount must be zero or positive")
+                .bind(DomesticForm::getPartialAmount, DomesticForm::setPartialAmount);
         binder.forField(fullHours).asRequired("Full-day hours are required")
                 .withValidator(v -> v > 0, "Hours must be positive")
                 .bind(DomesticForm::getFullHours, DomesticForm::setFullHours);
@@ -231,11 +243,14 @@ public class AllowanceRatesView extends VerticalLayout {
         form.setPadding(false);
         form.setSpacing(false);
 
-        AdminEditor.openEditor("Edit domestic per diem — " + year, form, binder, model, () -> {
-            service.updateDomesticPerDiem(year, model.getFullAmount(), model.getPartialAmount(),
-                    model.getFullHours(), model.getPartialHours());
-            renderYear(year);
-        });
+        new EditorDialog<>("Edit domestic per diem — " + year, form, binder, model)
+                .onSave(() -> {
+                    service.updateDomesticPerDiem(year, model.getFullAmount(),
+                            model.getPartialAmount(), model.getFullHours(),
+                            model.getPartialHours());
+                    renderYear(year);
+                })
+                .open();
     }
 
     private void openKilometreEditor(int year, BigDecimal current) {
@@ -254,41 +269,38 @@ public class AllowanceRatesView extends VerticalLayout {
                 });
     }
 
-    /**
-     * The foreign per-diem form for {@code year}: add supplies country + amount,
-     * edit supplies only the amount (the country is fixed).
-     */
-    private EditorFormSpec<?> foreignForm(int year, ForeignPerDiemDto existing) {
-        if (existing != null) {
-            var model = new AdminEditor.DecimalHolder();
-            var binder = new Binder<AdminEditor.DecimalHolder>();
-            var amount = AdminEditor.requiredDecimalField("Amount (€)", "Amount", binder,
-                    AdminEditor.DecimalHolder::getValue, AdminEditor.DecimalHolder::setValue);
-            model.setValue(existing.amount());
-            binder.readBean(model);
-            return new EditorFormSpec<>(
-                    "Edit per-diem — " + existing.country() + " " + year,
-                    amount, binder, model,
-                    () -> service.updateForeignPerDiem(existing.id(), model.getValue()));
-        }
+    private void openForeignEditor(int year, ForeignPerDiemDto existing) {
+        openDecimalEditor("Edit per-diem — " + existing.country() + " " + year,
+                "Amount (€)", "Amount", existing.amount(), value -> {
+                    service.updateForeignPerDiem(existing.id(), value);
+                    renderYear(year);
+                });
+    }
 
+    private void openAddCountryEditor(int year) {
         var model = new ForeignForm();
-        var binder = new Binder<ForeignForm>();
         var country = new TextField("Country");
-        country.setRequiredIndicatorVisible(true);
+        var amount = new BigDecimalField("Amount (€)");
+
+        var binder = new Binder<ForeignForm>();
         binder.forField(country).asRequired("Country is required")
                 .withValidator(v -> !v.isBlank(), "Country is required")
                 .bind(ForeignForm::getCountry, ForeignForm::setCountry);
-        var amount = AdminEditor.requiredDecimalField("Amount (€)", "Amount", binder,
-                ForeignForm::getAmount, ForeignForm::setAmount);
+        binder.forField(amount).asRequired("Amount is required")
+                .withValidator(v -> v.signum() >= 0, "Amount must be zero or positive")
+                .bind(ForeignForm::getAmount, ForeignForm::setAmount);
         binder.readBean(model);
 
         var form = new VerticalLayout(country, amount);
         form.setPadding(false);
         form.setSpacing(false);
 
-        return new EditorFormSpec<>("Add country — " + year, form, binder, model,
-                () -> service.addForeignPerDiem(year, model.getCountry(), model.getAmount()));
+        new EditorDialog<>("Add country — " + year, form, binder, model)
+                .onSave(() -> {
+                    service.addForeignPerDiem(year, model.getCountry(), model.getAmount());
+                    renderYear(year);
+                })
+                .open();
     }
 
     // --------------------------------------------------- mutable form beans

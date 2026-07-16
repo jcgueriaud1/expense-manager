@@ -3,12 +3,14 @@ package com.vaadin.expensemanager.reference.ui;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.vaadin.expensemanager.base.ui.EditorFormSpec;
-import com.vaadin.expensemanager.base.ui.ReferenceConfigEditor;
+import com.vaadin.expensemanager.base.ui.EditorDialog;
 import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.ReferenceDataService;
 import com.vaadin.expensemanager.reference.VatRateDto;
+import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.combobox.ComboBox;
+import com.vaadin.flow.component.icon.VaadinIcon;
+import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.data.binder.Binder;
@@ -30,54 +32,77 @@ import static com.vaadin.expensemanager.reference.ui.ReferenceViewSupport.format
  * gated by {@code @RolesAllowed("ADMIN")}, mutations are method-secured in
  * {@link ReferenceDataService}, and deactivate never deletes (ADR-0018).
  *
- * <p>The grid + add/edit dialog + reorder + active-toggle behaviour is the
- * shared, generic {@link ReferenceConfigEditor}; this class supplies only the
- * expense-type {@link ReferenceConfigEditor.Config}: its two columns, its
- * name + default-rate form, and its service calls. The one behaviour unique to
- * this screen — the default-rate {@code ComboBox} offering only <em>active</em>
- * VAT rates (plus the current one if since deactivated) — lives in
- * {@link #selectableRatesFor}.
+ * <p>The heading, grid, and row-action helpers come from
+ * {@link ReferenceConfigView}; the editor is a shared {@link EditorDialog}. This
+ * class owns the expense-type specifics: its two columns, its name + default-rate
+ * form, and the one behaviour unique to this screen — the default-rate
+ * {@code ComboBox} offering only <em>active</em> VAT rates (plus the current one
+ * if since deactivated), in {@link #selectableRatesFor}.
  */
 @Route("expense-types")
 @PageTitle("Expense types")
 @Menu(title = "Expense types", order = 3, icon = "vaadin:tags")
 @RolesAllowed("ADMIN")
-public class ExpenseTypeView extends ReferenceConfigEditor<ExpenseTypeDto> {
+public class ExpenseTypeView extends ReferenceConfigView<ExpenseTypeDto> {
+
+    private final transient ReferenceDataService service;
 
     public ExpenseTypeView(ReferenceDataService service) {
-        super(config(service));
-    }
-
-    private static ReferenceConfigEditor.Config<ExpenseTypeDto> config(
-            ReferenceDataService service) {
-        return new ReferenceConfigEditor.Config<ExpenseTypeDto>()
-                .heading("Expense types")
-                .addButtonText("Add expense type")
-                .intro("The expense types a line is classified as, each with a default "
+        super("Expense types",
+                "The expense types a line is classified as, each with a default "
                         + "VAT rate a new line pre-fills. Deactivating a type hides "
                         + "it from new lines but keeps it on existing ones — nothing "
-                        + "is deleted.")
-                .column("Name", ExpenseTypeDto::name, 1)
-                .column("Default VAT rate", dto -> formatPercent(dto.defaultVatRateValue()), 0)
-                .showStatus(true)
-                .id(ExpenseTypeDto::id)
-                .active(ExpenseTypeDto::active)
-                .items(service::allExpenseTypes)
-                .editLabel(dto -> "Edit expense type " + dto.name())
-                .reorder(ExpenseTypeDto::name, service::moveExpenseType)
-                .toggle(ExpenseTypeDto::name, service::setExpenseTypeActive)
-                .editorForm(existing -> form(service, existing));
+                        + "is deleted.",
+                "Add expense type");
+        this.service = service;
+
+        grid.addColumn(ExpenseTypeDto::name)
+                .setHeader("Name").setAutoWidth(true).setFlexGrow(1);
+        grid.addColumn(dto -> formatPercent(dto.defaultVatRateValue()))
+                .setHeader("Default VAT rate").setAutoWidth(true).setFlexGrow(0);
+        grid.addColumn(dto -> statusLabel(dto.active()))
+                .setHeader("Status").setAutoWidth(true).setFlexGrow(0);
+        grid.addComponentColumn(this::actions)
+                .setHeader("Actions").setAutoWidth(true).setFlexGrow(1);
+
+        refresh();
     }
 
-    private static EditorFormSpec<?> form(ReferenceDataService service, ExpenseTypeDto existing) {
+    @Override
+    protected List<ExpenseTypeDto> fetchItems() {
+        return service.allExpenseTypes();
+    }
+
+    private Component actions(ExpenseTypeDto dto) {
+        int index = indexOf(dto);
+
+        var edit = iconButton(VaadinIcon.EDIT, "Edit expense type " + dto.name(),
+                () -> openEditor(dto));
+        var up = reorderButton(VaadinIcon.ARROW_UP, "Move " + dto.name() + " up",
+                index > 0, () -> {
+                    service.moveExpenseType(dto.id(), -1);
+                    refresh();
+                });
+        var down = reorderButton(VaadinIcon.ARROW_DOWN, "Move " + dto.name() + " down",
+                index >= 0 && index < currentItems().size() - 1, () -> {
+                    service.moveExpenseType(dto.id(), 1);
+                    refresh();
+                });
+        var toggle = activeToggle(dto.active(), dto.name(), () -> {
+            service.setExpenseTypeActive(dto.id(), !dto.active());
+            refresh();
+        });
+        return new HorizontalLayout(edit, up, down, toggle);
+    }
+
+    @Override
+    protected void openEditor(ExpenseTypeDto existing) {
         var model = new ExpenseTypeForm();
         var nameField = new TextField("Name");
-        nameField.setRequiredIndicatorVisible(true);
 
         var rateField = new ComboBox<VatRateDto>("Default VAT rate");
-        rateField.setRequiredIndicatorVisible(true);
         rateField.setItemLabelGenerator(rate -> formatPercent(rate.value()));
-        var selectable = selectableRatesFor(service, existing);
+        var selectable = selectableRatesFor(existing);
         rateField.setItems(selectable);
 
         var binder = new Binder<ExpenseTypeForm>();
@@ -98,20 +123,22 @@ public class ExpenseTypeView extends ReferenceConfigEditor<ExpenseTypeDto> {
         }
         binder.readBean(model);
 
-        var formLayout = new VerticalLayout(nameField, rateField);
-        formLayout.setPadding(false);
-        formLayout.setSpacing(false);
+        var form = new VerticalLayout(nameField, rateField);
+        form.setPadding(false);
+        form.setSpacing(false);
 
-        return new EditorFormSpec<>(
-                existing == null ? "Add expense type" : "Edit expense type",
-                formLayout, binder, model, () -> {
+        new EditorDialog<>(existing == null ? "Add expense type" : "Edit expense type",
+                form, binder, model)
+                .onSave(() -> {
                     Long rateId = model.getDefaultVatRate().id();
                     if (existing == null) {
                         service.createExpenseType(model.getName(), rateId);
                     } else {
                         service.updateExpenseType(existing.id(), model.getName(), rateId);
                     }
-                });
+                    refresh();
+                })
+                .open();
     }
 
     /**
@@ -119,8 +146,7 @@ public class ExpenseTypeView extends ReferenceConfigEditor<ExpenseTypeDto> {
      * current default if it has since been deactivated (so editing never silently
      * drops a valid selection).
      */
-    private static List<VatRateDto> selectableRatesFor(ReferenceDataService service,
-            ExpenseTypeDto existing) {
+    private List<VatRateDto> selectableRatesFor(ExpenseTypeDto existing) {
         var rates = new ArrayList<>(service.activeVatRates());
         if (existing != null
                 && rates.stream().noneMatch(r -> r.id().equals(existing.defaultVatRateId()))) {

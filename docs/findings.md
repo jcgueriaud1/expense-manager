@@ -1459,13 +1459,15 @@ Deployment/Observability · UX-spec
   editor scaffold to a small cross-cutting helper (e.g. `base.ui` or a dedicated
   `EditorDialogs` utility) that any feature package can call, and migrate the four
   copies onto it.
-- Owner / next step: **partly resolved (#76)** — the scaffold is now
-  `base.ui.AdminEditor.openEditor` + `iconButton`, and the reference/allowance
-  copies migrated onto it (plus the generic `base.ui.ReferenceConfigEditor`). The
-  three remaining copies (`report/ui/LineEditorDialog`,
-  `report/ui/TravelEditorDialog`, `user/ui/UserManagementView`) can now migrate
-  onto `AdminEditor` too — left for a follow-up since #76 scoped to reference +
-  allowance.
+- Owner / next step: **partly resolved (#76)** — the scaffold is now the
+  `base.ui.EditorDialog` component (a `Dialog` subclass owning the always-enabled
+  Save + `role="alert"` summary + `writeBeanIfValid`), and the reference/allowance
+  editors use it. (An earlier take used a static `AdminEditor.openEditor` helper;
+  it was replaced by the component after review — a static method wrapping the
+  Dialog API was the wrong shape.) The three remaining copies
+  (`report/ui/LineEditorDialog`, `report/ui/TravelEditorDialog`,
+  `user/ui/UserManagementView`) can now migrate onto `EditorDialog` too — left for
+  a follow-up since #76 scoped to reference + allowance.
 
 ### F-046 — A `public final` method on a Vaadin route's superclass breaks Spring's CGLIB proxy of the route bean
 - Date: 2026-07-16
@@ -1483,8 +1485,10 @@ Deployment/Observability · UX-spec
   bean non-proxyable, so the advice is silently dropped.
 - Workaround used: dropped `final` from `refresh()` (kept it `public`,
   overridable). Warning gone.
-- Evidence: `base/ui/ReferenceConfigEditor#refresh`; Spring log line
-  `o.s.aop.framework.CglibAopProxy` during `VatRateViewUiTest` context start.
+- Evidence: Spring log line `o.s.aop.framework.CglibAopProxy` during
+  `VatRateViewUiTest` context start. (The base was later reworked from a generic
+  `ReferenceConfigEditor` into the abstract `reference/ui/ReferenceConfigView`;
+  the lesson stands — none of its methods, incl. `refresh()`, are `final`.)
 - Impact: low here (no advice actually targets `refresh()`), but a trap: a `final`
   method anywhere on a route's type hierarchy can quietly disable proxy-based
   cross-cutting (method security, `@Transactional`) on that view with only a WARN.
@@ -1507,17 +1511,54 @@ Deployment/Observability · UX-spec
   `"Edit expense type Restaurant/meals"` but reorder / toggle use the bare name
   `"Travel allowance"` / `"Publications"`. So the Edit subject and the
   reorder/toggle subject genuinely differ per kind.
-- Workaround used: the config exposes two separate hooks — `editLabel(row→…)` for
-  the full Edit aria-label and `reorder(subject,…)` / `toggle(subject,…)` for the
-  others — preserving every existing label verbatim rather than normalising them
-  (which would have changed accessible text and broken the assertions).
-- Evidence: `base/ui/ReferenceConfigEditor.Config#editLabel` vs `#reorder`/`#toggle`;
-  `reference/ui/VatRateView#config`, `ExpenseTypeView#config`.
-- Impact: minor extra config surface; the real lesson is that unspec'd,
-  hand-written aria-label wording drifts between sibling screens, and a later
-  extraction must either carry the drift or make a deliberate normalisation call.
+- Workaround used: each view spells out its own aria-labels inline in its
+  `actions(...)` cell — Edit vs reorder/toggle worded per the existing (drifted)
+  convention — preserving every label verbatim rather than normalising them (which
+  would change accessible text and break the assertions). (The interim
+  config-object take encoded this as two separate label hooks; after the
+  parent-class rework the labels are just inline strings in each view.)
+- Evidence: `reference/ui/VatRateView#actions` ("Edit rate …" vs "Move rate … up"
+  / "Deactivate rate …") vs `reference/ui/ExpenseTypeView#actions` ("Edit expense
+  type …" vs bare-name "Move … up" / "Deactivate …").
+- Impact: the real lesson is that unspec'd, hand-written aria-label wording drifts
+  between sibling screens, and any later extraction must either carry the drift or
+  make a deliberate normalisation call.
 - Suggested Vaadin/product improvement: none — app-side. A small aria-label
-  convention (e.g. always `"<verb> <entity-noun> <identifier>"`) would let one
-  subject function serve all three actions in future editors.
-- Owner / next step: none; consider normalising the labels in a dedicated a11y
-  pass and collapsing the two hooks into one.
+  convention (e.g. always `"<verb> <entity-noun> <identifier>"`) would make the two
+  screens' labels uniform.
+- Owner / next step: none; consider normalising the labels in a dedicated a11y pass.
+
+### F-048 — `field.setRequiredIndicatorVisible(true)` is redundant next to `Binder…asRequired(…)` and is copied across every editor
+- Date: 2026-07-16
+- Area: Standards
+- Severity: Low
+- Task being attempted: #76 review — reworking the reference/allowance editors.
+  A reviewer flagged that each editor field does
+  `field.setRequiredIndicatorVisible(true);` immediately before binding it with
+  `binder.forField(field).asRequired(…)`.
+- Expected vs actual: expected the manual call to be doing something. Actual: it
+  is a no-op duplicate — `Binder`'s `asRequired(…)` already enables the field's
+  visual required indicator when the binding is created. The Vaadin docs state
+  this in three places: "calling `binder.asRequired()` on your field automatically
+  enables the required indicator"; and "Using `asRequired()` has two effects:
+  1. A visual required indicator appears on the field. 2. …". So the explicit
+  `setRequiredIndicatorVisible(true)` adds nothing wherever `asRequired` is used.
+- Origin: introduced in the very first editor (Phase 2.1 reference-data CRUD,
+  commit `6319e5d`, #27) and then copy-pasted as the house pattern into every
+  editor since — `git log -S 'setRequiredIndicatorVisible'` shows it spreading
+  through #23/#32, #24/#37, #48/#52, #49/#55, #51/#66, #62/#70.
+- Workaround used: dropped the redundant call from the in-scope editors
+  (`reference/ui/*`, `allowance/ui/*`) while reworking them; behaviour and the
+  rendered required indicator are unchanged (verified — the view tests still pass).
+- Evidence: Vaadin 25.2 docs `flow/binding-data/components-binder-beans` and
+  `building-apps/forms-data/add-form/validation`; the ~14 call sites from
+  `grep -rn setRequiredIndicatorVisible src/main/java` at review time.
+- Impact: cosmetic-only noise, but it is genuinely misleading — it reads as if the
+  indicator needs manual enabling, which invites cargo-culting into fields that do
+  NOT use `asRequired` (where it would then be load-bearing and easy to break).
+- Suggested Vaadin/product improvement: none for Vaadin. App-side: leave the
+  indicator to `asRequired`; only call `setRequiredIndicatorVisible` on fields
+  that are required WITHOUT an `asRequired` binding.
+- Owner / next step: low priority — sweep the remaining copies in `report/ui`
+  (`ReportDetailView`, `LineEditorDialog`, `TravelEditorDialog`) in a follow-up;
+  each is a required field already bound with `asRequired`.

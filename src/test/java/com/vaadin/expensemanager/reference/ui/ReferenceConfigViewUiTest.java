@@ -11,20 +11,21 @@ import org.springframework.security.test.context.support.WithUserDetails;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Browserless test (pyramid layer 3, ADR-0012) for the shared, generic
- * {@link com.vaadin.expensemanager.base.ui.ReferenceConfigEditor} — its behaviour
- * exercised <strong>once</strong> here, driven through {@link VatRateView} as a
- * representative config kind. The per-kind view tests ({@link VatRateViewUiTest},
+ * Browserless test (pyramid layer 3, ADR-0012) for the shared reference-screen
+ * machinery — the {@link ReferenceConfigView} base and the
+ * {@link com.vaadin.expensemanager.base.ui.EditorDialog} — exercised
+ * <strong>once</strong> here, driven through {@link VatRateView} as a
+ * representative kind. The per-kind view tests ({@link VatRateViewUiTest},
  * {@link ExpenseTypeViewUiTest}) then assert only their kind-specific columns and
  * fields/validators.
  *
- * <p>Covers the module contract: the grid renders its rows (data + text status +
+ * <p>Covers the shared contract: the grid renders its rows (data + text status +
  * actions), the add/edit dialog round-trips, an invalid Save shows the
  * top-of-form error summary and persists nothing (ADR-0020 always-enabled Save),
  * reorder swaps neighbours with boundary buttons disabled, and the active-toggle
  * retains the row as inactive (ADR-0018, never deletes).
  */
-class ReferenceConfigEditorUiTest extends AbstractReferenceDataViewUiTest {
+class ReferenceConfigViewUiTest extends AbstractReferenceDataViewUiTest {
 
     private static final int RATE_COL = 0;
     private static final int STATUS_COL = 1;

@@ -1,10 +1,15 @@
 package com.vaadin.expensemanager.reference.ui;
 
-import com.vaadin.expensemanager.base.ui.AdminEditor;
-import com.vaadin.expensemanager.base.ui.EditorFormSpec;
-import com.vaadin.expensemanager.base.ui.ReferenceConfigEditor;
+import java.math.BigDecimal;
+import java.util.List;
+
+import com.vaadin.expensemanager.base.ui.EditorDialog;
 import com.vaadin.expensemanager.reference.ReferenceDataService;
 import com.vaadin.expensemanager.reference.VatRateDto;
+import com.vaadin.flow.component.Component;
+import com.vaadin.flow.component.icon.VaadinIcon;
+import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
+import com.vaadin.flow.component.textfield.BigDecimalField;
 import com.vaadin.flow.data.binder.Binder;
 import com.vaadin.flow.router.Menu;
 import com.vaadin.flow.router.PageTitle;
@@ -27,59 +32,104 @@ import static com.vaadin.expensemanager.reference.ui.ReferenceViewSupport.format
  * is hidden from new line choices but retained for historical lines (ADR-0018);
  * the grid shows active and inactive rows so an admin can reactivate.
  *
- * <p>The whole grid + add/edit dialog + always-enabled-Save + reorder +
- * active-toggle behaviour is the shared, generic
- * {@link ReferenceConfigEditor} — this class only supplies the VAT-rate
- * {@link ReferenceConfigEditor.Config}: its column, its single required-rate
- * field, and its service calls.
+ * <p>The heading, grid, and row-action helpers come from
+ * {@link ReferenceConfigView}; the editor is a shared {@link EditorDialog}
+ * (always-enabled Save + error summary, ADR-0020). This class owns only the
+ * VAT-rate specifics: the single rate column and the required-rate field.
  */
 @Route("vat-rates")
 @PageTitle("VAT rates")
 @Menu(title = "VAT rates", order = 2, icon = "vaadin:money")
 @RolesAllowed("ADMIN")
-public class VatRateView extends ReferenceConfigEditor<VatRateDto> {
+public class VatRateView extends ReferenceConfigView<VatRateDto> {
+
+    private final transient ReferenceDataService service;
 
     public VatRateView(ReferenceDataService service) {
-        super(config(service));
-    }
-
-    private static ReferenceConfigEditor.Config<VatRateDto> config(ReferenceDataService service) {
-        return new ReferenceConfigEditor.Config<VatRateDto>()
-                .heading("VAT rates")
-                .addButtonText("Add VAT rate")
-                .intro("The VAT rates expense lines are filed against. Deactivating a "
+        super("VAT rates",
+                "The VAT rates expense lines are filed against. Deactivating a "
                         + "rate hides it from new lines but keeps it on existing "
                         + "ones — nothing is deleted, so past reports keep their "
-                        + "original rate.")
-                .column("Rate", dto -> formatPercent(dto.value()), 0)
-                .showStatus(true)
-                .id(VatRateDto::id)
-                .active(VatRateDto::active)
-                .items(service::allVatRates)
-                .editLabel(dto -> "Edit rate " + formatPercent(dto.value()))
-                .reorder(dto -> "rate " + formatPercent(dto.value()), service::moveVatRate)
-                .toggle(dto -> "rate " + formatPercent(dto.value()), service::setVatRateActive)
-                .editorForm(existing -> form(service, existing));
+                        + "original rate.",
+                "Add VAT rate");
+        this.service = service;
+
+        grid.addColumn(dto -> formatPercent(dto.value()))
+                .setHeader("Rate").setAutoWidth(true).setFlexGrow(0);
+        grid.addColumn(dto -> statusLabel(dto.active()))
+                .setHeader("Status").setAutoWidth(true).setFlexGrow(0);
+        grid.addComponentColumn(this::actions)
+                .setHeader("Actions").setAutoWidth(true).setFlexGrow(1);
+
+        refresh();
     }
 
-    private static EditorFormSpec<?> form(ReferenceDataService service, VatRateDto existing) {
-        var model = new AdminEditor.DecimalHolder();
-        var binder = new Binder<AdminEditor.DecimalHolder>();
-        var field = AdminEditor.requiredDecimalField("Rate (%)", "Rate", binder,
-                AdminEditor.DecimalHolder::getValue, AdminEditor.DecimalHolder::setValue);
+    @Override
+    protected List<VatRateDto> fetchItems() {
+        return service.allVatRates();
+    }
+
+    private Component actions(VatRateDto dto) {
+        int index = indexOf(dto);
+        String label = formatPercent(dto.value());
+
+        var edit = iconButton(VaadinIcon.EDIT, "Edit rate " + label, () -> openEditor(dto));
+        var up = reorderButton(VaadinIcon.ARROW_UP, "Move rate " + label + " up",
+                index > 0, () -> {
+                    service.moveVatRate(dto.id(), -1);
+                    refresh();
+                });
+        var down = reorderButton(VaadinIcon.ARROW_DOWN, "Move rate " + label + " down",
+                index >= 0 && index < currentItems().size() - 1, () -> {
+                    service.moveVatRate(dto.id(), 1);
+                    refresh();
+                });
+        var toggle = activeToggle(dto.active(), "rate " + label, () -> {
+            service.setVatRateActive(dto.id(), !dto.active());
+            refresh();
+        });
+        return new HorizontalLayout(edit, up, down, toggle);
+    }
+
+    @Override
+    protected void openEditor(VatRateDto existing) {
+        var model = new VatRateForm();
+        var valueField = new BigDecimalField("Rate (%)");
+
+        var binder = new Binder<VatRateForm>();
+        binder.forField(valueField)
+                .asRequired("Rate is required")
+                .withValidator(value -> value.signum() >= 0, "Rate must be zero or positive")
+                .bind(VatRateForm::getValue, VatRateForm::setValue);
 
         if (existing != null) {
             model.setValue(existing.value());
         }
         binder.readBean(model);
 
-        return new EditorFormSpec<>(existing == null ? "Add VAT rate" : "Edit VAT rate",
-                field, binder, model, () -> {
+        new EditorDialog<>(existing == null ? "Add VAT rate" : "Edit VAT rate",
+                valueField, binder, model)
+                .onSave(() -> {
                     if (existing == null) {
                         service.createVatRate(model.getValue());
                     } else {
                         service.updateVatRate(existing.id(), model.getValue());
                     }
-                });
+                    refresh();
+                })
+                .open();
+    }
+
+    /** Mutable binding model for the editor (Binder needs setters). */
+    private static final class VatRateForm {
+        private BigDecimal value;
+
+        BigDecimal getValue() {
+            return value;
+        }
+
+        void setValue(BigDecimal value) {
+            this.value = value;
+        }
     }
 }
