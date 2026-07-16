@@ -1459,5 +1459,65 @@ Deployment/Observability · UX-spec
   editor scaffold to a small cross-cutting helper (e.g. `base.ui` or a dedicated
   `EditorDialogs` utility) that any feature package can call, and migrate the four
   copies onto it.
-- Owner / next step: low priority; fold in when a fifth editor appears or during a
-  UI-consistency pass.
+- Owner / next step: **partly resolved (#76)** — the scaffold is now
+  `base.ui.AdminEditor.openEditor` + `iconButton`, and the reference/allowance
+  copies migrated onto it (plus the generic `base.ui.ReferenceConfigEditor`). The
+  three remaining copies (`report/ui/LineEditorDialog`,
+  `report/ui/TravelEditorDialog`, `user/ui/UserManagementView`) can now migrate
+  onto `AdminEditor` too — left for a follow-up since #76 scoped to reference +
+  allowance.
+
+### F-046 — A `public final` method on a Vaadin route's superclass breaks Spring's CGLIB proxy of the route bean
+- Date: 2026-07-16
+- Area: Vaadin
+- Severity: Low
+- Task being attempted: #76 — extracting the shared `ReferenceConfigEditor<T>`
+  base for the reference admin screens. `VatRateView`/`ExpenseTypeView` (both
+  `@Route @RolesAllowed` beans) now `extends ReferenceConfigEditor<…>`, whose
+  grid-reload method I first declared `public final void refresh()`.
+- Expected vs actual: expected a plain inherited method. Actual: on view
+  instantiation Spring logged `CglibAopProxy: Public final method ... refresh()
+  cannot get proxied via CGLIB, consider removing the final marker`. Vaadin's
+  Spring route targets are container-managed beans, and the security layer wants a
+  CGLIB subclass proxy; a `final` public method on the superclass makes the whole
+  bean non-proxyable, so the advice is silently dropped.
+- Workaround used: dropped `final` from `refresh()` (kept it `public`,
+  overridable). Warning gone.
+- Evidence: `base/ui/ReferenceConfigEditor#refresh`; Spring log line
+  `o.s.aop.framework.CglibAopProxy` during `VatRateViewUiTest` context start.
+- Impact: low here (no advice actually targets `refresh()`), but a trap: a `final`
+  method anywhere on a route's type hierarchy can quietly disable proxy-based
+  cross-cutting (method security, `@Transactional`) on that view with only a WARN.
+- Suggested Vaadin/product improvement: none code-wise — worth a note in the
+  Vaadin+Spring guidance that route/component base classes should avoid `final`
+  public methods.
+- Owner / next step: none.
+
+### F-047 — Pre-existing aria-label inconsistency across the two reference screens forced extra config surface on the extracted editor
+- Date: 2026-07-16
+- Area: UX-spec
+- Severity: Low
+- Task being attempted: #76 — expressing `VatRateView` and `ExpenseTypeView` as
+  configs of one `ReferenceConfigEditor<T>` while keeping behaviour (and the exact
+  aria-labels the view tests assert) unchanged.
+- Expected vs actual: expected one row-subject function per kind to drive all
+  three action aria-labels (edit / reorder / toggle). Actual: the two screens had
+  drifted — VAT rates label the Edit button `"Edit rate 13.5 %"` while reorder /
+  toggle use the same `"rate 13.5 %"` subject; expense types label Edit
+  `"Edit expense type Restaurant/meals"` but reorder / toggle use the bare name
+  `"Travel allowance"` / `"Publications"`. So the Edit subject and the
+  reorder/toggle subject genuinely differ per kind.
+- Workaround used: the config exposes two separate hooks — `editLabel(row→…)` for
+  the full Edit aria-label and `reorder(subject,…)` / `toggle(subject,…)` for the
+  others — preserving every existing label verbatim rather than normalising them
+  (which would have changed accessible text and broken the assertions).
+- Evidence: `base/ui/ReferenceConfigEditor.Config#editLabel` vs `#reorder`/`#toggle`;
+  `reference/ui/VatRateView#config`, `ExpenseTypeView#config`.
+- Impact: minor extra config surface; the real lesson is that unspec'd,
+  hand-written aria-label wording drifts between sibling screens, and a later
+  extraction must either carry the drift or make a deliberate normalisation call.
+- Suggested Vaadin/product improvement: none — app-side. A small aria-label
+  convention (e.g. always `"<verb> <entity-noun> <identifier>"`) would let one
+  subject function serve all three actions in future editors.
+- Owner / next step: none; consider normalising the labels in a dedicated a11y
+  pass and collapsing the two hooks into one.
