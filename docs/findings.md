@@ -1562,3 +1562,33 @@ Deployment/Observability · UX-spec
 - Owner / next step: low priority — sweep the remaining copies in `report/ui`
   (`ReportDetailView`, `LineEditorDialog`, `TravelEditorDialog`) in a follow-up;
   each is a required field already bound with `asRequired`.
+
+### F-049 — "Submit for approval" acted on the last-saved state, silently dropping in-progress edits
+- Date: 2026-07-16
+- Area: Domain/Service + UI (report detail)
+- Severity: Medium
+- Task being attempted: Issue #81 — Submit should save the current state and ask
+  for confirmation.
+- Expected vs actual: Expected the report the user *sees* (with unsaved edits) to
+  be what gets submitted. Actual: `onSubmit()` called `service.submit(id, version)`
+  against the persisted row only — any working-copy edit (lines, additional info,
+  date, buffered receipts) not yet Saved was discarded on submit, and there was no
+  confirmation for the one-way lock. Worst case: a report with a line added-but-not-
+  Saved failed the "≥1 line" guard because the line lived only in the working copy.
+- Workaround used: added `ExpenseReportService.saveAndSubmit(...)` — one
+  `@Transactional` that runs the whole-aggregate UPDATE then the `SUBMITTED`
+  transition atomically (a failed guard rolls the save back), dispatching first-
+  submit vs resubmit on the aggregate's own origin state so a single service method
+  serves both UI actions. `onSubmit()` now validates the form, opens a confirmation
+  dialog, and on confirm calls the atomic method. The old `submit`/`resubmit`
+  service methods are kept (used by test seeders).
+- Evidence: `ReportDetailView.onSubmit/confirmSubmit/performSubmit`,
+  `ExpenseReportService.saveAndSubmit/applyUpdate`; new tests
+  `submittingPersistsA{ReportLevelEdit,LineAdded}…`,
+  `saveAndSubmitPersistsTheWorkingEditsThenSubmits`; verified end-to-end in the
+  local app (edit-without-save → confirm submit → edit persisted + SUBMITTED).
+- Impact: silent data loss on the most consequential owner action; the fix also
+  makes the submit atomic and confirmed.
+- Suggested Vaadin/product improvement: none — application-level design gap, not a
+  framework issue.
+- Owner / next step: resolved in this change (issue #81).
