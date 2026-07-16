@@ -141,7 +141,8 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         var id = seedReportWithLine(LocalDate.of(2026, 7, 1), "60.00");
         navigate(ReportDetailView.class, id);
 
-        findButton().withText("Submit for approval").click();
+        findButton().withText("Submit for approval").click(); // opens the confirm dialog
+        findButton().withText("Submit report").click();       // confirms
 
         // The report is now SUBMITTED and read-only to the owner: the editing
         // affordances are gone and the status is shown as text (ADR-0020).
@@ -160,14 +161,91 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         navigate(ReportDetailView.class, id);
 
         // Always-enabled Submit (ADR-0020): a zero-line submit is blocked with the
-        // reason in the top-of-form error summary, not a silent no-op.
+        // reason in the top-of-form error summary, not a silent no-op. The report
+        // date is valid, so the confirm dialog opens; the domain guard fires on
+        // confirm and the atomic save+submit rolls back (issue #81).
         findButton().withText("Submit for approval").click();
+        findButton().withText("Submit report").click();
 
         assertThat(getCurrentView().getElement().getTextRecursively())
                 .contains("at least one line");
         assertThat(service.findMine(id).status()).isEqualTo(ReportStatus.DRAFT);
         // Submit button is still there (never disabled) so the owner can retry.
         assertThat(findButton().withText("Submit for approval").exists()).isTrue();
+    }
+
+    // --- Submit saves the current state + confirmation dialog (issue #81) ---
+
+    @Test
+    void submittingPersistsAReportLevelEditThatWasNotSavedFirst() {
+        var id = seedReportWithLine(LocalDate.of(2026, 7, 1), "60.00");
+        navigate(ReportDetailView.class, id);
+
+        // Edit a report-level field but never click Save — the edit lives only in
+        // the working copy until the submit persists it (issue #81).
+        findTextArea().withLabel("Additional information")
+                .setValue("edited but not saved");
+
+        findButton().withText("Submit for approval").click(); // opens the confirm dialog
+        findButton().withText("Submit report").click();       // confirms
+
+        var reloaded = service.findMine(id);
+        assertThat(reloaded.status()).isEqualTo(ReportStatus.SUBMITTED);
+        assertThat(reloaded.additionalInformation()).isEqualTo("edited but not saved");
+    }
+
+    @Test
+    void submittingPersistsALineAddedButNotSavedFirst() {
+        // A seed with no lines: before issue #81 a line added in the dialog but not
+        // Saved was lost on submit, so the submit failed the "≥1 line" guard. Now
+        // the submit saves the pending line first, so it succeeds.
+        var id = seedReport(LocalDate.of(2026, 7, 1), "trip");
+        navigate(ReportDetailView.class, id);
+
+        findButton().withText("Add expense").click();
+        findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
+                .selectItem("Parking/supplies/goods");
+        findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
+        findBigDecimalField().setValue(new BigDecimal("100"));
+        findButton().withText("Save expense").click();
+
+        findButton().withText("Submit for approval").click();
+        findButton().withText("Submit report").click();
+
+        var reloaded = service.findMine(id);
+        assertThat(reloaded.status()).isEqualTo(ReportStatus.SUBMITTED);
+        assertThat(reloaded.lines()).hasSize(1);
+        assertThat(reloaded.total()).isEqualByComparingTo("100.00");
+    }
+
+    @Test
+    void cancellingTheSubmitConfirmationLeavesItAnEditableDraft() {
+        var id = seedReportWithLine(LocalDate.of(2026, 7, 1), "60.00");
+        navigate(ReportDetailView.class, id);
+
+        findButton().withText("Submit for approval").click(); // opens the dialog
+        findButton().withText("Cancel").click();              // backs out
+
+        // Nothing submitted: still an editable DRAFT with both actions offered.
+        assertThat(service.findMine(id).status()).isEqualTo(ReportStatus.DRAFT);
+        assertThat(findButton().withText("Submit for approval").exists()).isTrue();
+        assertThat(findButton().withText("Save").exists()).isTrue();
+    }
+
+    @Test
+    void submittingWithNoReportDateBlocksBeforeConfirming() {
+        var id = seedReportWithLine(LocalDate.of(2026, 7, 1), "60.00");
+        navigate(ReportDetailView.class, id);
+
+        // Clearing the required date must block the submit at validation — the
+        // confirm dialog never opens and nothing transitions.
+        $(DatePicker.class).first().clear();
+        findButton().withText("Submit for approval").click();
+
+        assertThat(findButton().withText("Submit report").exists()).isFalse();
+        assertThat(getCurrentView().getElement().getTextRecursively())
+                .contains("Report date is required");
+        assertThat(service.findMine(id).status()).isEqualTo(ReportStatus.DRAFT);
     }
 
     @Test
@@ -226,7 +304,8 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         var id = seedRejectedReport(LocalDate.of(2026, 7, 1), "100", "Fix the total.");
         navigate(ReportDetailView.class, id);
 
-        findButton().withText("Resubmit").click();
+        findButton().withText("Resubmit").click();         // opens the confirm dialog
+        findButton().withText("Resubmit report").click();  // confirms
 
         // Back through the queue: REJECTED → SUBMITTED, and read-only to the owner
         // again (the editing affordances and the forward action are gone).
@@ -239,13 +318,34 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
     }
 
     @Test
+    void resubmittingPersistsAnEditThatWasNotSavedFirst() {
+        var id = seedRejectedReport(LocalDate.of(2026, 7, 1), "100", "Add detail.");
+        navigate(ReportDetailView.class, id);
+
+        // Address the feedback but don't click Save — the resubmit must save it
+        // as part of the transition (issue #81).
+        findTextArea().withLabel("Additional information")
+                .setValue("addressed the feedback");
+
+        findButton().withText("Resubmit").click();
+        findButton().withText("Resubmit report").click();
+
+        var reloaded = service.findMine(id);
+        assertThat(reloaded.status()).isEqualTo(ReportStatus.SUBMITTED);
+        assertThat(reloaded.additionalInformation()).isEqualTo("addressed the feedback");
+    }
+
+    @Test
     void resubmittingAnEmptyRejectedReportShowsTheReasonAndStaysEnabled() {
         var id = seedEmptyRejectedReport(LocalDate.of(2026, 7, 1), "Fix the total.");
         navigate(ReportDetailView.class, id);
 
         // Always-enabled Resubmit (ADR-0020): a zero-line resubmit is blocked with
-        // the reason in the top-of-form error summary, not a silent no-op.
+        // the reason in the top-of-form error summary, not a silent no-op. The
+        // confirm dialog opens (the date is valid); the domain guard fires on
+        // confirm and the atomic save+resubmit rolls back (issue #81).
         findButton().withText("Resubmit").click();
+        findButton().withText("Resubmit report").click();
 
         assertThat(getCurrentView().getElement().getTextRecursively())
                 .contains("at least one line");

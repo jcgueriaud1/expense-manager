@@ -24,6 +24,7 @@ import com.vaadin.expensemanager.report.domain.ExpenseReport;
 import com.vaadin.expensemanager.report.domain.GeneratedLineKind;
 import com.vaadin.expensemanager.report.domain.GeneratedLineSpec;
 import com.vaadin.expensemanager.report.domain.Receipt;
+import com.vaadin.expensemanager.report.domain.ReportStatus;
 import com.vaadin.expensemanager.report.domain.ReceiptType;
 import com.vaadin.expensemanager.report.domain.ReceiptValidator;
 import com.vaadin.expensemanager.report.domain.Travel;
@@ -312,6 +313,56 @@ public class ExpenseReportService {
     public ReportDetailDto update(Long id, ReportDetailDto dto, long expectedVersion,
             Map<Integer, ReceiptUpload> receipts,
             Map<GeneratedLineRef, ReceiptUpload> travelReceipts) {
+        return mapper.toDetail(
+                applyUpdate(id, dto, expectedVersion, receipts, travelReceipts));
+    }
+
+    /**
+     * Saves the working copy <strong>and then submits it for approval</strong> in
+     * one transaction (issue #81): the whole-aggregate UPDATE ({@link #applyUpdate})
+     * persists the current edits, then the report moves to {@code SUBMITTED},
+     * appending a {@link com.vaadin.expensemanager.report.domain.StatusChange}.
+     *
+     * <p>One path serves both UI actions — first submit ({@code DRAFT →
+     * SUBMITTED}) and resubmit of a rejected report ({@code REJECTED → SUBMITTED},
+     * Phase 5.5): the aggregate already knows its origin state, so this dispatches on
+     * it and lets the domain guard the transition. Atomic by design — if the
+     * transition's invariants fail (e.g. the report has no lines) the whole save
+     * rolls back, so the editor never ends up half-saved.
+     *
+     * <p>Owner-scoped and version-checked exactly like {@link #update}/{@link
+     * #submit}: a stale write surfaces as a conflict before anything is touched.
+     *
+     * @param expectedVersion the {@code @Version} the UI last saw
+     * @throws ObjectOptimisticLockingFailureException if the report changed
+     *         underneath the editor
+     */
+    @RolesAllowed("USER")
+    @Transactional
+    public ReportDetailDto saveAndSubmit(Long id, ReportDetailDto dto,
+            long expectedVersion, Map<Integer, ReceiptUpload> receipts,
+            Map<GeneratedLineRef, ReceiptUpload> travelReceipts) {
+        var report = applyUpdate(id, dto, expectedVersion, receipts, travelReceipts);
+        // First submit vs resubmit is a domain distinction on the origin state, not
+        // two service operations — the aggregate picks and guards the transition.
+        if (report.getStatus() == ReportStatus.REJECTED) {
+            report.resubmit(report.getOwner(), Instant.now());
+        } else {
+            report.submit(report.getOwner(), Instant.now());
+        }
+        return mapper.toDetail(report);
+    }
+
+    /**
+     * The shared whole-aggregate UPDATE used by {@link #update} and the
+     * save-and-(re)submit paths (issue #81): version-checks, applies the report-level
+     * fields and reconciles the line/trip collections, flushes so reconciled lines
+     * have ids, then applies the buffered receipt mutations. Returns the managed
+     * aggregate so a caller can chain a state transition in the same transaction.
+     */
+    private ExpenseReport applyUpdate(Long id, ReportDetailDto dto,
+            long expectedVersion, Map<Integer, ReceiptUpload> receipts,
+            Map<GeneratedLineRef, ReceiptUpload> travelReceipts) {
         var report = requireOwned(id);
         if (report.getVersion() != expectedVersion) {
             throw new ObjectOptimisticLockingFailureException(ExpenseReport.class, id);
@@ -323,7 +374,7 @@ public class ExpenseReportService {
         reportRepository.flush();
         applyReceipts(report, receipts);
         applyTravelReceipts(report, travelReceipts);
-        return mapper.toDetail(report);
+        return report;
     }
 
     /**

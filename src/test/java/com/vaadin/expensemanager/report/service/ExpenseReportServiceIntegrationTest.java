@@ -337,6 +337,69 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
                 .isInstanceOf(ObjectOptimisticLockingFailureException.class);
     }
 
+    // --- Save-and-submit / save-and-resubmit the current state (issue #81) ---
+
+    @Test
+    void saveAndSubmitPersistsTheWorkingEditsThenSubmits() {
+        var type = firstActiveType();
+        var rate = rateByValue("25.5");
+        // A draft saved with no lines — the line and the edited info arrive only
+        // with the submit, standing in for edits the user never clicked Save on.
+        var id = service.create(draftDto(LocalDate.of(2026, 7, 10), "before"));
+        var loaded = service.findMine(id);
+
+        var edited = dtoWithLines(id, LocalDate.of(2026, 7, 12), loaded.version(),
+                List.of(newLine(type, rate, "100.00", "hotel")));
+        var submitted = service.saveAndSubmit(id, edited, loaded.version(),
+                Map.of(), Map.of());
+
+        assertThat(submitted.status()).isEqualTo(ReportStatus.SUBMITTED);
+        var reloaded = service.findMine(id);
+        assertThat(reloaded.status()).isEqualTo(ReportStatus.SUBMITTED);
+        // The line and the report-level edits were saved as part of the submit.
+        assertThat(reloaded.lines()).hasSize(1);
+        assertThat(reloaded.lines().getFirst().amount()).isEqualByComparingTo("100.00");
+        assertThat(reloaded.reportDate()).isEqualTo(LocalDate.of(2026, 7, 12));
+        assertThat(reloaded.additionalInformation()).isEqualTo("report");
+    }
+
+    @Test
+    void saveAndSubmitWithAStaleVersionThrowsBeforeTouchingAnything() {
+        var type = firstActiveType();
+        var rate = rateByValue("25.5");
+        var id = service.create(draftDto(LocalDate.of(2026, 7, 10), "x"));
+
+        var edited = dtoWithLines(id, LocalDate.of(2026, 7, 10), 999L,
+                List.of(newLine(type, rate, "50.00", "taxi")));
+        assertThatThrownBy(() -> service.saveAndSubmit(id, edited, 999L,
+                Map.of(), Map.of()))
+                .isInstanceOf(ObjectOptimisticLockingFailureException.class);
+    }
+
+    @Test
+    void saveAndSubmitResubmitsARejectedReportAfterSavingTheEdits() {
+        var me = userRepository.findByEmail(LocalUserSeeder.PLAIN_USER_EMAIL)
+                .orElseThrow();
+        var id = seedRejectedReport(me);
+        var loaded = service.findMine(id);
+        var type = firstActiveType();
+        var rate = rateByValue("25.5");
+
+        // A REJECTED report takes the resubmit branch of the same save-and-submit
+        // method: address the feedback (change info, keep a line) in one call.
+        var edited = new ReportDetailDto(id, loaded.reportDate(), "fixed it",
+                loaded.status(), loaded.version(),
+                List.of(newLine(type, rate, "100.00", "hotel")),
+                loaded.total(), loaded.netTotal(), loaded.vatTotal());
+        var resubmitted = service.saveAndSubmit(id, edited, loaded.version(),
+                Map.of(), Map.of());
+
+        assertThat(resubmitted.status()).isEqualTo(ReportStatus.SUBMITTED);
+        var reloaded = service.findMine(id);
+        assertThat(reloaded.status()).isEqualTo(ReportStatus.SUBMITTED);
+        assertThat(reloaded.additionalInformation()).isEqualTo("fixed it");
+    }
+
     // --- Resubmit (Phase 5.5, ADR-0006) ---
 
     @Test

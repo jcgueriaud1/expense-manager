@@ -371,16 +371,10 @@ public class ReportDetailView extends VerticalLayout
 
     private void onSave() {
         clearErrors();
-        if (!binder.writeBeanIfValid(model)) {
-            showErrors(binder.validate().getValidationErrors().stream()
-                    .map(ValidationResult::getErrorMessage).distinct().toList());
+        if (!validateForm()) {
             return;
         }
-        var edited = new ReportDetailDto(working.id(), model.getReportDate(),
-                model.getAdditionalInformation(), working.status(),
-                working.version(), currentLines(), currentTravels(), working.total(),
-                working.netTotal(), working.vatTotal(), working.perDiemTotal(),
-                working.kilometreTotal(), working.mealTotal());
+        var edited = editedDto();
         var receipts = pendingReceiptsByLineIndex();
         var travelReceipts = pendingTravelReceiptsByRef();
         try {
@@ -402,18 +396,88 @@ public class ReportDetailView extends VerticalLayout
     }
 
     /**
-     * Sends the persisted report to the admin queue (UC-003): a {@code DRAFT}
-     * submits, a {@code REJECTED} report resubmits (Phase 5.5) — both land in
-     * {@code SUBMITTED}. The button is always enabled (ADR-0020) — a zero-line
-     * report is not silently no-op'd but surfaces the domain reason in the error
-     * summary. A stale write surfaces the reload affordance (ADR-0011).
+     * Writes the report-level fields into the model, surfacing the top-of-form
+     * error summary (ADR-0020) and returning {@code false} if a required field is
+     * blank. Shared by Save and the save-then-submit path.
+     */
+    private boolean validateForm() {
+        if (binder.writeBeanIfValid(model)) {
+            return true;
+        }
+        showErrors(binder.validate().getValidationErrors().stream()
+                .map(ValidationResult::getErrorMessage).distinct().toList());
+        return false;
+    }
+
+    /** A snapshot of the current working copy — report fields, lines, and trips — for a save. */
+    private ReportDetailDto editedDto() {
+        return new ReportDetailDto(working.id(), model.getReportDate(),
+                model.getAdditionalInformation(), working.status(),
+                working.version(), currentLines(), currentTravels(), working.total(),
+                working.netTotal(), working.vatTotal(), working.perDiemTotal(),
+                working.kilometreTotal(), working.mealTotal());
+    }
+
+    /**
+     * Sends the persisted report to the admin queue (UC-003, issue #81): a
+     * {@code DRAFT} submits, a {@code REJECTED} report resubmits (Phase 5.5) — both
+     * land in {@code SUBMITTED}. Because submitting locks the report against further
+     * edits, this first <strong>validates and confirms</strong>, then <strong>saves
+     * the current working copy</strong> before the transition (they run atomically
+     * server-side, {@link ExpenseReportService#saveAndSubmit}) — so the state the
+     * user sees is the state that gets submitted, never a stale persisted one.
+     * The button is always enabled (ADR-0020) — a zero-line report is not silently
+     * no-op'd but surfaces the domain reason in the error summary.
      */
     private void onSubmit() {
         clearErrors();
+        // Validate before confirming so we never pop the dialog on an invalid form;
+        // this also writes the report-level fields into the model for the save.
+        if (!validateForm()) {
+            return;
+        }
+        confirmSubmit();
+    }
+
+    /**
+     * The submit/resubmit confirmation (issue #81): a warning that the report locks
+     * once submitted, above a Cancel / confirm footer. Confirming saves the current
+     * working copy and transitions in one atomic call.
+     */
+    private void confirmSubmit() {
         boolean rejected = working.status() == ReportStatus.REJECTED;
+        var dialog = new Dialog();
+        dialog.setHeaderTitle(rejected ? "Resubmit for approval?"
+                : "Submit for approval?");
+        dialog.add(new Paragraph("This will submit the expense report for approval "
+                + "and save your latest changes. You won't be able to update it "
+                + "while it's waiting for approval."));
+
+        var confirm = new Button(rejected ? "Resubmit report" : "Submit report",
+                event -> {
+                    dialog.close();
+                    performSubmit(rejected);
+                });
+        confirm.addThemeVariants(ButtonVariant.PRIMARY);
+        var cancel = new Button("Cancel", event -> dialog.close());
+        dialog.getFooter().add(cancel, confirm);
+        dialog.open();
+    }
+
+    /**
+     * Saves the working copy and transitions it to {@code SUBMITTED} atomically
+     * (issue #81). A stale write surfaces the reload affordance (ADR-0011); a domain
+     * violation (e.g. no lines) rolls the save back and surfaces the reason.
+     */
+    private void performSubmit(boolean rejected) {
+        var edited = editedDto();
+        var receipts = pendingReceiptsByLineIndex();
+        var travelReceipts = pendingTravelReceiptsByRef();
         try {
-            load(rejected ? service.resubmit(working.id(), working.version())
-                    : service.submit(working.id(), working.version()));
+            // One service call for both actions (the aggregate branches on its
+            // origin state); the UI keeps first-submit vs resubmit only in wording.
+            load(service.saveAndSubmit(working.id(), edited, working.version(),
+                    receipts, travelReceipts));
             Notification.show(rejected ? "Report resubmitted for approval."
                     : "Report submitted for approval.");
         } catch (ObjectOptimisticLockingFailureException stale) {
