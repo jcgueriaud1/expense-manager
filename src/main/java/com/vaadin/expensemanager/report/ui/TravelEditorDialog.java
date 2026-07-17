@@ -18,6 +18,7 @@ import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.checkbox.Checkbox;
 import com.vaadin.flow.component.combobox.ComboBox;
 import com.vaadin.flow.component.datetimepicker.DateTimePicker;
+import com.vaadin.flow.component.datetimepicker.DateTimePicker.DateTimePickerI18n;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.html.Div;
@@ -83,9 +84,11 @@ final class TravelEditorDialog extends Dialog {
         var departure = new DateTimePicker("Departure");
         departure.setStep(Duration.ofMinutes(15));
         departure.setRequiredIndicatorVisible(true);
+        departure.setI18n(dateTimeErrorMessages());
         var returnAt = new DateTimePicker("Return");
         returnAt.setStep(Duration.ofMinutes(15));
         returnAt.setRequiredIndicatorVisible(true);
+        returnAt.setI18n(dateTimeErrorMessages());
 
         // Keep the range valid from the pickers themselves: once a departure is
         // chosen the return overlay can't go earlier than it, and vice versa — so
@@ -324,6 +327,20 @@ final class TravelEditorDialog extends Dialog {
             detail.addClassName("muted-xs");
             preview.add(detail);
         }
+    }
+
+    /**
+     * Error messages for a departure/return picker's non-configurable input
+     * constraints. Without these the field goes invalid with a <em>blank</em> message
+     * when the user enters only the date and not the time (V25 treats that partial
+     * input as invalid) or types an unparseable value — which surfaced as an empty
+     * bullet in the error summary (issue #85). The required-field message stays with
+     * the binder's {@code asRequired}.
+     */
+    private static DateTimePickerI18n dateTimeErrorMessages() {
+        return new DateTimePickerI18n()
+                .setIncompleteInputErrorMessage("Enter both a date and a time")
+                .setBadInputErrorMessage("Enter a valid date and time");
     }
 
     /** Blank a zero amount so an untouched money field shows empty, not "0.00". */
