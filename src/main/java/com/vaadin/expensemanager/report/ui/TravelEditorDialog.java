@@ -131,11 +131,16 @@ final class TravelEditorDialog extends Dialog {
 
         var notEligible = new Checkbox("Trip not eligible for daily allowance");
         var freeLunch = new Checkbox("Free lunch provided?");
+        freeLunch.setHelperText(
+                "Halves the daily allowance — applies only when the trip earns one.");
         var chargeToCustomer = new Checkbox("Charge expenses from customer?");
 
         var kilometres = new BigDecimalField("Kilometre allowance (km)");
         kilometres.setPlaceholder("e.g. 120");
         var payMeal = new Checkbox("Pay meal allowance?");
+        payMeal.setHelperText(
+                "Only when the trip earns no daily allowance — selecting it marks "
+                        + "the trip not eligible.");
         var parkingFees = new BigDecimalField("Parking fees (€)");
         parkingFees.setPlaceholder("e.g. 12.00");
 
@@ -161,10 +166,34 @@ final class TravelEditorDialog extends Dialog {
         });
         returnAt.addValueChangeListener(event -> recompute.run());
         country.addValueChangeListener(event -> recompute.run());
-        notEligible.addValueChangeListener(event -> recompute.run());
-        freeLunch.addValueChangeListener(event -> recompute.run());
+        // Domain coupling (issue #93): a meal allowance (ateriakorvaus) is paid
+        // only when no per-diem applies, and the free-meal reduction exists only to
+        // halve a per-diem — so "Pay meal allowance" and "Free lunch" sit in
+        // mutually exclusive worlds either side of the eligibility flag (invariants
+        // payMeal ⟹ not-eligible, freeLunch ⟹ eligible). The checkboxes stay
+        // enabled (ADR-0020, no disabled inputs); clicking one auto-corrects the
+        // others. setValue is a no-op when unchanged, so these cascades converge.
+        notEligible.addValueChangeListener(event -> {
+            if (event.getValue()) {
+                freeLunch.setValue(false);   // no per-diem left to halve
+            } else {
+                payMeal.setValue(false);     // per-diem applies → no meal allowance
+            }
+            recompute.run();
+        });
+        freeLunch.addValueChangeListener(event -> {
+            if (event.getValue()) {
+                notEligible.setValue(false); // a free meal only halves a per-diem
+            }
+            recompute.run();
+        });
+        payMeal.addValueChangeListener(event -> {
+            if (event.getValue()) {
+                notEligible.setValue(true);  // meal allowance only when no per-diem
+            }
+            recompute.run();
+        });
         kilometres.addValueChangeListener(event -> recompute.run());
-        payMeal.addValueChangeListener(event -> recompute.run());
         parkingFees.addValueChangeListener(event -> recompute.run());
 
         binder.forField(departure)

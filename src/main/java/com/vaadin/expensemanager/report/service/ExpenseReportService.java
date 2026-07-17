@@ -705,16 +705,22 @@ public class ExpenseReportService {
         return calculator.kilometreAllowance(km, rate);
     }
 
-    /** Server-authoritative meal allowance; needs a rate only when the trip pays it. */
+    /**
+     * Server-authoritative meal allowance; paid only when the trip both requests it
+     * and is not eligible for a per-diem (the two are mutually exclusive, issue #93),
+     * so the rate is looked up only when a meal allowance is actually payable.
+     */
     private AllowanceAmount costMeal(TravelDto t) {
-        if (!t.payMealAllowance()) {
-            return calculator.mealAllowance(false, null);
+        boolean payable = t.payMealAllowance() && t.notEligibleForAllowance();
+        if (!payable) {
+            return calculator.mealAllowance(t.payMealAllowance(),
+                    t.notEligibleForAllowance(), null);
         }
         int year = t.departureAt().getYear();
         MealAllowanceDto rate = allowanceRateService.mealAllowance(year)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "No meal allowance is configured for " + year));
-        return calculator.mealAllowance(true, rate);
+        return calculator.mealAllowance(true, true, rate);
     }
 
     private ExpenseType allowanceExpenseType(String name) {

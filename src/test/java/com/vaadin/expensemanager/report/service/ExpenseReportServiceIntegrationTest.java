@@ -771,14 +771,17 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void previewComputesEveryTripOutputServerSide() {
-        // 11 h → €54.00 per-diem; 120 km × €0.55 = €66.00; meal €13.50;
-        // parking €12.00 (VAT-bearing, at the parking type's 25.5 %).
+    void previewPaysAMealAllowanceInsteadOfAPerDiemWhenNotEligible() {
+        // Issue #93: a meal allowance and a per-diem are mutually exclusive. A
+        // not-eligible trip earns the meal allowance (€13.50) and no per-diem, while
+        // km (120 × €0.55 = €66.00) and parking (€12.00, VAT-bearing at 25.5 %) are
+        // unaffected.
         var preview = service.previewTravel(domesticTravel(null, DEP,
-                DEP.plusHours(11), new BigDecimal("120"), true, new BigDecimal("12.00")));
+                DEP.plusHours(11), new BigDecimal("120"), true, new BigDecimal("12.00"),
+                true));
 
         assertThat(preview.amountOf(GeneratedLineKind.PER_DIEM))
-                .isEqualByComparingTo("54.00");
+                .isEqualByComparingTo("0.00");
         assertThat(preview.amountOf(GeneratedLineKind.KILOMETRE))
                 .isEqualByComparingTo("66.00");
         assertThat(preview.amountOf(GeneratedLineKind.MEAL))
@@ -791,28 +794,51 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void previewSuppressesTheMealAllowanceWhenEligibleForAPerDiem() {
+        // The mirror case (issue #93): an eligible trip earns the per-diem (€54.00)
+        // and the meal flag is ignored server-side even when set — never both, so
+        // the server holds the invariant whatever flag combination reaches it.
+        var preview = service.previewTravel(domesticTravel(null, DEP,
+                DEP.plusHours(11), new BigDecimal("120"), true, new BigDecimal("12.00"),
+                false));
+
+        assertThat(preview.amountOf(GeneratedLineKind.PER_DIEM))
+                .isEqualByComparingTo("54.00");
+        assertThat(preview.amountOf(GeneratedLineKind.MEAL))
+                .isEqualByComparingTo("0.00");
+        assertThat(preview.amountOf(GeneratedLineKind.KILOMETRE))
+                .isEqualByComparingTo("66.00");
+        assertThat(preview.amountOf(GeneratedLineKind.PARKING))
+                .isEqualByComparingTo("12.00");
+    }
+
+    @Test
     void createWithKmMealParkingPersistsEachGeneratedLineRoutedCorrectly() {
+        // A not-eligible trip: the meal allowance stands in for the per-diem (issue
+        // #93, mutually exclusive), so km / meal / parking each persist under their
+        // own kind and no per-diem line is written.
         var id = service.create(dtoWithTravels(LocalDate.of(2026, 7, 10),
                 List.of(domesticTravel(null, DEP, DEP.plusHours(11),
-                        new BigDecimal("120"), true, new BigDecimal("12.00")))));
+                        new BigDecimal("120"), true, new BigDecimal("12.00"), true))));
 
         var loaded = service.findMine(id);
-        // The three tax-free allowances each land in their own subtotal…
-        assertThat(loaded.perDiemTotal()).isEqualByComparingTo("54.00");
+        // No per-diem; the two tax-free allowances each land in their own subtotal…
+        assertThat(loaded.perDiemTotal()).isEqualByComparingTo("0.00");
         assertThat(loaded.kilometreTotal()).isEqualByComparingTo("66.00");
         assertThat(loaded.mealTotal()).isEqualByComparingTo("13.50");
         // …parking is VAT-bearing → Net/VAT (12.00 @ 25.5 %), not a subtotal.
         assertThat(loaded.netTotal()).isEqualByComparingTo("9.56");
         assertThat(loaded.vatTotal()).isEqualByComparingTo("2.44");
-        assertThat(loaded.total()).isEqualByComparingTo("145.50");
-        // Four generated lines are persisted; none appear as editable manual cards.
+        assertThat(loaded.total()).isEqualByComparingTo("91.50");
+        // Three generated lines are persisted; none appear as editable manual cards.
         assertThat(loaded.lines()).isEmpty();
-        assertThat(reportRepository.findById(id).orElseThrow().getLines()).hasSize(4);
+        assertThat(reportRepository.findById(id).orElseThrow().getLines()).hasSize(3);
 
         // The working copy round-trips its inputs and per-kind amounts.
         var trip = loaded.travels().getFirst();
         assertThat(trip.kilometres()).isEqualByComparingTo("120.00");
         assertThat(trip.payMealAllowance()).isTrue();
+        assertThat(trip.notEligibleForAllowance()).isTrue();
         assertThat(trip.parkingFees()).isEqualByComparingTo("12.00");
         assertThat(trip.generatedLine(GeneratedLineKind.PARKING).orElseThrow()
                 .vatRatePercent()).isEqualByComparingTo("25.50");
@@ -822,12 +848,14 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
     void editingDropsTheKindsATripNoLongerEarns() {
         var id = service.create(dtoWithTravels(LocalDate.of(2026, 7, 10),
                 List.of(domesticTravel(null, DEP, DEP.plusHours(11),
-                        new BigDecimal("120"), true, new BigDecimal("12.00")))));
+                        new BigDecimal("120"), true, new BigDecimal("12.00"), true))));
         var loaded = service.findMine(id);
         var trip = loaded.travels().getFirst();
 
-        // Re-cost: keep only the per-diem (clear km / meal / parking).
-        var edited = domesticTravel(trip.id(), DEP, DEP.plusHours(11), ZERO, false, ZERO);
+        // Re-cost: make the trip eligible again and keep only the per-diem (clear
+        // km / meal / parking) — the meal allowance gives way to the per-diem.
+        var edited = domesticTravel(trip.id(), DEP, DEP.plusHours(11), ZERO, false, ZERO,
+                false);
         service.update(id, dtoWithTravels(id, LocalDate.of(2026, 7, 10),
                 loaded.version(), List.of(edited)), loaded.version());
 
@@ -887,7 +915,7 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
         var id = service.create(
                 dtoWithTravels(LocalDate.of(2026, 7, 10), List.of(
                         domesticTravel(null, DEP, DEP.plusHours(11), ZERO, false,
-                                new BigDecimal("12.00")))),
+                                new BigDecimal("12.00"), false))),
                 Map.of(),
                 Map.of(new GeneratedLineRef(0, GeneratedLineKind.PARKING),
                         new ReceiptUpload(JPEG, "parking.jpg")));
@@ -904,7 +932,8 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
         // receipt is cascade-deleted at the DB (V6 ON DELETE CASCADE).
         service.update(id, dtoWithTravels(id, LocalDate.of(2026, 7, 10),
                 loaded.version(), List.of(
-                        domesticTravel(tripId, DEP, DEP.plusHours(11), ZERO, false, ZERO))),
+                        domesticTravel(tripId, DEP, DEP.plusHours(11), ZERO, false, ZERO,
+                                false))),
                 loaded.version());
 
         var reloaded = service.findMine(id);
@@ -993,9 +1022,9 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
     /** A domestic trip with the Phase 4.3 km / meal / parking inputs set. */
     private static TravelDto domesticTravel(Long id, LocalDateTime departure,
             LocalDateTime returnAt, BigDecimal kilometres, boolean payMeal,
-            BigDecimal parkingFees) {
+            BigDecimal parkingFees, boolean notEligible) {
         return TravelDto.domestic(id, departure, returnAt, "Helsinki", "Client visit",
-                false, false, false, kilometres, payMeal, parkingFees);
+                notEligible, false, false, kilometres, payMeal, parkingFees);
     }
 
     private static ReportDetailDto dtoWithTravels(LocalDate date, List<TravelDto> travels) {

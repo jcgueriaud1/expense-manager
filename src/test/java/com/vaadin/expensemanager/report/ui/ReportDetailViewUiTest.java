@@ -9,6 +9,7 @@ import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.VatRateDto;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
 import com.vaadin.flow.component.UI;
+import com.vaadin.flow.component.checkbox.Checkbox;
 import com.vaadin.flow.component.datepicker.DatePicker;
 import com.vaadin.flow.component.datetimepicker.DateTimePicker;
 import com.vaadin.flow.component.html.Image;
@@ -618,32 +619,38 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findTextField().withLabel("Travel purpose").setValue("Client visit");
         findBigDecimalField().withLabel("Kilometre allowance (km)")
                 .setValue(new BigDecimal("120"));
+        // A meal allowance is only paid when no per-diem applies (issue #93), so
+        // clicking it marks the trip not eligible — the per-diem line drops out and
+        // the meal-allowance line takes its place.
         findCheckbox().withLabel("Pay meal allowance?").click();
         findBigDecimalField().withLabel("Parking fees (€)")
                 .setValue(new BigDecimal("12.00"));
 
-        // Every output previews live in the dialog (120 km × €0.55 = €66.00, etc.).
-        assertThat(UI.getCurrent().getElement().getTextRecursively()).contains(
-                "Per diem allowance: €54.00", "Kilometre allowance: €66.00",
+        // The remaining outputs preview live in the dialog (120 km × €0.55 = €66.00,
+        // etc.); no per-diem, since the trip is now not eligible for one.
+        var previewText = UI.getCurrent().getElement().getTextRecursively();
+        assertThat(previewText).contains("Kilometre allowance: €66.00",
                 "Meal allowance: €13.50", "Parking: €12.00");
+        assertThat(previewText).doesNotContain("Per diem allowance");
 
         findButton().withText("Save trip").click();
 
         // The two new tax-free subtotal rows are visible; parking is not a subtotal.
         assertThat(findSpan().withText("Kilometre allowance").exists()).isTrue();
         assertThat(findSpan().withText("Meal allowance").exists()).isTrue();
+        assertThat(findSpan().withText("Per diem allowance").exists()).isFalse();
         var text = getCurrentView().getElement().getTextRecursively();
-        assertThat(text).contains("Per diem allowance", "€66.00", "€13.50");
+        assertThat(text).contains("€66.00", "€13.50");
 
         findButton().withText("Save").click();
 
         var loaded = service.findMine(service.listMine().getFirst().id());
-        assertThat(loaded.perDiemTotal()).isEqualByComparingTo("54.00");
+        assertThat(loaded.perDiemTotal()).isEqualByComparingTo("0.00");
         assertThat(loaded.kilometreTotal()).isEqualByComparingTo("66.00");
         assertThat(loaded.mealTotal()).isEqualByComparingTo("13.50");
         // Parking folds into Net/VAT; grand total sums it all.
         assertThat(loaded.netTotal()).isEqualByComparingTo("9.56");
-        assertThat(loaded.total()).isEqualByComparingTo("145.50");
+        assertThat(loaded.total()).isEqualByComparingTo("91.50");
     }
 
     @Test
@@ -703,6 +710,81 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findButton().withText("Save").click();
 
         assertThat(service.findMine(id).perDiemTotal()).isEqualByComparingTo("27.00");
+    }
+
+    // --- Meal-allowance / eligibility checkbox coupling (issue #93) ---
+    //
+    // A meal allowance is paid only when no per-diem applies, and the free-meal
+    // reduction only halves a per-diem — so "Pay meal allowance", "Free lunch" and
+    // "not eligible" must stay consistent: payMeal ⟹ not-eligible, freeLunch ⟹
+    // eligible. The dialog auto-corrects the checkboxes to hold that invariant.
+
+    @Test
+    void checkingPayMealAllowanceMarksTheTripNotEligibleAndClearsFreeLunch() {
+        navigate(ReportDetailView.class);
+        findButton().withText("Insert travel info").click();
+        // Start eligible, with a free lunch selected.
+        findCheckbox().withLabel("Free lunch provided?").click();
+        assertThat(checkboxValue("Free lunch provided?")).isTrue();
+
+        findCheckbox().withLabel("Pay meal allowance?").click();
+
+        // Meal allowance needs "no per-diem": not-eligible is auto-checked and the
+        // now-meaningless free lunch is cleared.
+        assertThat(checkboxValue("Pay meal allowance?")).isTrue();
+        assertThat(checkboxValue("Trip not eligible for daily allowance")).isTrue();
+        assertThat(checkboxValue("Free lunch provided?")).isFalse();
+    }
+
+    @Test
+    void unselectingNotEligibleClearsPayMealAllowance() {
+        navigate(ReportDetailView.class);
+        findButton().withText("Insert travel info").click();
+        // Pay-meal turned it on; turning not-eligible back off must clear pay-meal,
+        // since a meal allowance can't stand without "no per-diem".
+        findCheckbox().withLabel("Pay meal allowance?").click();
+        assertThat(checkboxValue("Trip not eligible for daily allowance")).isTrue();
+
+        findCheckbox().withLabel("Trip not eligible for daily allowance").click();
+
+        assertThat(checkboxValue("Trip not eligible for daily allowance")).isFalse();
+        assertThat(checkboxValue("Pay meal allowance?")).isFalse();
+    }
+
+    @Test
+    void checkingFreeLunchClearsNotEligibleAndPayMealAllowance() {
+        navigate(ReportDetailView.class);
+        findButton().withText("Insert travel info").click();
+        // Get into the not-eligible + pay-meal world first.
+        findCheckbox().withLabel("Pay meal allowance?").click();
+        assertThat(checkboxValue("Trip not eligible for daily allowance")).isTrue();
+
+        // A free lunch only halves a per-diem → the trip must become eligible again,
+        // which in turn clears the meal allowance.
+        findCheckbox().withLabel("Free lunch provided?").click();
+
+        assertThat(checkboxValue("Free lunch provided?")).isTrue();
+        assertThat(checkboxValue("Trip not eligible for daily allowance")).isFalse();
+        assertThat(checkboxValue("Pay meal allowance?")).isFalse();
+    }
+
+    @Test
+    void checkingNotEligibleClearsFreeLunch() {
+        navigate(ReportDetailView.class);
+        findButton().withText("Insert travel info").click();
+        findCheckbox().withLabel("Free lunch provided?").click();
+        assertThat(checkboxValue("Free lunch provided?")).isTrue();
+
+        // No per-diem to halve once not eligible → free lunch is cleared.
+        findCheckbox().withLabel("Trip not eligible for daily allowance").click();
+
+        assertThat(checkboxValue("Trip not eligible for daily allowance")).isTrue();
+        assertThat(checkboxValue("Free lunch provided?")).isFalse();
+    }
+
+    /** The current value of the dialog checkbox carrying the given label. */
+    private boolean checkboxValue(String label) {
+        return ((Checkbox) findCheckbox().withLabel(label).getComponent()).getValue();
     }
 
     @Test

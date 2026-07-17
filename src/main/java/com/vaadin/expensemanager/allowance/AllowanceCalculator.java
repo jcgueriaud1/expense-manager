@@ -182,16 +182,29 @@ public final class AllowanceCalculator {
 
     /**
      * Computes the tax-free meal allowance ({@code ateriakorvaus}) for a trip: the
-     * flat per-year amount when the trip is flagged to pay it, else
-     * <strong>nothing</strong>. When flagged, a rate must exist — a missing one is
-     * rejected so the caller surfaces it (ADR-0020).
+     * flat per-year amount, else <strong>nothing</strong>.
      *
-     * @param pay  whether the trip pays a meal allowance
-     * @param rate the trip-year meal allowance (required when {@code pay})
-     * @throws IllegalArgumentException if {@code pay} and {@code rate} is {@code null}
+     * <p>A meal allowance is paid <em>only when no per-diem applies</em> (the
+     * Finnish rule; issue #93) — so it takes both the pay flag and the trip's
+     * eligibility, and pays only when the trip is flagged to pay it
+     * <strong>and</strong> is not eligible for a daily allowance. A trip that is
+     * eligible for a per-diem earns none regardless of the flag: the two are
+     * mutually exclusive, and enforcing that here keeps the money right whatever
+     * flag combination reaches the server, not only what the dialog allows. When a
+     * meal allowance is actually paid a rate must exist — a missing one is rejected
+     * so the caller surfaces it (ADR-0020).
+     *
+     * @param pay         whether the trip is flagged to pay a meal allowance
+     * @param notEligible whether the trip is not eligible for a daily allowance
+     *                    (i.e. no per-diem applies — the precondition for a meal
+     *                    allowance)
+     * @param rate        the trip-year meal allowance (required only when one is paid)
+     * @throws IllegalArgumentException if a meal allowance is paid and {@code rate}
+     *                                  is {@code null}
      */
-    public AllowanceAmount mealAllowance(boolean pay, MealAllowanceDto rate) {
-        if (!pay) {
+    public AllowanceAmount mealAllowance(boolean pay, boolean notEligible,
+            MealAllowanceDto rate) {
+        if (!pay || !notEligible) {
             return new AllowanceAmount(ZERO, null);
         }
         if (rate == null) {
