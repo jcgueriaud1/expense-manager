@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 
+import com.vaadin.expensemanager.base.ui.ErrorSummary;
 import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.VatRateDto;
 import com.vaadin.expensemanager.report.domain.ReceiptRejectedException;
@@ -19,9 +20,7 @@ import com.vaadin.flow.component.combobox.ComboBox;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.html.Div;
-import com.vaadin.flow.component.html.ListItem;
 import com.vaadin.flow.component.html.Span;
-import com.vaadin.flow.component.html.UnorderedList;
 import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.notification.NotificationVariant;
@@ -30,7 +29,6 @@ import com.vaadin.flow.component.textfield.BigDecimalField;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.component.upload.Upload;
 import com.vaadin.flow.data.binder.Binder;
-import com.vaadin.flow.data.binder.ValidationResult;
 import com.vaadin.flow.server.streams.DownloadHandler;
 import com.vaadin.flow.server.streams.DownloadResponse;
 import com.vaadin.flow.server.streams.UploadHandler;
@@ -68,7 +66,7 @@ final class LineEditorDialog extends Dialog {
 
     private final Binder<ExpenseLineFormModel> binder = new Binder<>();
     private final ExpenseLineFormModel model = new ExpenseLineFormModel();
-    private final Div errorSummary = new Div();
+    private final ErrorSummary errorSummary = new ErrorSummary();
 
     // Receipt working state. receiptTouched distinguishes "left as-is" (send no
     // command) from an explicit attach/remove. When touched: pendingData == null
@@ -162,10 +160,6 @@ final class LineEditorDialog extends Dialog {
             model.setComment(existing.comment());
         }
         binder.readBean(model);
-
-        errorSummary.getElement().setAttribute("role", "alert");
-        errorSummary.setVisible(false);
-        errorSummary.getStyle().setColor("var(--aura-red-text)");
 
         var form = new FormLayout(typeField, amountField, vatField, commentField);
         form.setResponsiveSteps(new FormLayout.ResponsiveStep("0", 1));
@@ -303,10 +297,9 @@ final class LineEditorDialog extends Dialog {
     }
 
     private void save(BiConsumer<ExpenseLineDto, ReceiptUpload> onSave) {
-        clearErrors();
+        errorSummary.clear();
         if (!binder.writeBeanIfValid(model)) {
-            showErrors(binder.validate().getValidationErrors().stream()
-                    .map(ValidationResult::getErrorMessage).distinct().toList());
+            errorSummary.showValidationErrors(binder.validate());
             return;
         }
         var type = model.getExpenseType();
@@ -383,22 +376,4 @@ final class LineEditorDialog extends Dialog {
                 .findFirst().orElse(null);
     }
 
-    private void clearErrors() {
-        errorSummary.removeAll();
-        errorSummary.setVisible(false);
-    }
-
-    private void showErrors(List<String> messages) {
-        errorSummary.removeAll();
-        if (messages.isEmpty()) {
-            errorSummary.setVisible(false);
-            return;
-        }
-        var heading = new Span("Please fix the following:");
-        heading.getStyle().setFontWeight("600");
-        var list = new UnorderedList();
-        messages.forEach(message -> list.add(new ListItem(message)));
-        errorSummary.add(heading, list);
-        errorSummary.setVisible(true);
-    }
 }

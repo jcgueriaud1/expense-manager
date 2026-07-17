@@ -10,6 +10,7 @@ import java.util.function.Consumer;
 import java.util.function.IntFunction;
 import java.util.function.UnaryOperator;
 
+import com.vaadin.expensemanager.base.ui.ErrorSummary;
 import com.vaadin.expensemanager.report.service.GeneratedLineView;
 import com.vaadin.expensemanager.report.service.TravelDto;
 import com.vaadin.flow.component.button.Button;
@@ -20,13 +21,10 @@ import com.vaadin.flow.component.datetimepicker.DateTimePicker;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.html.Div;
-import com.vaadin.flow.component.html.ListItem;
 import com.vaadin.flow.component.html.Span;
-import com.vaadin.flow.component.html.UnorderedList;
 import com.vaadin.flow.component.textfield.BigDecimalField;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.data.binder.Binder;
-import com.vaadin.flow.data.binder.ValidationResult;
 
 import static com.vaadin.expensemanager.report.ui.ReportViewSupport.formatEur;
 import static com.vaadin.expensemanager.report.ui.ReportViewSupport.generatedLineLabel;
@@ -57,7 +55,7 @@ final class TravelEditorDialog extends Dialog {
 
     private final Binder<TravelFormModel> binder = new Binder<>();
     private final TravelFormModel model = new TravelFormModel();
-    private final Div errorSummary = new Div();
+    private final ErrorSummary errorSummary = new ErrorSummary();
     private final Div preview = new Div();
 
     private final TravelDto existing;
@@ -138,9 +136,6 @@ final class TravelEditorDialog extends Dialog {
         var parkingFees = new BigDecimalField("Parking fees (€)");
         parkingFees.setPlaceholder("e.g. 12.00");
 
-        errorSummary.getElement().setAttribute("role", "alert");
-        errorSummary.addClassName("error-summary");
-        errorSummary.setVisible(false);
         preview.addClassName("travel-preview");
         preview.setVisible(false);
 
@@ -275,10 +270,10 @@ final class TravelEditorDialog extends Dialog {
      * @return the trip with its computed per-diem, or {@code null} if invalid
      */
     private TravelDto validateAndCompute() {
-        clearErrors();
+        errorSummary.clear();
         if (!binder.writeBeanIfValid(model)) {
-            showErrors(binder.validate().getValidationErrors().stream()
-                    .map(ValidationResult::getErrorMessage).distinct().toList());
+            preview.setVisible(false);
+            errorSummary.showValidationErrors(binder.validate());
             return null;
         }
         var input = TravelDto.of(existing == null ? null : existing.id(),
@@ -289,7 +284,8 @@ final class TravelEditorDialog extends Dialog {
         try {
             return costPreview.apply(input);
         } catch (IllegalArgumentException | IllegalStateException invalid) {
-            showErrors(List.of(invalid.getMessage()));
+            preview.setVisible(false);
+            errorSummary.show(invalid.getMessage());
             return null;
         }
     }
@@ -335,23 +331,4 @@ final class TravelEditorDialog extends Dialog {
         return amount == null || amount.signum() == 0 ? null : amount;
     }
 
-    private void clearErrors() {
-        errorSummary.removeAll();
-        errorSummary.setVisible(false);
-    }
-
-    private void showErrors(List<String> messages) {
-        errorSummary.removeAll();
-        if (messages.isEmpty()) {
-            errorSummary.setVisible(false);
-            return;
-        }
-        preview.setVisible(false);
-        var heading = new Span("Please fix the following:");
-        heading.addClassName("summary-heading");
-        var list = new UnorderedList();
-        messages.forEach(message -> list.add(new ListItem(message)));
-        errorSummary.add(heading, list);
-        errorSummary.setVisible(true);
-    }
 }

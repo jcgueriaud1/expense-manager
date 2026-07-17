@@ -1468,6 +1468,11 @@ Deployment/Observability · UX-spec
   (`report/ui/LineEditorDialog`, `report/ui/TravelEditorDialog`,
   `user/ui/UserManagementView`) can now migrate onto `EditorDialog` too — left for
   a follow-up since #76 scoped to reference + allowance.
+- Update: the **error-summary half** of this is now fully resolved — the summary
+  contract lives once in `base.ui.ErrorSummary` and all five call sites
+  (`EditorDialog`, `LineEditorDialog`, `TravelEditorDialog`, `ReportDetailView`,
+  `UserManagementView`) delegate to it (see F-050). The remaining duplication is
+  only the surrounding *Dialog* scaffold in the three non-`EditorDialog` editors.
 
 ### F-046 — A `public final` method on a Vaadin route's superclass breaks Spring's CGLIB proxy of the route bean
 - Date: 2026-07-16
@@ -1592,3 +1597,43 @@ Deployment/Observability · UX-spec
 - Suggested Vaadin/product improvement: none — application-level design gap, not a
   framework issue.
 - Owner / next step: resolved in this change (issue #81).
+
+### F-050 — The error-summary behaviour was copy-pasted five times and none of it was actually accessible
+- Date: 2026-07-16
+- Area: Standards + Accessibility (all forms/editors)
+- Severity: Medium
+- Task being attempted: put the validation-error behaviour in one place instead of
+  copy/paste, and make it navigable for keyboard/AT users (focus the summary on
+  submit; link each error to its field; add the ARIA wiring).
+- Expected vs actual: expected one shared error-summary with the accessible
+  pattern. Actual: a bare `Div` + `role="alert"` + a local
+  `showErrors(List<String>)`/`clearErrors()` pair was re-inlined in **five** places
+  (`base.ui.EditorDialog`, `LineEditorDialog`, `TravelEditorDialog`,
+  `ReportDetailView` — incl. its reject-dialog and optimistic-lock conflict UX — and
+  `UserManagementView`). Every copy only rendered a flat list of message *strings*:
+  focus never moved to the summary on an invalid submit, the entries were plain
+  text (no way to jump to the offending field), and `role="alert"` + a
+  focus-on-submit was never combined, so a screen-reader / keyboard user got no
+  actionable path from "there are errors" to the field to fix.
+- Workaround used: extracted `base.ui.ErrorSummary` (a `Div` implementing
+  `Focusable`) owning the contract once — `role="group"` + `aria-labelledby`→its own
+  heading + `tabindex=-1`, `focus()` on every show (so the group is announced and
+  scrolled into view), and a `showValidationErrors(BinderValidationStatus)` path
+  that renders each field-level error as a focusable control whose activation calls
+  `field.focus()` (the GOV.UK / reindeer-plus error-summary behaviour; Vaadin
+  already wires the reverse field→message `aria-describedby` once the binder has
+  validated). Plain-message (`show`) and custom-body (`showCustom`, for the
+  conflict/reload affordance) variants share the same styled, focused box. All five
+  call sites now delegate; `styles.css` `.error-summary` gained the Aura box styling
+  + `.error-summary-link`.
+- Evidence: `base/ui/ErrorSummary.java`; the five migrated call sites; the ARIA
+  contract is asserted in `ReferenceConfigViewUiTest`
+  (`invalidSaveShowsErrorSummaryAndPersistsNothing` — role/tabindex/aria-labelledby
+  + a focusable field entry). Full UI suite green (94 tests).
+- Impact: the a11y contract lives in one place and a fix/tweak applies everywhere;
+  more importantly, forms went from "shows a list you can't act on" to the standard
+  accessible summary (announced, focusable, one activation from summary to field).
+- Suggested Vaadin/product improvement: a first-party accessible error-summary
+  component tied to `Binder`/`BinderValidationStatus` would save every app from
+  hand-rolling this (and from getting the ARIA + focus behaviour wrong, as here).
+- Owner / next step: resolved in this change.
