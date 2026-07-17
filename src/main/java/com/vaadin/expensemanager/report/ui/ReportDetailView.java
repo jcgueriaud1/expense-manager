@@ -1,5 +1,6 @@
 package com.vaadin.expensemanager.report.ui;
 
+import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -38,6 +39,8 @@ import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.textfield.TextArea;
 import com.vaadin.flow.data.binder.Binder;
+import com.vaadin.flow.server.streams.DownloadHandler;
+import com.vaadin.flow.server.streams.DownloadResponse;
 import com.vaadin.expensemanager.security.CurrentUserProvider;
 import com.vaadin.flow.router.BeforeEvent;
 import com.vaadin.flow.router.HasUrlParameter;
@@ -621,10 +624,18 @@ public class ReportDetailView extends VerticalLayout
         new LineEditorDialog(referenceData.activeExpenseTypes(),
                 referenceData.activeVatRates(), null, service::receiptDownload,
                 (dto, receipt) -> {
-                    var entry = lines.insertLast(dto);
-                    if (receipt != null) {
-                        pendingReceipts.put(entry, receipt);
+                    if (receipt == null || receipt.isRemoval()) {
+                        lines.insertLast(dto);
+                        return;
                     }
+                    // A new line carrying a buffered receipt: insert it receipt-free
+                    // first, record the bytes against the fresh entry, then set the
+                    // full dto — so the card's effect re-runs with the buffer already
+                    // in hand and previews the thumbnail immediately (issue #89),
+                    // rather than only after the report is first saved.
+                    var entry = lines.insertLast(dto.withoutReceipt());
+                    pendingReceipts.put(entry, receipt);
+                    entry.set(dto);
                 }).open();
     }
 
@@ -671,11 +682,13 @@ public class ReportDetailView extends VerticalLayout
             var trip = entry.peek();
             var newLines = trip.generatedLines().stream()
                     .map(l -> l.kind() == updated.kind() ? updated : l).toList();
-            entry.set(trip.withGeneratedLines(newLines));
+            // Buffer the bytes before the signal update, so the rebuilt row's
+            // preview reads them and shows the thumbnail immediately.
             if (receipt != null) {
                 pendingTravelReceipts.put(new TravelReceiptKey(entry, updated.kind()),
                         receipt);
             }
+            entry.set(trip.withGeneratedLines(newLines));
         }).open();
     }
 
@@ -683,10 +696,12 @@ public class ReportDetailView extends VerticalLayout
         new LineEditorDialog(referenceData.activeExpenseTypes(),
                 referenceData.activeVatRates(), entry.peek(), service::receiptDownload,
                 (dto, receipt) -> {
-                    entry.set(dto);
+                    // Buffer the bytes before the signal update, so the card's
+                    // effect sees them when it re-runs and previews immediately.
                     if (receipt != null) {
                         pendingReceipts.put(entry, receipt);
                     }
+                    entry.set(dto);
                 }).open();
     }
 
@@ -978,6 +993,33 @@ public class ReportDetailView extends VerticalLayout
     }
 
     /**
+     * The card preview for a line's effective receipt. A persisted receipt streams
+     * from the DB by id; a buffered (not-yet-saved) upload streams from its
+     * in-memory bytes so the thumbnail shows the moment the receipt is attached,
+     * not only after the report is saved (issue #89). Only when neither is in hand
+     * — a buffered attachment whose bytes aren't available here (e.g. a line
+     * reopened from a not-yet-saved report) — does it fall back to a filename chip.
+     */
+    private Component receiptCardPreview(Long receiptId, String filename,
+            String contentType, ReceiptUpload buffered) {
+        if (receiptId != null) {
+            Long id = receiptId;
+            return ReceiptPreview.forReceipt(filename, contentType,
+                    () -> service.receiptDownload(id));
+        }
+        if (buffered != null && buffered.data() != null) {
+            byte[] data = buffered.data();
+            return ReceiptPreview.forReceipt(filename, contentType,
+                    () -> DownloadHandler.fromInputStream(event ->
+                            new DownloadResponse(new ByteArrayInputStream(data),
+                                    filename, contentType, data.length)).inline());
+        }
+        var chip = new Span("📎 " + filename);
+        chip.addClassName("muted-xs");
+        return chip;
+    }
+
+    /**
      * One read-only generated-line row nested under a trip: its label, computed
      * amount, and read-only explanation, plus the receipt it carries and (while
      * editable) an attach/edit-receipt affordance (Phase 4.3).
@@ -996,14 +1038,10 @@ public class ReportDetailView extends VerticalLayout
         amount.addClassName("line-amount");
         var receipt = new Div();
         receipt.addClassName("line-receipt");
-        if (line.hasReceipt() && line.receiptId() != null) {
-            Long receiptId = line.receiptId();
-            receipt.add(ReceiptPreview.forReceipt(line.receiptFilename(),
-                    line.receiptContentType(), () -> service.receiptDownload(receiptId)));
-        } else if (line.hasReceipt()) {
-            var chip = new Span("📎 " + line.receiptFilename());
-            chip.addClassName("muted-xs");
-            receipt.add(chip);
+        if (line.hasReceipt()) {
+            receipt.add(receiptCardPreview(line.receiptId(), line.receiptFilename(),
+                    line.receiptContentType(),
+                    pendingTravelReceipts.get(new TravelReceiptKey(entry, line.kind()))));
         }
         var amounts = new VerticalLayout(amount, receipt);
         amounts.setPadding(false);
@@ -1078,9 +1116,10 @@ public class ReportDetailView extends VerticalLayout
         // Receipt read affordance (ADR-0021): a saved image shows a thumbnail
         // that enlarges in a dialog, a saved PDF an "open" link — both streaming
         // the bytes on demand via the owner-scoped DownloadHandler, so a submitted
-        // (read-only) report can still view its receipt. An unsaved buffered
-        // attachment has no stable id yet, so the card shows its filename until
-        // the first save (the editor previews the buffered bytes meanwhile).
+        // (read-only) report can still view its receipt. A buffered (not-yet-saved)
+        // attachment previews straight from its in-memory bytes, so the thumbnail
+        // appears the moment the receipt is attached rather than only after the
+        // report is saved (issue #89).
         var receipt = new Div();
         receipt.addClassName("line-receipt");
         Signal.effect(receipt, () -> {
@@ -1089,16 +1128,8 @@ public class ReportDetailView extends VerticalLayout
             if (!dto.hasReceipt()) {
                 return;
             }
-            if (dto.receiptId() != null) {
-                Long receiptId = dto.receiptId();
-                receipt.add(ReceiptPreview.forReceipt(dto.receiptFilename(),
-                        dto.receiptContentType(),
-                        () -> service.receiptDownload(receiptId)));
-            } else {
-                var chip = new Span("📎 " + dto.receiptFilename());
-                chip.addClassName("muted-xs");
-                receipt.add(chip);
-            }
+            receipt.add(receiptCardPreview(dto.receiptId(), dto.receiptFilename(),
+                    dto.receiptContentType(), pendingReceipts.get(entry)));
         });
         var texts = new VerticalLayout(name, subtitle, receipt);
         texts.setPadding(false);

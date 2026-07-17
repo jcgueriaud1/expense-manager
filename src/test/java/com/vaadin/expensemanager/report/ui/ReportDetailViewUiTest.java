@@ -385,9 +385,11 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findUpload().upload("taxi.jpg", "image/jpeg", jpegBytes());
         findButton().withText("Save expense").click();
 
-        // The card reflects the buffered receipt before the report is even saved.
-        assertThat(getCurrentView().getElement().getTextRecursively())
-                .contains("taxi.jpg");
+        // The card reflects the buffered receipt before the report is even saved —
+        // as an image thumbnail (its filename is the accessible name), matching how
+        // a persisted receipt renders (issue #89).
+        assertThat(findButton().withAriaLabel("Preview receipt: taxi.jpg").exists())
+                .isTrue();
 
         findButton().withText("Save").click();
 
@@ -475,6 +477,30 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         // The preview affordance appears in the still-open dialog, before any save.
         assertThat(findButton().withAriaLabel("Preview receipt: taxi.jpg").exists())
                 .isTrue();
+    }
+
+    @Test
+    void anUnsavedImageAttachmentPreviewsOnTheCardBeforeSave() {
+        // Issue #89: after the line editor closes, the card must show the image
+        // thumbnail from the buffered bytes right away — not only after the report
+        // is saved (previously the card showed just a "📎 filename" chip until the
+        // receipt was persisted and had an id).
+        navigate(ReportDetailView.class);
+
+        findButton().withText("Add expense").click();
+        findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
+                .selectItem("Parking/supplies/goods");
+        findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
+        findBigDecimalField().setValue(new BigDecimal("100"));
+        findUpload().upload("taxi.jpg", "image/jpeg", jpegBytes());
+        findButton().withText("Save expense").click();
+
+        // Dialog is closed; the preview button now belongs to the line card, and it
+        // renders before the report has ever been saved (no receipt id yet).
+        assertThat(findButton().withText("Save expense").exists()).isFalse();
+        assertThat(findButton().withAriaLabel("Preview receipt: taxi.jpg").exists())
+                .isTrue();
+        assertThat($(Image.class).exists()).isTrue();
     }
 
     // --- Travel Calculator / domestic per-diem (Phase 4.2/4.3) ---
@@ -634,9 +660,11 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findUpload().upload("parking.jpg", "image/jpeg", jpegBytes());
         findButton().withText("Save receipt").click();
 
-        // The buffered filename shows on the row before the report is even saved.
-        assertThat(getCurrentView().getElement().getTextRecursively())
-                .contains("parking.jpg");
+        // Issue #89: the buffered receipt previews as a thumbnail on the row right
+        // away — before the report is even saved — not just as a filename chip.
+        assertThat(findButton().withAriaLabel("Preview receipt: parking.jpg").exists())
+                .isTrue();
+        assertThat($(Image.class).exists()).isTrue();
 
         findButton().withText("Save").click();
 
