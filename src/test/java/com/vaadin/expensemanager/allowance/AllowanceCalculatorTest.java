@@ -185,8 +185,8 @@ class AllowanceCalculatorTest {
             new MealAllowanceDto(1L, 2026, new BigDecimal("13.50"));
 
     @Test
-    void mealAllowanceIsTheFlatRateWhenFlagged() {
-        var result = calculator.mealAllowance(true, MEAL_RATE);
+    void mealAllowanceIsTheFlatRateWhenFlaggedAndNotEligible() {
+        var result = calculator.mealAllowance(true, true, MEAL_RATE);
         assertThat(result.amount()).isEqualByComparingTo("13.50");
         assertThat(result.hasAmount()).isTrue();
         assertThat(result.explanation()).contains("€13.50");
@@ -194,12 +194,20 @@ class AllowanceCalculatorTest {
 
     @Test
     void mealAllowanceIsNothingWhenNotFlaggedAndNeedsNoRate() {
-        assertThat(calculator.mealAllowance(false, null).hasAmount()).isFalse();
+        assertThat(calculator.mealAllowance(false, true, null).hasAmount()).isFalse();
     }
 
     @Test
-    void mealAllowanceFlaggedWithoutARateIsRejected() {
-        assertThatThrownBy(() -> calculator.mealAllowance(true, null))
+    void mealAllowanceIsNothingWhenEligibleForAPerDiemAndNeedsNoRate() {
+        // Issue #93: a meal allowance and a per-diem are mutually exclusive, so a
+        // trip still eligible for a per-diem earns no meal allowance even if flagged
+        // to pay one — and the rate is not consulted (none is needed).
+        assertThat(calculator.mealAllowance(true, false, null).hasAmount()).isFalse();
+    }
+
+    @Test
+    void mealAllowanceFlaggedAndNotEligibleWithoutARateIsRejected() {
+        assertThatThrownBy(() -> calculator.mealAllowance(true, true, null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("meal allowance");
     }
