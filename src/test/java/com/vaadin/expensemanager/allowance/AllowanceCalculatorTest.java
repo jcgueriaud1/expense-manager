@@ -143,24 +143,24 @@ class AllowanceCalculatorTest {
 
     // --- Kilometre allowance (Phase 4.3) ---
 
-    // Seeded 2026 rate: €0.590 / km (V7 seed).
+    // Seeded 2026 rate: €0.550 / km (V7 seed, corrected by V10 — issue #90).
     private static final KilometreRateDto KM_RATE =
-            new KilometreRateDto(1L, 2026, new BigDecimal("0.590"));
+            new KilometreRateDto(1L, 2026, new BigDecimal("0.550"));
 
     @Test
     void kilometreAllowanceIsDistanceTimesRateRoundedToCents() {
-        // 120 km × €0.59 = €70.80.
+        // 120 km × €0.55 = €66.00.
         var result = calculator.kilometreAllowance(new BigDecimal("120"), KM_RATE);
-        assertThat(result.amount()).isEqualByComparingTo("70.80");
+        assertThat(result.amount()).isEqualByComparingTo("66.00");
         assertThat(result.hasAmount()).isTrue();
-        assertThat(result.explanation()).contains("120 km", "€0.590/km", "€70.80");
+        assertThat(result.explanation()).contains("120 km", "€0.550/km", "€66.00");
     }
 
     @Test
     void fractionalKilometresRoundToTheNearestCent() {
-        // 12.5 km × €0.59 = €7.375 → €7.38 (HALF_UP).
+        // 12.5 km × €0.55 = €6.875 → €6.88 (HALF_UP).
         var result = calculator.kilometreAllowance(new BigDecimal("12.5"), KM_RATE);
-        assertThat(result.amount()).isEqualByComparingTo("7.38");
+        assertThat(result.amount()).isEqualByComparingTo("6.88");
         assertThat(result.explanation()).contains("12.5 km");
     }
 

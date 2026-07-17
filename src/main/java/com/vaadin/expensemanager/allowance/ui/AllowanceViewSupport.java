@@ -27,7 +27,7 @@ final class AllowanceViewSupport {
         return "€" + value.setScale(2, RoundingMode.HALF_UP).toPlainString();
     }
 
-    /** A per-km rate, e.g. {@code €0.590 / km}. */
+    /** A per-km rate, e.g. {@code €0.550 / km}. */
     static String formatRate(BigDecimal value) {
         return "€" + value.setScale(3, RoundingMode.HALF_UP).toPlainString() + " / km";
     }
