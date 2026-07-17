@@ -23,7 +23,8 @@ Implement the use case described in the given GitHub ticket. These steps are a c
 - Loop on Steps 2–4 until the ticket's acceptance criteria are met, the suite is green, and — where Step 4 applied — every route renders cleanly. Prefer a great result over a fast one.
 
 ### Step 6: Log findings
-- Record any friction or gap hit along the way in `docs/findings.md` (a first-class project deliverable) using its `F-NNN` template.
+- `docs/findings.md` (a first-class project deliverable) logs friction with the **tooling and platform**, not defects in the app being built. Log two kinds, using its `F-NNN` template: (a) the **agent tooling** — a skill or MCP server that was missing, wrong, or misleading; and (b) **Vaadin itself** — a missing, misleading, or broken API.
+- Do **not** log bugs in the application under development (e.g. a wrong VAT rate, a broken flow); those are product issues — fix them or open a ticket, they are not findings.
 
 ### Step 7: Commit
 - Branch off `main` if you aren't already on a feature branch, then commit the work.
