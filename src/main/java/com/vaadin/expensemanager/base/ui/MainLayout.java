@@ -1,6 +1,10 @@
 package com.vaadin.expensemanager.base.ui;
 
+import com.vaadin.expensemanager.allowance.ui.AllowanceRatesView;
+import com.vaadin.expensemanager.reference.ui.ExpenseTypeView;
+import com.vaadin.expensemanager.reference.ui.VatRateView;
 import com.vaadin.expensemanager.security.CurrentUserProvider;
+import com.vaadin.expensemanager.user.ui.UserManagementView;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.applayout.AppLayout;
 import com.vaadin.flow.component.applayout.DrawerToggle;
@@ -44,11 +48,14 @@ import java.util.Set;
  * <p><strong>Grouped into sections (issue #91).</strong> Everyday views —
  * Dashboard, My reports, Approvals — head an unlabelled {@link SideNav}. The
  * administrative reference tables and user management follow as their own
- * labelled sections at the end. Only the section-to-path mapping in
- * {@link #ADMIN_SECTIONS} is hand-maintained; membership, order within a
- * section, and access filtering all still flow from the {@code @Menu} entries,
- * and any view not claimed by an admin section falls into the top group by
- * default. A section with no accessible entries renders nothing.
+ * labelled sections at the end. Only the section-to-view mapping in
+ * {@link #ADMIN_SECTIONS} is hand-maintained, and it references the view
+ * classes directly (via {@link MenuEntry#menuClass()}) rather than repeating
+ * their {@code @Route} paths — so a renamed route can never silently drop a
+ * view out of its section. Membership, order within a section, and access
+ * filtering all still flow from the {@code @Menu} entries, and any view not
+ * claimed by an admin section falls into the top group by default. A section
+ * with no accessible entries renders nothing.
  *
  * <p>{@link PermitAll} guards the shell: it hosts only authenticated views, so
  * a current user is always present when it renders (the public login view opts
@@ -62,13 +69,14 @@ public class MainLayout extends AppLayout {
 
     /**
      * The administrative sections shown at the end of the drawer, in order.
-     * Each maps a section label to the {@code @Route} paths that belong under
-     * it; any menu entry whose path is not listed here stays in the top group.
+     * Each maps a section label to the view classes that belong under it; any
+     * menu entry whose view is not listed here stays in the top group.
      */
     private static final List<NavSection> ADMIN_SECTIONS = List.of(
             new NavSection("Reference tables",
-                    List.of("vat-rates", "expense-types", "allowance-rates")),
-            new NavSection("User management", List.of("users")));
+                    List.of(VatRateView.class, ExpenseTypeView.class,
+                            AllowanceRatesView.class)),
+            new NavSection("User management", List.of(UserManagementView.class)));
 
     private final transient AuthenticationContext authenticationContext;
 
@@ -81,8 +89,9 @@ public class MainLayout extends AppLayout {
         addToDrawer(createHeader(), new Scroller(createNavigation()));
     }
 
-    /** A labelled group of navigation items and the paths it collects. */
-    private record NavSection(String label, List<String> paths) {
+    /** A labelled group of navigation items and the views it collects. */
+    private record NavSection(String label,
+            List<Class<? extends Component>> views) {
     }
 
     private Component createHeader() {
@@ -114,8 +123,8 @@ public class MainLayout extends AppLayout {
     private Component createNavigation() {
         var entries = MenuConfiguration.getMenuEntries();
 
-        Set<String> adminPaths = new HashSet<>();
-        ADMIN_SECTIONS.forEach(section -> adminPaths.addAll(section.paths()));
+        Set<Class<? extends Component>> adminViews = new HashSet<>();
+        ADMIN_SECTIONS.forEach(section -> adminViews.addAll(section.views()));
 
         var container = new VerticalLayout();
         container.setPadding(false);
@@ -124,24 +133,19 @@ public class MainLayout extends AppLayout {
         // Top group: every entry not claimed by an admin section, kept in the
         // order MenuConfiguration returns them (by @Menu order).
         var topEntries = entries.stream()
-                .filter(entry -> !adminPaths.contains(normalize(entry.path())))
+                .filter(entry -> !adminViews.contains(entry.menuClass()))
                 .toList();
         addSection(container, null, topEntries);
 
-        // Admin sections at the end, each in its declared path order.
+        // Admin sections at the end, each in its declared view order.
         for (var section : ADMIN_SECTIONS) {
-            var sectionEntries = section.paths().stream()
-                    .flatMap(path -> entries.stream()
-                            .filter(entry -> normalize(entry.path()).equals(path)))
+            var sectionEntries = section.views().stream()
+                    .flatMap(view -> entries.stream()
+                            .filter(entry -> view.equals(entry.menuClass())))
                     .toList();
             addSection(container, section.label(), sectionEntries);
         }
         return container;
-    }
-
-    /** Strips any leading slash so a menu path matches an {@link #ADMIN_SECTIONS} entry. */
-    private static String normalize(String path) {
-        return path.startsWith("/") ? path.substring(1) : path;
     }
 
     private void addSection(VerticalLayout container, String label,
