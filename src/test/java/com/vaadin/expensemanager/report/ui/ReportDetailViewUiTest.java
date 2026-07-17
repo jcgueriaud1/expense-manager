@@ -583,9 +583,9 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findBigDecimalField().withLabel("Parking fees (€)")
                 .setValue(new BigDecimal("12.00"));
 
-        // Every output previews live in the dialog (120 km × €0.59 = €70.80, etc.).
+        // Every output previews live in the dialog (120 km × €0.55 = €66.00, etc.).
         assertThat(UI.getCurrent().getElement().getTextRecursively()).contains(
-                "Per diem allowance: €54.00", "Kilometre allowance: €70.80",
+                "Per diem allowance: €54.00", "Kilometre allowance: €66.00",
                 "Meal allowance: €13.50", "Parking: €12.00");
 
         findButton().withText("Save trip").click();
@@ -594,17 +594,17 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         assertThat(findSpan().withText("Kilometre allowance").exists()).isTrue();
         assertThat(findSpan().withText("Meal allowance").exists()).isTrue();
         var text = getCurrentView().getElement().getTextRecursively();
-        assertThat(text).contains("Per diem allowance", "€70.80", "€13.50");
+        assertThat(text).contains("Per diem allowance", "€66.00", "€13.50");
 
         findButton().withText("Save").click();
 
         var loaded = service.findMine(service.listMine().getFirst().id());
         assertThat(loaded.perDiemTotal()).isEqualByComparingTo("54.00");
-        assertThat(loaded.kilometreTotal()).isEqualByComparingTo("70.80");
+        assertThat(loaded.kilometreTotal()).isEqualByComparingTo("66.00");
         assertThat(loaded.mealTotal()).isEqualByComparingTo("13.50");
         // Parking folds into Net/VAT; grand total sums it all.
         assertThat(loaded.netTotal()).isEqualByComparingTo("9.56");
-        assertThat(loaded.total()).isEqualByComparingTo("150.30");
+        assertThat(loaded.total()).isEqualByComparingTo("145.50");
     }
 
     @Test

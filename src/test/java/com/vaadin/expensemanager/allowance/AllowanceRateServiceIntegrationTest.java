@@ -39,7 +39,7 @@ class AllowanceRateServiceIntegrationTest extends AbstractIntegrationTest {
                     assertThat(d.partialDayMinHours()).isEqualTo(6);
                 });
         assertThat(service.kilometreRate(2026)).get()
-                .satisfies(k -> assertThat(k.amountPerKm()).isEqualByComparingTo("0.590"));
+                .satisfies(k -> assertThat(k.amountPerKm()).isEqualByComparingTo("0.550"));
         assertThat(service.mealAllowance(2026)).get()
                 .satisfies(m -> assertThat(m.amount()).isEqualByComparingTo("13.50"));
         assertThat(service.foreignPerDiems(2026)).hasSize(12);

@@ -772,7 +772,7 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void previewComputesEveryTripOutputServerSide() {
-        // 11 h → €54.00 per-diem; 120 km × €0.59 = €70.80; meal €13.50;
+        // 11 h → €54.00 per-diem; 120 km × €0.55 = €66.00; meal €13.50;
         // parking €12.00 (VAT-bearing, at the parking type's 25.5 %).
         var preview = service.previewTravel(domesticTravel(null, DEP,
                 DEP.plusHours(11), new BigDecimal("120"), true, new BigDecimal("12.00")));
@@ -780,7 +780,7 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
         assertThat(preview.amountOf(GeneratedLineKind.PER_DIEM))
                 .isEqualByComparingTo("54.00");
         assertThat(preview.amountOf(GeneratedLineKind.KILOMETRE))
-                .isEqualByComparingTo("70.80");
+                .isEqualByComparingTo("66.00");
         assertThat(preview.amountOf(GeneratedLineKind.MEAL))
                 .isEqualByComparingTo("13.50");
         assertThat(preview.amountOf(GeneratedLineKind.PARKING))
@@ -799,12 +799,12 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
         var loaded = service.findMine(id);
         // The three tax-free allowances each land in their own subtotal…
         assertThat(loaded.perDiemTotal()).isEqualByComparingTo("54.00");
-        assertThat(loaded.kilometreTotal()).isEqualByComparingTo("70.80");
+        assertThat(loaded.kilometreTotal()).isEqualByComparingTo("66.00");
         assertThat(loaded.mealTotal()).isEqualByComparingTo("13.50");
         // …parking is VAT-bearing → Net/VAT (12.00 @ 25.5 %), not a subtotal.
         assertThat(loaded.netTotal()).isEqualByComparingTo("9.56");
         assertThat(loaded.vatTotal()).isEqualByComparingTo("2.44");
-        assertThat(loaded.total()).isEqualByComparingTo("150.30");
+        assertThat(loaded.total()).isEqualByComparingTo("145.50");
         // Four generated lines are persisted; none appear as editable manual cards.
         assertThat(loaded.lines()).isEmpty();
         assertThat(reportRepository.findById(id).orElseThrow().getLines()).hasSize(4);

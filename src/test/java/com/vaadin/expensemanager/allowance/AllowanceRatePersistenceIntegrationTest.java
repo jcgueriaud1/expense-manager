@@ -46,7 +46,7 @@ class AllowanceRatePersistenceIntegrationTest extends AbstractIntegrationTest {
     @Test
     void kilometreAndMeal2026SeedMatchTheProvisionalFigures() {
         assertThat(kilometreRepository.findByYear(2026).orElseThrow().getAmountPerKm())
-                .isEqualByComparingTo("0.590");
+                .isEqualByComparingTo("0.550");
         assertThat(mealRepository.findByYear(2026).orElseThrow().getAmount())
                 .isEqualByComparingTo("13.50");
     }
