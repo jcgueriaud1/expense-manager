@@ -34,6 +34,7 @@ import com.vaadin.expensemanager.reference.ExpenseTypeRepository;
 import com.vaadin.expensemanager.reference.VatRate;
 import com.vaadin.expensemanager.reference.VatRateRepository;
 import com.vaadin.expensemanager.security.CurrentUserProvider;
+import com.vaadin.expensemanager.user.CurrentUser;
 import com.vaadin.expensemanager.user.User;
 import com.vaadin.expensemanager.user.UserRepository;
 
@@ -175,12 +176,13 @@ public class ExpenseReportService {
     }
 
     /**
-     * Resolves one receipt's bytes for the read path (ADR-0021), owner-scoped
-     * (ADR-0008): empty unless the receipt exists <em>and</em> belongs to the
-     * current user. The bytea is read here and nowhere else — through the
-     * dedicated download projection, never the aggregate load path — and copied
-     * into a detached {@link ReceiptContent} so nothing lazy is touched while
-     * streaming.
+     * Resolves one receipt's bytes for the read path (ADR-0021): empty unless the
+     * receipt exists <em>and</em> the caller may see it. An ordinary user is
+     * owner-scoped (ADR-0008) — only their own receipts; an admin, who reviews
+     * any user's report, may fetch any receipt. The bytea is read here and
+     * nowhere else — through the dedicated download projection, never the
+     * aggregate load path — and copied into a detached {@link ReceiptContent} so
+     * nothing lazy is touched while streaming.
      *
      * <p>This is the authorization + fetch seam behind {@link #receiptDownload};
      * exposed on its own so the owner-scoping contract is directly testable
@@ -189,30 +191,30 @@ public class ExpenseReportService {
     @RolesAllowed("USER")
     @Transactional(readOnly = true)
     public Optional<ReceiptContent> receiptForDownload(Long receiptId) {
-        return receiptRepository.findDownloadByIdAndOwnerId(receiptId, currentUserId())
+        return findDownloadFor(currentUserProvider.require(), receiptId)
                 .map(ReceiptContent::from);
     }
 
     /**
      * A {@link DownloadHandler} that streams one receipt to the browser (ADR-0021,
-     * read-path slice). The current user's id is captured <strong>now</strong>, on
-     * the UI thread where the security context is present, and threaded into the
-     * owner-scoped projection — so the later resource request streams only a
-     * receipt this user owns, without depending on the security context being
-     * populated on the download thread (ADR-0008).
+     * read-path slice). The current user is captured <strong>now</strong>, on the
+     * UI thread where the security context is present, and their id/role threaded
+     * into the projection — so the later resource request resolves the receipt
+     * without depending on the security context being populated on the download
+     * thread (ADR-0008). An ordinary user is owner-scoped (only their own
+     * receipts); an admin, who reviews any user's report, may stream any receipt.
      *
      * <p>Served <em>inline</em> (images render in an {@code <img>}, PDFs open in
      * the browser viewer) with the stored, magic-byte-verified content type and a
      * {@code Content-Disposition} filename; {@code X-Content-Type-Options: nosniff}
      * stops the browser second-guessing that type. A receipt that is missing or
-     * not the caller's yields {@code 404} — never another user's bytes.
+     * that the caller may not see yields {@code 404} — never another user's bytes.
      */
     @RolesAllowed("USER")
     public DownloadHandler receiptDownload(Long receiptId) {
-        Long ownerId = currentUserId();
+        CurrentUser user = currentUserProvider.require();
         return DownloadHandler.fromInputStream(event -> {
-            Optional<ReceiptContent> content = receiptRepository
-                    .findDownloadByIdAndOwnerId(receiptId, ownerId)
+            Optional<ReceiptContent> content = findDownloadFor(user, receiptId)
                     .map(ReceiptContent::from);
             if (content.isEmpty()) {
                 return DownloadResponse.error(404);
@@ -513,6 +515,17 @@ public class ExpenseReportService {
 
     private Long currentUserId() {
         return currentUserProvider.require().id();
+    }
+
+    /**
+     * The download projection for one receipt, scoped to what {@code user} may
+     * see: unscoped for an admin (reviews any report), owner-scoped for an
+     * ordinary user (ADR-0008). Empty when the receipt is missing or off-limits.
+     */
+    private Optional<ReceiptDownloadView> findDownloadFor(CurrentUser user, Long receiptId) {
+        return user.isAdmin()
+                ? receiptRepository.findDownloadById(receiptId)
+                : receiptRepository.findDownloadByIdAndOwnerId(receiptId, user.id());
     }
 
     /**

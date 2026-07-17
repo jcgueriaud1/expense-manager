@@ -48,6 +48,22 @@ public interface ReceiptRepository extends JpaRepository<Receipt, Long> {
     Optional<ReceiptDownloadView> findDownloadByIdAndOwnerId(
             @Param("receiptId") Long receiptId, @Param("ownerId") Long ownerId);
 
+    /**
+     * The download projection <strong>without owner scoping</strong>: one
+     * receipt's bytea by id, whoever owns the owning report. Used only on the
+     * admin read path (an admin reviews any user's report), so an admin can see
+     * a receipt attached to another user's report; the owner-scoped
+     * {@link #findDownloadByIdAndOwnerId} stays the query for ordinary users, so
+     * a non-admin still can never reach another user's bytes (ADR-0008).
+     */
+    @Query(nativeQuery = true, value = """
+            select r.data as data, r.filename as filename,
+                   r.content_type as contentType
+            from receipt r
+            where r.id = :receiptId
+            """)
+    Optional<ReceiptDownloadView> findDownloadById(@Param("receiptId") Long receiptId);
+
     /** The receipt owned by one line, if any (write path: overwrite / remove). */
     Optional<Receipt> findByExpenseLineId(Long expenseLineId);
 
