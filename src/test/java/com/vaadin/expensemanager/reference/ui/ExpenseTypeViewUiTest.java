@@ -39,7 +39,7 @@ class ExpenseTypeViewUiTest extends AbstractReferenceDataViewUiTest {
         assertThat(columnText(grid, NAME_COL))
                 .containsExactly("Travel allowance", "Taxi/transport", "Accommodation",
                         "Restaurant/meals", "Parking/supplies/goods", "Publications",
-                        "Kilometre allowance", "Meal allowance");
+                        "Kilometre allowance", "Meal allowance", "Other");
         // Each type renders its seeded default VAT rate.
         assertThat(grid.getCellText(0, RATE_COL)).isEqualTo("0 %");
         assertThat(grid.getCellText(3, RATE_COL)).isEqualTo("13.5 %");
@@ -116,12 +116,12 @@ class ExpenseTypeViewUiTest extends AbstractReferenceDataViewUiTest {
         navigate(ExpenseTypeView.class);
         var grid = findGrid(ExpenseTypeDto.class);
 
-        // Travel allowance is first (row 0); Meal allowance is last (row 7) after
-        // the Phase 4.3 additions.
+        // Travel allowance is first (row 0); "Other" is last (row 8) after the
+        // V10 catch-all addition (issue #87).
         int last = grid.size() - 1;
         assertThat(rowActionButton(grid, 0, ACTIONS_COL, "Move Travel allowance up")
                 .isEnabled()).isFalse();
-        assertThat(rowActionButton(grid, last, ACTIONS_COL, "Move Meal allowance down")
+        assertThat(rowActionButton(grid, last, ACTIONS_COL, "Move Other down")
                 .isEnabled()).isFalse();
 
         // Move Taxi/transport (row 1) up; it swaps with Travel allowance.
