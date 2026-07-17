@@ -214,6 +214,12 @@ public class ReportDetailView extends VerticalLayout
         statusCallout.setVisible(false);
 
         reportDate.setRequiredIndicatorVisible(true);
+        // Without a bad-input message the field goes invalid with a *blank* message
+        // when the user types an unparseable date (e.g. "dsdds"), which surfaced as an
+        // empty bullet in the error summary (issue #85). Required stays with the
+        // binder's asRequired below.
+        reportDate.setI18n(new DatePicker.DatePickerI18n()
+                .setBadInputErrorMessage("Enter a valid date"));
         additionalInformation.setMaxLength(2000);
         additionalInformation.setWidthFull();
 

@@ -4,8 +4,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.Focusable;
+import com.vaadin.flow.component.HasLabel;
 import com.vaadin.flow.component.HasValue;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
@@ -57,10 +61,21 @@ import com.vaadin.flow.data.binder.ValidationResult;
  */
 public final class ErrorSummary extends Div implements Focusable<ErrorSummary> {
 
+    private static final Logger log = LoggerFactory.getLogger(ErrorSummary.class);
+
     /** Per-instance heading id so several summaries (view + dialog) can coexist. */
     private static final AtomicInteger SEQUENCE = new AtomicInteger();
 
     private static final String DEFAULT_HEADING = "Please fix the following:";
+
+    /**
+     * Last-resort text for a validation error that reached the summary with a blank
+     * message. This should never happen — every constraint that can fail must carry
+     * its own message (e.g. a picker's bad-input / incomplete-input i18n text). A
+     * blank message is a configuration bug, so we substitute this and {@code warn}
+     * (issue #85) rather than render an empty, meaningless bullet.
+     */
+    private static final String BLANK_MESSAGE_FALLBACK = "This field is invalid";
 
     private final H3 heading = new H3();
 
@@ -98,13 +113,15 @@ public final class ErrorSummary extends Div implements Focusable<ErrorSummary> {
     public boolean showValidationErrors(BinderValidationStatus<?> status) {
         var items = new ArrayList<ListItem>();
         for (BindingValidationStatus<?> fieldError : status.getFieldValidationErrors()) {
+            HasValue<?, ?> field = fieldError.getField();
             fieldError.getMessage().ifPresent(message ->
-                    items.add(fieldEntry(message, fieldError.getField())));
+                    items.add(fieldEntry(orFallback(message, describe(field)), field)));
         }
         status.getBeanValidationErrors().stream()
                 .filter(ValidationResult::isError)
                 .map(ValidationResult::getErrorMessage)
-                .forEach(message -> items.add(new ListItem(message)));
+                .forEach(message -> items.add(new ListItem(
+                        orFallback(message, "a cross-field (bean-level) rule"))));
         return render(items);
     }
 
@@ -152,6 +169,49 @@ public final class ErrorSummary extends Div implements Focusable<ErrorSummary> {
         // the pattern for AT and keyboard users after a failed submit.
         focus();
         return true;
+    }
+
+    /**
+     * Guards against a validation error reaching the summary with a blank message —
+     * which would otherwise render an empty, meaningless bullet (issue #85). Returns
+     * the message as-is when it carries text, or the {@link #BLANK_MESSAGE_FALLBACK}
+     * (plus a {@code warn}) when it doesn't, since a blank message is a configuration
+     * bug in the offending field's constraints, not something the user can act on.
+     *
+     * @param source a human description of where the blank message came from (see
+     *               {@link #describe}), so the warning points the developer at the
+     *               field to fix rather than just saying "some field"
+     */
+    private static String orFallback(String message, String source) {
+        if (message != null && !message.isBlank()) {
+            return message;
+        }
+        log.warn("A validation error for {} reached the error summary with a blank "
+                + "message; the field is missing the error text for a failing "
+                + "constraint (e.g. a picker's bad-input / incomplete-input i18n "
+                + "message). Falling back to \"{}\".", source, BLANK_MESSAGE_FALLBACK);
+        return BLANK_MESSAGE_FALLBACK;
+    }
+
+    /**
+     * A short, developer-facing description of a field for the blank-message warning
+     * — its label when it has one (what a developer recognises), else its id, else
+     * just its component type.
+     */
+    private static String describe(HasValue<?, ?> field) {
+        if (field == null) {
+            return "an unknown field";
+        }
+        String type = field.getClass().getSimpleName();
+        if (field instanceof HasLabel hasLabel
+                && hasLabel.getLabel() != null && !hasLabel.getLabel().isBlank()) {
+            return "the \"" + hasLabel.getLabel() + "\" field (" + type + ")";
+        }
+        if (field instanceof Component component
+                && component.getId().isPresent()) {
+            return "field #" + component.getId().get() + " (" + type + ")";
+        }
+        return "a " + type + " field";
     }
 
     private static ListItem fieldEntry(String message, HasValue<?, ?> field) {

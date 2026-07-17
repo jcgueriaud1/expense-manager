@@ -1678,3 +1678,39 @@ Deployment/Observability · UX-spec
   case.
 - Owner / next step: resolved for this change (verification complete); the
   compose/port ergonomics are a follow-up if worktree-based dev continues.
+
+### F-052 — Vaadin picker input constraints go invalid with an *empty* default message (bad UX by default)
+- Date: 2026-07-17
+- Area: Vaadin
+- Severity: Medium
+- Task being attempted: fixing issue #85 — empty bullets in the top-of-form error
+  summary when a user filled only the date (not the time) in a `DateTimePicker`, or
+  typed an unparseable value (`dsdds`) into a `DatePicker`.
+- Expected vs actual: expected a component's built-in, non-configurable input
+  constraints to carry a sensible **default** error message (as browsers do for
+  native inputs — "Please fill out this field"). Actual: in V25 these constraints
+  fire but their message is **empty until you set it via i18n** —
+  `DateTimePickerI18n.setIncompleteInputErrorMessage` (V25 newly treats date-without-
+  time as invalid, per the upgrade guide), `setBadInputErrorMessage` on both pickers.
+  An unset message means the field goes red with *no* text under it, and any code
+  that surfaces binder errors elsewhere (our shared `ErrorSummary`) renders a blank,
+  meaningless entry. Nothing warns the developer at build or run time.
+- Workaround used: set the i18n messages on every picker
+  (`TravelEditorDialog` departure/return, `ReportDetailView` report date), and hardened
+  `ErrorSummary` to substitute a fallback + `warn` (naming the offending field) if a
+  blank message ever reaches it again.
+- Evidence: `report/ui/TravelEditorDialog.java` (`dateTimeErrorMessages()`),
+  `report/ui/ReportDetailView.java` (`reportDate` i18n), `base/ui/ErrorSummary.java`
+  (`orFallback`/`describe`); Vaadin docs `date-time-picker` "Bad Input" constraint is
+  described as "non-configurable and enabled by default" yet ships no default text;
+  the V25 upgrade guide documents the new incomplete-input invalidation.
+- Impact: every form with a `DatePicker`/`DateTimePicker` silently ships with a
+  broken error state until each constraint message is set by hand — easy to miss
+  (the happy path and overlay-picking never trigger it; only typed/partial input
+  does), and there is no signal that a message is missing.
+- Suggested Vaadin/product improvement: ship a sensible built-in default message
+  for the non-configurable input constraints (bad-input, incomplete-input), the way
+  the platform already defaults required-indicator styling — i18n should *override*
+  a default, not be the only thing standing between the user and a blank error.
+- Owner / next step: worked around in this change; the empty-default is a Vaadin
+  platform issue to raise upstream.

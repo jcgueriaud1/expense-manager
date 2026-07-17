@@ -62,6 +62,19 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
     }
 
     @Test
+    void reportDateCarriesABadInputErrorMessage() {
+        // Issue #85: typing an unparseable date (e.g. "dsdds") makes the picker
+        // invalid; without a bad-input message the error reaches the summary blank.
+        // The tester can't type an unparseable value, so we assert the message that
+        // prevents the blank error is configured on the field.
+        navigate(ReportDetailView.class);
+
+        var picker = (DatePicker) $(DatePicker.class).first();
+        assertThat(picker.getI18n()).isNotNull();
+        assertThat(picker.getI18n().getBadInputErrorMessage()).isNotBlank();
+    }
+
+    @Test
     void editingExistingReportUpdatesItsFields() {
         var id = seedReport(LocalDate.of(2026, 7, 1), "before");
         navigate(ReportDetailView.class, id);
@@ -742,6 +755,26 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
                 "Departure date & time is required", "Destinations are required");
         assertThat(findButton().withText("Save trip").exists()).isTrue();
         assertThat(findSpan().withText("Per diem allowance").exists()).isFalse();
+    }
+
+    @Test
+    void travelPickersCarryIncompleteAndBadInputErrorMessages() {
+        // Issue #85: entering only the date (not the time) in a departure/return
+        // picker makes it invalid; without the incomplete-input message that error
+        // reached the summary blank. The tester can't produce partial input, so we
+        // assert the messages that prevent a blank error are configured.
+        navigate(ReportDetailView.class);
+        findButton().withText("Insert travel info").click();
+
+        for (String label : new String[] { "Departure", "Return" }) {
+            var picker = (DateTimePicker) findDateTimePicker().withLabel(label)
+                    .getComponent();
+            assertThat(picker.getI18n()).as(label + " i18n").isNotNull();
+            assertThat(picker.getI18n().getIncompleteInputErrorMessage())
+                    .as(label + " incomplete-input message").isNotBlank();
+            assertThat(picker.getI18n().getBadInputErrorMessage())
+                    .as(label + " bad-input message").isNotBlank();
+        }
     }
 
     @Test
