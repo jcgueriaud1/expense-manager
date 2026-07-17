@@ -26,7 +26,8 @@ the domain sharpens.
   HALF_UP scale 2), not stored.
 - **Expense Type** — admin-editable config classifying a line (e.g. Travel
   allowance, Taxi/transport, Accommodation, Restaurant/meals, Office
-  supplies/goods, Publications). Has a display **order**, an **active** flag
+  supplies/goods, Publications, Other — the general catch-all). Has a display
+  **order**, an **active** flag
   (inactive types are hidden from new lines but preserved on historical ones),
   and a **required default VAT rate**. Replaces the plan's earlier flat
   "Category" list (plan 2.2).

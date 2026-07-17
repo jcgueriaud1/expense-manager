@@ -1637,3 +1637,44 @@ Deployment/Observability · UX-spec
   component tied to `Binder`/`BinderValidationStatus` would save every app from
   hand-rolling this (and from getting the ARIA + focus behaviour wrong, as here).
 - Owner / next step: resolved in this change.
+
+### F-051 — Shared reused Testcontainers DB + fixed host ports make running a new migration inside a git worktree fail confusingly
+- Date: 2026-07-17
+- Area: Tooling/Template + Verification
+- Severity: Medium
+- Task being attempted: adding a new Flyway migration (V10, the "Other" expense
+  type for issue #87) in a git worktree, then running the browserless suite and
+  the app for visual verification while the main checkout was also running.
+- Expected vs actual: expected the worktree to be self-contained. Actual, three
+  separate machine-global collisions surfaced in sequence: (1) the integration
+  tests failed with `Migration checksum mismatch for migration version 10`
+  because `testcontainers.reuse.enable=true` keeps **one** singleton
+  `postgres:17-alpine` container shared across every worktree — a differently
+  numbered/authored V10 from another worktree had already been recorded in its
+  `flyway_schema_history`; (2) `./mvnw spring-boot:run` failed with
+  `Bind for 0.0.0.0:5432 failed: port is already allocated` because this
+  worktree's `compose.yaml` hard-pins host port 5432 and the main checkout's dev
+  DB already held it; (3) after pointing at that DB with
+  `--spring.docker.compose.enabled=false`, startup failed with `Port 8080 was
+  already in use` (the main checkout's app).
+- Workaround used: (1) `docker rm -f <reused-container>` to force a fresh
+  Testcontainers DB so the new V10 checksum records cleanly; (2)/(3) reused the
+  already-running main-checkout app on :8080 for visual verification — my
+  disabled-compose run had already applied V10 to the shared dev DB before the
+  :8080 clash, so "Other" was live there. Cleaned up the orphaned
+  `issue-87-*` compose container/network/volume afterward.
+- Evidence: surefire `Migration checksum mismatch for migration version 10`;
+  app log `Bind for 0.0.0.0:5432 failed`, `Port 8080 was already in use`;
+  `~/.testcontainers.properties` (`testcontainers.reuse.enable=true`),
+  `compose.yaml` (`ports: '5432:5432'`).
+- Impact: developing DB migrations concurrently across worktrees is a foot-gun —
+  the reused container silently couples their Flyway histories, and fixed host
+  ports mean only one worktree can run its app/compose at a time. The failure
+  messages point at the symptom, not the shared-resource root cause.
+- Suggested Vaadin/product improvement: for multi-worktree work, either drop the
+  fixed host-port mapping in `compose.yaml` (let Docker assign an ephemeral port,
+  which Spring Boot's compose support discovers) and/or scope the Testcontainers
+  reuse per checkout; document the `docker rm` reset for the checksum-mismatch
+  case.
+- Owner / next step: resolved for this change (verification complete); the
+  compose/port ergonomics are a follow-up if worktree-based dev continues.
