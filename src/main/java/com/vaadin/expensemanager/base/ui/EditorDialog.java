@@ -12,7 +12,8 @@ import com.vaadin.flow.data.binder.Binder;
  * <strong>top-of-form error summary</strong> (never a disabled submit; ADR-0020),
  * shared by every admin editor in the app. Promoted to {@code base.ui} so any
  * feature package can reuse it instead of hand-copying the same Dialog +
- * {@code role="alert"} summary + {@code writeBeanIfValid} scaffold (F-045).
+ * error-summary + {@code writeBeanIfValid} scaffold (F-045). The summary itself
+ * is the shared {@link ErrorSummary} (accessible, field-linked; F-050).
  *
  * <p>Usage — build the form with the plain Vaadin API, hand it plus its binder
  * and bound bean to the dialog, then set the persist action:

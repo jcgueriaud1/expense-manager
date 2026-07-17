@@ -196,7 +196,7 @@ class UserManagementViewUiTest extends SpringBrowserlessTest implements Locators
         findCheckbox().withLabel("Account enabled").click();
         findButton().withText("Save").click();
 
-        // The role=alert summary (in the dialog overlay) carries the guard message.
+        // The error summary (in the dialog overlay) carries the guard message.
         assertThat(UI.getCurrent().getElement().getTextRecursively())
                 .contains("last administrator");
         // Dialog stays open (Save still present) and the grid is unchanged.

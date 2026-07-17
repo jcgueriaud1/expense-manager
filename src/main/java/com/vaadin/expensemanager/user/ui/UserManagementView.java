@@ -47,8 +47,8 @@ import jakarta.annotation.security.RolesAllowed;
  * <p><strong>Write path (#65).</strong> A per-row action opens a modal editor
  * (single-select role + enabled/revoked toggle) driving
  * {@link UserAdminService#setRole} / {@link UserAdminService#setEnabled}. The
- * editor uses the always-enabled Save + top-of-form {@code role="alert"} error
- * summary (F-013, ADR-0020): service-side lockout guards come back as
+ * editor uses the always-enabled Save + top-of-form {@link ErrorSummary}
+ * (F-013, ADR-0020): service-side lockout guards come back as
  * {@link IllegalArgumentException} and are shown in the summary with the grid
  * left unchanged. Changes take effect at the user's <strong>next login</strong>
  * — there is no forced logout in V1 (ADR-0008), as the intro notes.
