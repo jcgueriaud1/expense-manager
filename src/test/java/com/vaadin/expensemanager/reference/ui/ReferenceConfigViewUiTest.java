@@ -100,11 +100,13 @@ class ReferenceConfigViewUiTest extends AbstractReferenceDataViewUiTest {
         // (the accessible error-summary pattern), not plain text.
         assertThat(findButton().withText("Rate is required").exists()).isTrue();
         // The shared ErrorSummary carries the accessibility contract once, for
-        // every form: a labelled, programmatically-focusable group whose
-        // aria-labelledby names its own heading.
+        // every form: a labelled, focusable group whose aria-labelledby names its
+        // own heading. It is tabindex=0 (not the -1 the GOV.UK pattern would use)
+        // so it joins a Dialog's focus trap and Tab-after-submit reaches the fields
+        // rather than the dialog frame — see ErrorSummary and web-components#3486.
         var summary = find(ErrorSummary.class).single();
         assertThat(summary.getElement().getAttribute("role")).isEqualTo("group");
-        assertThat(summary.getElement().getAttribute("tabindex")).isEqualTo("-1");
+        assertThat(summary.getElement().getAttribute("tabindex")).isEqualTo("0");
         assertThat(summary.getElement().getAttribute("aria-labelledby"))
                 .isNotBlank();
         // The dialog stays open (Save still present) and no row was added.

@@ -30,7 +30,8 @@ import com.vaadin.flow.data.binder.ValidationResult;
  * <ul>
  *   <li><strong>Focus on submit.</strong> The summary is a labelled group
  *       ({@code role="group"} + {@code aria-labelledby} → its heading,
- *       {@code tabindex="-1"}). Each {@code show*} call moves keyboard focus to
+ *       {@code tabindex="0"} — see the constructor for why not {@code -1}). Each
+ *       {@code show*} call moves keyboard focus to
  *       it, so a screen reader announces "There are N errors" and the summary
  *       scrolls into view — no silent, off-screen failure.</li>
  *   <li><strong>Field-linked entries.</strong> {@link #showValidationErrors} turns
@@ -69,7 +70,16 @@ public final class ErrorSummary extends Div implements Focusable<ErrorSummary> {
         // A labelled, programmatically-focusable group — not role="alert": we move
         // focus here on submit, and an alert that also receives focus double-speaks.
         getElement().setAttribute("role", "group");
-        setTabIndex(-1);
+        // tabindex=0, not the -1 the GOV.UK pattern would use. Inside a Dialog the
+        // host carries tabindex=0 (Vaadin PR #10024), so it is the first node in the
+        // dialog's focus trap. A -1 summary is absent from that trap list, so after
+        // we focus it on submit the trap's next-Tab math (indexOf = -1 → index 0)
+        // lands on the dialog frame — a dead stop before the fields. Making the
+        // summary a real trap member (0) sends the next Tab to the first error link
+        // instead. Cost: it becomes a manual tab stop wherever the summary shows.
+        // Revert to -1 once Vaadin fixes the trap's handling of focused -1 elements:
+        // https://github.com/vaadin/web-components/issues/3486
+        setTabIndex(0);
 
         String headingId = "error-summary-heading-" + SEQUENCE.incrementAndGet();
         heading.setId(headingId);
