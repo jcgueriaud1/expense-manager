@@ -13,6 +13,7 @@ import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.Scroller;
+import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.sidenav.SideNav;
 import com.vaadin.flow.component.sidenav.SideNavItem;
 import com.vaadin.flow.router.Layout;
@@ -21,6 +22,10 @@ import com.vaadin.flow.server.menu.MenuEntry;
 import com.vaadin.flow.spring.security.AuthenticationContext;
 
 import jakarta.annotation.security.PermitAll;
+
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * The application's Aura-themed navigation shell (ADR-0017).
@@ -32,9 +37,18 @@ import jakarta.annotation.security.PermitAll;
  * action.
  *
  * <p><strong>Navigation is auto-generated, never hand-maintained.</strong> The
- * {@link SideNav} is built from {@link MenuConfiguration#getMenuEntries()},
- * which collects every {@code @Menu}-annotated view and is already filtered by
- * the user's access (ADR-0008), so role-aware navigation comes for free.
+ * items come from {@link MenuConfiguration#getMenuEntries()}, which collects
+ * every {@code @Menu}-annotated view and is already filtered by the user's
+ * access (ADR-0008), so role-aware navigation comes for free.
+ *
+ * <p><strong>Grouped into sections (issue #91).</strong> Everyday views —
+ * Dashboard, My reports, Approvals — head an unlabelled {@link SideNav}. The
+ * administrative reference tables and user management follow as their own
+ * labelled sections at the end. Only the section-to-path mapping in
+ * {@link #ADMIN_SECTIONS} is hand-maintained; membership, order within a
+ * section, and access filtering all still flow from the {@code @Menu} entries,
+ * and any view not claimed by an admin section falls into the top group by
+ * default. A section with no accessible entries renders nothing.
  *
  * <p>{@link PermitAll} guards the shell: it hosts only authenticated views, so
  * a current user is always present when it renders (the public login view opts
@@ -46,6 +60,16 @@ import jakarta.annotation.security.PermitAll;
 @PermitAll
 public class MainLayout extends AppLayout {
 
+    /**
+     * The administrative sections shown at the end of the drawer, in order.
+     * Each maps a section label to the {@code @Route} paths that belong under
+     * it; any menu entry whose path is not listed here stays in the top group.
+     */
+    private static final List<NavSection> ADMIN_SECTIONS = List.of(
+            new NavSection("Reference tables",
+                    List.of("vat-rates", "expense-types", "allowance-rates")),
+            new NavSection("User management", List.of("users")));
+
     private final transient AuthenticationContext authenticationContext;
 
     public MainLayout(CurrentUserProvider currentUserProvider,
@@ -54,7 +78,11 @@ public class MainLayout extends AppLayout {
 
         setPrimarySection(Section.DRAWER);
         addToNavbar(new DrawerToggle(), createUserMenu(currentUserProvider));
-        addToDrawer(createHeader(), new Scroller(createSideNav()));
+        addToDrawer(createHeader(), new Scroller(createNavigation()));
+    }
+
+    /** A labelled group of navigation items and the paths it collects. */
+    private record NavSection(String label, List<String> paths) {
     }
 
     private Component createHeader() {
@@ -83,11 +111,50 @@ public class MainLayout extends AppLayout {
         return bar;
     }
 
-    private SideNav createSideNav() {
+    private Component createNavigation() {
+        var entries = MenuConfiguration.getMenuEntries();
+
+        Set<String> adminPaths = new HashSet<>();
+        ADMIN_SECTIONS.forEach(section -> adminPaths.addAll(section.paths()));
+
+        var container = new VerticalLayout();
+        container.setPadding(false);
+        container.setSpacing("var(--vaadin-gap-m)");
+
+        // Top group: every entry not claimed by an admin section, kept in the
+        // order MenuConfiguration returns them (by @Menu order).
+        var topEntries = entries.stream()
+                .filter(entry -> !adminPaths.contains(normalize(entry.path())))
+                .toList();
+        addSection(container, null, topEntries);
+
+        // Admin sections at the end, each in its declared path order.
+        for (var section : ADMIN_SECTIONS) {
+            var sectionEntries = section.paths().stream()
+                    .flatMap(path -> entries.stream()
+                            .filter(entry -> normalize(entry.path()).equals(path)))
+                    .toList();
+            addSection(container, section.label(), sectionEntries);
+        }
+        return container;
+    }
+
+    /** Strips any leading slash so a menu path matches an {@link #ADMIN_SECTIONS} entry. */
+    private static String normalize(String path) {
+        return path.startsWith("/") ? path.substring(1) : path;
+    }
+
+    private void addSection(VerticalLayout container, String label,
+            List<MenuEntry> entries) {
+        if (entries.isEmpty()) {
+            return;
+        }
         var nav = new SideNav();
-        MenuConfiguration.getMenuEntries()
-                .forEach(entry -> nav.addItem(createSideNavItem(entry)));
-        return nav;
+        if (label != null) {
+            nav.setLabel(label);
+        }
+        entries.forEach(entry -> nav.addItem(createSideNavItem(entry)));
+        container.add(nav);
     }
 
     private SideNavItem createSideNavItem(MenuEntry entry) {

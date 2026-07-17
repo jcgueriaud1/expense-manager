@@ -11,6 +11,8 @@ import org.springframework.security.test.context.support.WithUserDetails;
 import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -56,17 +58,65 @@ class NavigationShellUiTest extends SpringBrowserlessTest {
     void sideNavIsGeneratedFromMenuAnnotatedViews() {
         navigate(DashboardView.class);
 
-        // The shell builds exactly one SideNav from MenuConfiguration.
-        var sideNav = $(SideNav.class).first();
-        var titles = sideNav.getChildren()
-                .filter(SideNavItem.class::isInstance)
-                .map(SideNavItem.class::cast)
-                .map(SideNavItem::getLabel)
-                .toList();
+        // The top group is the first SideNav, built from MenuConfiguration.
+        var titles = itemLabels($(SideNav.class).first());
 
         // DashboardView's @Menu(title = "Dashboard") self-registered — proving the
         // menu is auto-generated, not a hand-maintained list.
         assertThat(titles).contains("Dashboard");
+    }
+
+    /**
+     * Issue #91: the drawer is grouped into sections. The everyday views lead
+     * in an unlabelled top group; the administrative reference tables and user
+     * management follow as their own labelled sections at the end.
+     */
+    @Test
+    @WithUserDetails("admin@vaadin.com")
+    void adminDrawerIsGroupedIntoSectionsWithAdminAtTheEnd() {
+        navigate(DashboardView.class);
+
+        var navs = $(SideNav.class).all();
+
+        // Section labels, in drawer order: top group unlabelled, admin last.
+        var labels = navs.stream().map(SideNav::getLabel).toList();
+        assertThat(labels)
+                .containsExactly(null, "Reference tables", "User management");
+
+        // Everyday views lead the top group, in Dashboard → My reports →
+        // Approvals order; no admin views leak into it.
+        assertThat(itemLabels(navs.get(0)))
+                .containsExactly("Dashboard", "My reports", "Approvals");
+
+        // The reference tables and user management are their own sections.
+        assertThat(itemLabels(navs.get(1)))
+                .containsExactly("VAT rates", "Expense types", "Allowance rates");
+        assertThat(itemLabels(navs.get(2))).containsExactly("Users");
+    }
+
+    /**
+     * A section with no accessible entries renders nothing: the plain user, who
+     * can reach neither the reference tables nor user management, sees only the
+     * unlabelled top group.
+     */
+    @Test
+    @WithUserDetails(LocalUserSeeder.PLAIN_USER_EMAIL)
+    void plainUserSeesNoAdminSections() {
+        navigate(DashboardView.class);
+
+        var navs = $(SideNav.class).all();
+
+        assertThat(navs).hasSize(1);
+        assertThat(navs.get(0).getLabel()).isNull();
+        assertThat(itemLabels(navs.get(0))).containsExactly("Dashboard", "My reports");
+    }
+
+    private static List<String> itemLabels(SideNav nav) {
+        return nav.getChildren()
+                .filter(SideNavItem.class::isInstance)
+                .map(SideNavItem.class::cast)
+                .map(SideNavItem::getLabel)
+                .toList();
     }
 
     @Test
