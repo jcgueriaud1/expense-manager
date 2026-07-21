@@ -1743,3 +1743,48 @@ Deployment/Observability · UX-spec
   doesn't throw and abort the DOM patch.
 - Owner / next step: no product action; raise the dev-toolbar overlay-stacking error
   upstream if it recurs.
+
+### F-054 — DramaFinder-over-CLI is a cheaper browser-verification path than the Playwright MCP for grids, but the skill's API reference ran ahead of the released jar
+- Date: 2026-07-21
+- Area: Verification / tooling
+- Severity: Low
+- Task being attempted: evaluating whether driving the running app with
+  Playwright (Java) + DramaFinder could replace the interactive Playwright MCP for
+  Vaadin verification. Prototyped `UsersGridDramaFinderPrototypeTest` — a
+  standalone (no Spring boot) test that logs in through the form-stub, deep-links
+  to `/users`, and asserts the seeded users grid entirely through `GridElement`.
+- Expected vs actual: expected the `GridElement` wrapper to handle the grid's
+  virtualization / cell-content shadow structure so no raw shadow-DOM code was
+  needed. Confirmed: column count, header contents, row lookup by column text, and
+  per-cell content (`findCell(row, "Name")` → `getCellContentLocator()`) all
+  worked without touching `vaadin-grid-cell-content` or a `.shadowRoot` walk, no
+  stale-ref loop, green in ~3.9s with no frontend build (the test is a Playwright
+  client against the already-running `local` app, not a `@SpringBootTest`).
+- Frictions:
+  - The `vaadin-playwright-test` skill's bundled `api-reference.md` documents
+    `GridElement.assertRowCount/assertColumnCount/assertCellContent`, but Maven
+    Central's latest **dramafinder 1.1.2** does not have them yet — compile errors.
+    Had to `javap` the resolved jar (which the skill explicitly says not to do) and
+    fall back to getters + Playwright's own `PlaywrightAssertions.assertThat(locator)`.
+    The "authoritative" reference was ahead of the shipped release.
+  - Still needed the Playwright MCP to *discover* the form-stub login: the fields
+    are `input[name=username|password]`, but Enter does not submit — a native
+    `form.submit()` does. DramaFinder wraps components, not app-specific flows, so
+    the MCP remains the exploration tool for unfamiliar screens (hybrid, not
+    replacement).
+  - Only the admin config views are real grids; the report views are card lists
+    (see MyReportsView), so this path does not cover report verification.
+- Workaround used: pinned `com.microsoft.playwright:playwright:1.59.0` (the version
+  dramafinder 1.1.2 was built against) since no BOM manages it; asserted via getters
+  + Playwright locator assertions instead of the not-yet-released `assert*` helpers.
+- Evidence: `src/test/java/.../user/ui/UsersGridDramaFinderPrototypeTest.java`;
+  pom test deps `org.vaadin.addons:dramafinder` + `com.microsoft.playwright:playwright`.
+- Impact: a viable, low-cost durable E2E layer for grid/interaction verification that
+  avoids the MCP's stale-ref retries, large snapshot dumps, and shadow-DOM probing —
+  screenshots still readable so visual verification is preserved. Cost is operational:
+  pin/track the DramaFinder version yourself and keep the MCP for authoring new flows.
+- Suggested improvement: pin the skill's `api-reference.md` to the released jar
+  version (or have the skill resolve the installed version's API), and add a
+  documented form-stub login helper so DramaFinder tests don't each rediscover it.
+- Owner / next step: prototype kept as the seed of a DramaFinder E2E layer; decide
+  whether to grow it beyond `/users` before committing to the approach.
