@@ -5,6 +5,8 @@ import java.math.RoundingMode;
 import java.util.List;
 import java.util.Optional;
 
+import com.vaadin.expensemanager.base.DomainRuleException;
+
 import jakarta.annotation.security.RolesAllowed;
 
 import org.springframework.stereotype.Service;
@@ -117,10 +119,10 @@ public class AllowanceRateService {
     @Transactional
     public void addYear(int year) {
         if (domesticRepository.findByYear(year).isPresent()) {
-            throw new IllegalArgumentException("Year " + year + " already has allowance rates");
+            throw new DomainRuleException("Year " + year + " already has allowance rates");
         }
         int source = availableYears().stream().mapToInt(Integer::intValue).max()
-                .orElseThrow(() -> new IllegalArgumentException(
+                .orElseThrow(() -> new DomainRuleException(
                         "No existing year to copy rates from"));
 
         var domestic = domesticRepository.findByYear(source).orElseThrow();
@@ -146,7 +148,7 @@ public class AllowanceRateService {
         rate.setFullDayMinHours(requireHours(fullDayMinHours, "Full-day hours"));
         rate.setPartialDayMinHours(requireHours(partialDayMinHours, "Partial-day hours"));
         if (rate.getPartialDayMinHours() >= rate.getFullDayMinHours()) {
-            throw new IllegalArgumentException(
+            throw new DomainRuleException(
                     "Partial-day hours must be less than full-day hours");
         }
         return toDto(rate);
@@ -174,7 +176,7 @@ public class AllowanceRateService {
     public ForeignPerDiemDto addForeignPerDiem(int year, String country, BigDecimal amount) {
         var name = requireCountry(country);
         if (foreignRepository.findByYearAndCountryIgnoreCase(year, name).isPresent()) {
-            throw new IllegalArgumentException(
+            throw new DomainRuleException(
                     country.strip() + " already has a per-diem for " + year);
         }
         var rate = new ForeignPerDiemRate(year, name, normalizeMoney(amount, "Amount"));
@@ -210,7 +212,7 @@ public class AllowanceRateService {
     /** Money is stored at scale 2 (ADR-0010); reject null/negative. */
     private static BigDecimal normalizeMoney(BigDecimal value, String field) {
         if (value == null || value.signum() < 0) {
-            throw new IllegalArgumentException(field + " must be zero or positive");
+            throw new DomainRuleException(field + " must be zero or positive");
         }
         return value.setScale(2, RoundingMode.HALF_UP);
     }
@@ -218,21 +220,21 @@ public class AllowanceRateService {
     /** A per-km rate is stored at scale 3; reject null/negative. */
     private static BigDecimal normalizeRate(BigDecimal value) {
         if (value == null || value.signum() < 0) {
-            throw new IllegalArgumentException("Rate must be zero or positive");
+            throw new DomainRuleException("Rate must be zero or positive");
         }
         return value.setScale(3, RoundingMode.HALF_UP);
     }
 
     private static int requireHours(int hours, String field) {
         if (hours <= 0) {
-            throw new IllegalArgumentException(field + " must be positive");
+            throw new DomainRuleException(field + " must be positive");
         }
         return hours;
     }
 
     private static String requireCountry(String country) {
         if (country == null || country.isBlank()) {
-            throw new IllegalArgumentException("Country is required");
+            throw new DomainRuleException("Country is required");
         }
         return country.strip();
     }

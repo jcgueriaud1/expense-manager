@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.LocalDateTime;
 
 import com.vaadin.expensemanager.base.AuditedEntity;
+import com.vaadin.expensemanager.base.DomainRuleException;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -95,7 +96,7 @@ public class Travel extends AuditedEntity {
         this.departureAt = requireNonNull(spec.departureAt(), "Departure date & time");
         this.returnAt = requireNonNull(spec.returnAt(), "Return date & time");
         if (!returnAt.isAfter(departureAt)) {
-            throw new IllegalArgumentException("Return must be after the departure");
+            throw new DomainRuleException("Return must be after the departure");
         }
         this.destinations = requireText(spec.destinations(), "Destinations");
         this.purpose = requireText(spec.purpose(), "Travel purpose");
@@ -163,14 +164,14 @@ public class Travel extends AuditedEntity {
 
     private static <T> T requireNonNull(T value, String field) {
         if (value == null) {
-            throw new IllegalArgumentException(field + " is required");
+            throw new DomainRuleException(field + " is required");
         }
         return value;
     }
 
     private static String requireText(String value, String field) {
         if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(field + " is required");
+            throw new DomainRuleException(field + " is required");
         }
         return value.strip();
     }

@@ -3,6 +3,7 @@ package com.vaadin.expensemanager.user;
 import java.util.List;
 import java.util.Set;
 
+import com.vaadin.expensemanager.base.DomainRuleException;
 import com.vaadin.expensemanager.security.CurrentUserProvider;
 
 import jakarta.annotation.security.RolesAllowed;
@@ -85,11 +86,11 @@ public class UserAdminService {
         var user = load(userId);
         var demoting = role == Role.USER && user.getRoles().contains(Role.ADMIN);
         if (demoting && user.isEnabled() && !anotherEnabledAdminExists(userId)) {
-            throw new IllegalArgumentException(
+            throw new DomainRuleException(
                     "Cannot remove the last administrator's role");
         }
         if (demoting && isActingUser(userId)) {
-            throw new IllegalArgumentException(
+            throw new DomainRuleException(
                     "You cannot remove your own administrator role");
         }
         user.setRoles(role == Role.ADMIN ? Set.of(Role.ADMIN) : Set.of(Role.USER));
@@ -113,11 +114,11 @@ public class UserAdminService {
         var disabling = !enabled && user.isEnabled();
         if (disabling && user.getRoles().contains(Role.ADMIN)
                 && !anotherEnabledAdminExists(userId)) {
-            throw new IllegalArgumentException(
+            throw new DomainRuleException(
                     "Cannot disable the last administrator");
         }
         if (disabling && isActingUser(userId)) {
-            throw new IllegalArgumentException(
+            throw new DomainRuleException(
                     "You cannot disable your own account");
         }
         user.setEnabled(enabled);

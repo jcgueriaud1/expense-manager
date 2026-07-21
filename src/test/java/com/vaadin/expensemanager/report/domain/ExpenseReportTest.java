@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
+import com.vaadin.expensemanager.base.DomainRuleException;
 import com.vaadin.expensemanager.reference.ExpenseType;
 import com.vaadin.expensemanager.reference.VatRate;
 import com.vaadin.expensemanager.user.Role;
@@ -187,7 +188,7 @@ class ExpenseReportTest {
         var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
 
         assertThatThrownBy(() -> report.submit(OWNER, Instant.EPOCH))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(DomainRuleException.class)
                 .hasMessageContaining("at least one line");
         // Nothing changed: still an empty DRAFT with no history.
         assertThat(report.getStatus()).isEqualTo(ReportStatus.DRAFT);
@@ -391,7 +392,7 @@ class ExpenseReportTest {
         assertThat(report.getLines()).isEmpty();
 
         assertThatThrownBy(() -> report.resubmit(OWNER, Instant.EPOCH))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(DomainRuleException.class)
                 .hasMessageContaining("at least one line");
         // Nothing changed: still REJECTED with no spurious history entry.
         assertThat(report.getStatus()).isEqualTo(ReportStatus.REJECTED);

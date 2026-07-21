@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.vaadin.expensemanager.approval.service.ApprovalService;
+import com.vaadin.expensemanager.base.DomainRuleException;
 import com.vaadin.expensemanager.base.ui.ErrorSummary;
 import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.ReferenceDataService;
@@ -391,10 +392,8 @@ public class ReportDetailView extends VerticalLayout
                         travelReceipts));
                 Notification.show("Report saved.");
             }
-        } catch (ObjectOptimisticLockingFailureException stale) {
-            showConflict();
-        } catch (IllegalArgumentException | IllegalStateException invalid) {
-            errorSummary.show(invalid.getMessage());
+        } catch (RuntimeException ex) {
+            surface(ex);
         }
     }
 
@@ -482,10 +481,8 @@ public class ReportDetailView extends VerticalLayout
                     receipts, travelReceipts));
             Notification.show(rejected ? "Report resubmitted for approval."
                     : "Report submitted for approval.");
-        } catch (ObjectOptimisticLockingFailureException stale) {
-            showConflict();
-        } catch (IllegalArgumentException | IllegalStateException invalid) {
-            errorSummary.show(invalid.getMessage());
+        } catch (RuntimeException ex) {
+            surface(ex);
         }
     }
 
@@ -501,10 +498,8 @@ public class ReportDetailView extends VerticalLayout
         try {
             load(approvalService.approve(working.id(), working.version()));
             Notification.show("Report approved.");
-        } catch (ObjectOptimisticLockingFailureException stale) {
-            showConflict();
-        } catch (IllegalArgumentException | IllegalStateException invalid) {
-            errorSummary.show(invalid.getMessage());
+        } catch (RuntimeException ex) {
+            surface(ex);
         }
     }
 
@@ -563,12 +558,10 @@ public class ReportDetailView extends VerticalLayout
             dialog.close();
             load(updated);
             Notification.show("Report rejected.");
-        } catch (ObjectOptimisticLockingFailureException stale) {
+        } catch (RuntimeException ex) {
+            // The reject dialog always closes; the outcome then routes as usual.
             dialog.close();
-            showConflict();
-        } catch (IllegalArgumentException | IllegalStateException invalid) {
-            dialog.close();
-            errorSummary.show(invalid.getMessage());
+            surface(ex);
         }
     }
 
@@ -732,8 +725,8 @@ public class ReportDetailView extends VerticalLayout
             service.delete(working.id());
             Notification.show("Report deleted.");
             getUI().ifPresent(ui -> ui.navigate(MyReportsView.class));
-        } catch (IllegalStateException | IllegalArgumentException ex) {
-            errorSummary.show(ex.getMessage());
+        } catch (RuntimeException ex) {
+            surface(ex);
         }
     }
 
@@ -1256,6 +1249,26 @@ public class ReportDetailView extends VerticalLayout
 
     private void clearErrors() {
         errorSummary.clear();
+    }
+
+    /**
+     * Routes a failed action to its surface (issue #86): a user-actionable
+     * {@link DomainRuleException} to the top-of-form summary, an optimistic-lock
+     * conflict to the reload affordance (ADR-0011). Anything else is technical, so it
+     * is re-thrown and left to the global
+     * {@link com.vaadin.expensemanager.base.ui.UiErrorHandler}, which logs it and
+     * shows the generic error dialog rather than leaking it into the summary. This is
+     * the only form-local error routing the view needs — the technical rendering is
+     * no longer hand-wired here.
+     */
+    private void surface(RuntimeException error) {
+        if (error instanceof DomainRuleException) {
+            errorSummary.show(error.getMessage());
+        } else if (error instanceof ObjectOptimisticLockingFailureException) {
+            showConflict();
+        } else {
+            throw error;
+        }
     }
 
     /**

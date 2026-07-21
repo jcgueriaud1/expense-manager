@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
 
+import com.vaadin.expensemanager.base.DomainRuleException;
+
 import jakarta.annotation.security.RolesAllowed;
 
 import org.springframework.stereotype.Service;
@@ -174,7 +176,7 @@ public class ReferenceDataService {
 
     private static String requireName(String name) {
         if (name == null || name.isBlank()) {
-            throw new IllegalArgumentException("Name is required");
+            throw new DomainRuleException("Name is required");
         }
         return name.strip();
     }
@@ -182,7 +184,7 @@ public class ReferenceDataService {
     /** Percents are stored at scale 2 (ADR-0010 money/percent convention); reject negatives. */
     private static BigDecimal normalizePercent(BigDecimal value) {
         if (value == null || value.signum() < 0) {
-            throw new IllegalArgumentException("Rate must be zero or positive");
+            throw new DomainRuleException("Rate must be zero or positive");
         }
         return value.setScale(2, RoundingMode.HALF_UP);
     }

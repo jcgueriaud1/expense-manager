@@ -1,5 +1,6 @@
 package com.vaadin.expensemanager.base.ui;
 
+import com.vaadin.expensemanager.base.DomainRuleException;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
@@ -25,9 +26,11 @@ import com.vaadin.flow.data.binder.Binder;
  *
  * <p>On Save the bean is validated through the binder; on failure the summary
  * lists the messages and the dialog stays open. On success the {@code onSave}
- * action runs — if it throws {@link IllegalArgumentException} (a service-side
- * guard) its message shows in the same summary and the dialog stays open,
- * otherwise the dialog closes.
+ * action runs — if it throws a {@link DomainRuleException} (a user-actionable
+ * service guard) its message shows in the same summary and the dialog stays open.
+ * Any other failure is technical: it is left to propagate to the global
+ * {@link UiErrorHandler}, which logs it and shows the generic error dialog rather
+ * than leaking it into the summary (issue #86). Otherwise the dialog closes.
  *
  * @param <T> the form-bean type the binder writes to
  */
@@ -67,7 +70,9 @@ public class EditorDialog<T> extends Dialog {
             try {
                 onSave.run();
                 close();
-            } catch (IllegalArgumentException ex) {
+            } catch (DomainRuleException ex) {
+                // A user-actionable rule lands in the summary; the dialog stays open.
+                // Anything technical propagates to the global UiErrorHandler.
                 errorSummary.show(ex.getMessage());
             }
         } else {

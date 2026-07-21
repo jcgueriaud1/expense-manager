@@ -3,6 +3,7 @@ package com.vaadin.expensemanager.user.ui;
 import java.util.List;
 import java.util.Locale;
 
+import com.vaadin.expensemanager.base.DomainRuleException;
 import com.vaadin.expensemanager.base.ui.ErrorSummary;
 import com.vaadin.expensemanager.user.Role;
 import com.vaadin.expensemanager.user.UserAdminService;
@@ -155,7 +156,9 @@ public class UserManagementView extends VerticalLayout {
                 try {
                     applyChanges(user, model);
                     dialog.close();
-                } catch (IllegalArgumentException ex) {
+                } catch (DomainRuleException ex) {
+                    // A lockout rule lands in the summary; anything technical
+                    // propagates to the global UiErrorHandler.
                     errorSummary.show(ex.getMessage());
                 }
             } else {

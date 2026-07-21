@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.vaadin.expensemanager.base.AbstractIntegrationTest;
+import com.vaadin.expensemanager.base.DomainRuleException;
 import com.vaadin.expensemanager.report.domain.ExpenseLineSpec;
 import com.vaadin.expensemanager.report.domain.ExpenseReport;
 import com.vaadin.expensemanager.report.domain.GeneratedLineKind;
@@ -310,7 +311,7 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
         var loaded = service.findMine(id);
 
         assertThatThrownBy(() -> service.submit(id, loaded.version()))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(DomainRuleException.class)
                 .hasMessageContaining("at least one line");
         assertThat(service.findMine(id).status()).isEqualTo(ReportStatus.DRAFT);
     }
