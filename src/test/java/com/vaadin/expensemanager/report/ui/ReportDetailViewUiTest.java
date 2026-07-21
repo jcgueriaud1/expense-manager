@@ -11,8 +11,8 @@ import com.vaadin.expensemanager.user.LocalUserSeeder;
 import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.checkbox.Checkbox;
 import com.vaadin.flow.component.datepicker.DatePicker;
-import com.vaadin.flow.component.datetimepicker.DateTimePicker;
 import com.vaadin.flow.component.html.Image;
+import com.vaadin.flow.component.timepicker.TimePicker;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.test.context.support.WithUserDetails;
 
@@ -521,13 +521,25 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
 
     private static final LocalDateTime DEP = LocalDateTime.of(2026, 7, 1, 8, 0);
 
+    /** Fills the dialog's departure date + time from a {@link LocalDateTime}. */
+    private void setDeparture(LocalDateTime when) {
+        findDatePicker().withLabel("Departure date").setValue(when.toLocalDate());
+        findTimePicker().withLabel("Departure time").setValue(when.toLocalTime());
+    }
+
+    /** Fills the dialog's return date + time from a {@link LocalDateTime}. */
+    private void setReturn(LocalDateTime when) {
+        findDatePicker().withLabel("Return date").setValue(when.toLocalDate());
+        findTimePicker().withLabel("Return time").setValue(when.toLocalTime());
+    }
+
     @Test
     void insertingADomesticTripPreviewsGeneratesAndPersistsThePerDiem() {
         navigate(ReportDetailView.class);
 
         findButton().withText("Insert travel info").click();
-        findDateTimePicker().withLabel("Departure").setValue(DEP);
-        findDateTimePicker().withLabel("Return").setValue(DEP.plusHours(11));
+        setDeparture(DEP);
+        setReturn(DEP.plusHours(11));
         findComboBox(String.class).withLabel("Destination country")
                 .selectItem("Finland (domestic)");
         findTextField().withLabel("Destinations").setValue("Helsinki");
@@ -562,8 +574,8 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         navigate(ReportDetailView.class);
 
         findButton().withText("Insert travel info").click();
-        findDateTimePicker().withLabel("Departure").setValue(DEP);
-        findDateTimePicker().withLabel("Return").setValue(DEP.plusHours(11));
+        setDeparture(DEP);
+        setReturn(DEP.plusHours(11));
         // The picker lists the seeded foreign countries alongside Finland; pick one.
         var country = findComboBox(String.class).withLabel("Destination country");
         assertThat(country.getSuggestions())
@@ -593,8 +605,8 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         navigate(ReportDetailView.class);
 
         findButton().withText("Insert travel info").click();
-        findDateTimePicker().withLabel("Departure").setValue(DEP);
-        findDateTimePicker().withLabel("Return").setValue(DEP.plusHours(11));
+        setDeparture(DEP);
+        setReturn(DEP.plusHours(11));
         findTextField().withLabel("Destinations").setValue("Helsinki");
         findTextField().withLabel("Travel purpose").setValue("Client visit");
         // Country left unchosen: Save surfaces a clear message and generates nothing.
@@ -611,8 +623,8 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         navigate(ReportDetailView.class);
 
         findButton().withText("Insert travel info").click();
-        findDateTimePicker().withLabel("Departure").setValue(DEP);
-        findDateTimePicker().withLabel("Return").setValue(DEP.plusHours(11));
+        setDeparture(DEP);
+        setReturn(DEP.plusHours(11));
         findComboBox(String.class).withLabel("Destination country")
                 .selectItem("Finland (domestic)");
         findTextField().withLabel("Destinations").setValue("Helsinki");
@@ -807,17 +819,16 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         navigate(ReportDetailView.class);
 
         findButton().withText("Insert travel info").click();
-        findDateTimePicker().withLabel("Departure").setValue(DEP);
-        findDateTimePicker().withLabel("Return").setValue(DEP.plusHours(11));
+        setDeparture(DEP);
+        setReturn(DEP.plusHours(11));
 
-        // The overlay can no longer offer an invalid range: the return can't go
-        // before the departure, nor the departure after the return.
-        var ret = (DateTimePicker) findDateTimePicker().withLabel("Return")
+        // The date overlays can no longer offer an invalid range: the return day
+        // can't go before the departure day, nor the departure after the return.
+        var ret = (DatePicker) findDatePicker().withLabel("Return date").getComponent();
+        var dep = (DatePicker) findDatePicker().withLabel("Departure date")
                 .getComponent();
-        var dep = (DateTimePicker) findDateTimePicker().withLabel("Departure")
-                .getComponent();
-        assertThat(ret.getMin()).isEqualTo(DEP);
-        assertThat(dep.getMax()).isEqualTo(DEP.plusHours(11));
+        assertThat(ret.getMin()).isEqualTo(DEP.toLocalDate());
+        assertThat(dep.getMax()).isEqualTo(DEP.plusHours(11).toLocalDate());
     }
 
     @Test
@@ -834,29 +845,87 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
 
         // The dialog overlay carries the reasons and stays open; nothing generated.
         assertThat(UI.getCurrent().getElement().getTextRecursively()).contains(
-                "Departure date & time is required", "Destinations are required");
+                "Departure date is required", "Destinations are required");
         assertThat(findButton().withText("Save trip").exists()).isTrue();
         assertThat(findSpan().withText("Per diem allowance").exists()).isFalse();
     }
 
     @Test
-    void travelPickersCarryIncompleteAndBadInputErrorMessages() {
-        // Issue #85: entering only the date (not the time) in a departure/return
-        // picker makes it invalid; without the incomplete-input message that error
-        // reached the summary blank. The tester can't produce partial input, so we
-        // assert the messages that prevent a blank error are configured.
+    void travelDatePickersCarryABadInputErrorMessage() {
+        // Issue #85: typing an unparseable date/time makes a picker invalid; without a
+        // bad-input message that error reaches the summary blank. The tester can't type
+        // an unparseable value, so we assert the messages are configured on each field.
         navigate(ReportDetailView.class);
         findButton().withText("Insert travel info").click();
 
-        for (String label : new String[] { "Departure", "Return" }) {
-            var picker = (DateTimePicker) findDateTimePicker().withLabel(label)
-                    .getComponent();
+        for (String label : new String[] { "Departure date", "Return date" }) {
+            var picker = (DatePicker) findDatePicker().withLabel(label).getComponent();
             assertThat(picker.getI18n()).as(label + " i18n").isNotNull();
-            assertThat(picker.getI18n().getIncompleteInputErrorMessage())
-                    .as(label + " incomplete-input message").isNotBlank();
             assertThat(picker.getI18n().getBadInputErrorMessage())
                     .as(label + " bad-input message").isNotBlank();
         }
+        for (String label : new String[] { "Departure time", "Return time" }) {
+            var picker = (TimePicker) findTimePicker().withLabel(label).getComponent();
+            assertThat(picker.getI18n()).as(label + " i18n").isNotNull();
+            assertThat(picker.getI18n().getBadInputErrorMessage())
+                    .as(label + " bad-input message").isNotBlank();
+        }
+    }
+
+    // --- Optional time + departure-date auto-fills return (issue #94) ---
+
+    @Test
+    void aTripWithNoTimesEnteredDefaultsBothToMidnight() {
+        // The time is optional: entering only the dates leaves the times empty, and
+        // an empty time means 00:00 — so a date-only trip saves and its stored
+        // departure/return carry midnight, not a validation error (issue #94).
+        navigate(ReportDetailView.class);
+
+        findButton().withText("Insert travel info").click();
+        // Dates only — the two time fields are left untouched.
+        findDatePicker().withLabel("Departure date").setValue(LocalDate.of(2026, 7, 1));
+        findDatePicker().withLabel("Return date").setValue(LocalDate.of(2026, 7, 2));
+        findComboBox(String.class).withLabel("Destination country")
+                .selectItem("Finland (domestic)");
+        findTextField().withLabel("Destinations").setValue("Helsinki");
+        findTextField().withLabel("Travel purpose").setValue("Client visit");
+
+        findButton().withText("Save trip").click();
+        findButton().withText("Save").click();
+
+        var loaded = service.findMine(service.listMine().getFirst().id());
+        assertThat(loaded.travels()).hasSize(1);
+        var trip = loaded.travels().getFirst();
+        assertThat(trip.departureAt()).isEqualTo(LocalDateTime.of(2026, 7, 1, 0, 0));
+        assertThat(trip.returnAt()).isEqualTo(LocalDateTime.of(2026, 7, 2, 0, 0));
+    }
+
+    @Test
+    void choosingADepartureDateFillsAnEmptyReturnDateToMatch() {
+        navigate(ReportDetailView.class);
+
+        findButton().withText("Insert travel info").click();
+        // The return date starts empty; picking a departure date fills it to match.
+        findDatePicker().withLabel("Departure date").setValue(LocalDate.of(2026, 7, 1));
+
+        var returnDate = (DatePicker) findDatePicker().withLabel("Return date")
+                .getComponent();
+        assertThat(returnDate.getValue()).isEqualTo(LocalDate.of(2026, 7, 1));
+    }
+
+    @Test
+    void choosingADepartureDateDoesNotOverwriteAnAlreadySetReturnDate() {
+        navigate(ReportDetailView.class);
+
+        findButton().withText("Insert travel info").click();
+        // Return chosen first: a later departure-date pick must leave it untouched
+        // (the auto-fill only helps when the return is still empty, issue #94).
+        findDatePicker().withLabel("Return date").setValue(LocalDate.of(2026, 7, 5));
+        findDatePicker().withLabel("Departure date").setValue(LocalDate.of(2026, 7, 1));
+
+        var returnDate = (DatePicker) findDatePicker().withLabel("Return date")
+                .getComponent();
+        assertThat(returnDate.getValue()).isEqualTo(LocalDate.of(2026, 7, 5));
     }
 
     @Test

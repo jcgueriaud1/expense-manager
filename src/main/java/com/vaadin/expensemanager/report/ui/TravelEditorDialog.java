@@ -2,12 +2,15 @@ package com.vaadin.expensemanager.report.ui;
 
 import java.math.BigDecimal;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.Year;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 
 import com.vaadin.expensemanager.base.ui.ErrorSummary;
@@ -17,9 +20,11 @@ import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.checkbox.Checkbox;
 import com.vaadin.flow.component.combobox.ComboBox;
-import com.vaadin.flow.component.datetimepicker.DateTimePicker;
-import com.vaadin.flow.component.datetimepicker.DateTimePicker.DateTimePickerI18n;
+import com.vaadin.flow.component.datepicker.DatePicker;
+import com.vaadin.flow.component.datepicker.DatePicker.DatePickerI18n;
 import com.vaadin.flow.component.dialog.Dialog;
+import com.vaadin.flow.component.timepicker.TimePicker;
+import com.vaadin.flow.component.timepicker.TimePicker.TimePickerI18n;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.Span;
@@ -39,6 +44,13 @@ import static com.vaadin.expensemanager.report.ui.ReportViewSupport.generatedLin
  * charge-to-customer flags), then previews the Finnish domestic per-diem the app
  * computes server-side on <em>Continue</em> and commits the trip on <em>Save</em>.
  * The client sends only inputs — the money is always the server's (ADR-0006).
+ *
+ * <p>Each of departure and return is a <strong>required date</strong> plus an
+ * <strong>optional time</strong> (issue #94): a {@link DatePicker} paired with a
+ * {@link TimePicker}, since {@link com.vaadin.flow.component.datetimepicker.DateTimePicker}
+ * treats a date without a time as incomplete and cannot leave the time blank. An
+ * empty time means midnight (00:00), and choosing a departure date for the first
+ * time (while the return date is empty) fills the return date to match it.
  *
  * <p>Validation follows the project rule (ADR-0020): both actions stay
  * <strong>always enabled</strong>; a missing field or invalid trip (e.g. a return
@@ -81,22 +93,48 @@ final class TravelEditorDialog extends Dialog {
         setWidth("32rem");
         addClassName("travel-dialog");
 
-        var departure = new DateTimePicker("Departure");
-        departure.setStep(Duration.ofMinutes(15));
-        departure.setRequiredIndicatorVisible(true);
-        departure.setI18n(dateTimeErrorMessages());
-        var returnAt = new DateTimePicker("Return");
-        returnAt.setStep(Duration.ofMinutes(15));
-        returnAt.setRequiredIndicatorVisible(true);
-        returnAt.setI18n(dateTimeErrorMessages());
+        // Departure / return are each a required date + an optional time (issue #94):
+        // DateTimePicker rejects a date without a time (its incomplete-input
+        // constraint is non-configurable), so a DatePicker + TimePicker pair is what
+        // lets the time be left blank. Only the date carries the required indicator.
+        var departureDate = new DatePicker("Departure date");
+        departureDate.setRequiredIndicatorVisible(true);
+        departureDate.setI18n(dateErrorMessages());
+        var departureTime = new TimePicker("Departure time");
+        departureTime.setStep(Duration.ofMinutes(15));
+        departureTime.setPlaceholder("00:00");
+        departureTime.setI18n(timeErrorMessages());
+        var returnDate = new DatePicker("Return date");
+        returnDate.setRequiredIndicatorVisible(true);
+        returnDate.setI18n(dateErrorMessages());
+        var returnTime = new TimePicker("Return time");
+        returnTime.setStep(Duration.ofMinutes(15));
+        returnTime.setPlaceholder("00:00");
+        returnTime.setI18n(timeErrorMessages());
 
-        // Keep the range valid from the pickers themselves: once a departure is
-        // chosen the return overlay can't go earlier than it, and vice versa — so
+        // The composed departure / return the preview and DTO are built from: a date
+        // with its time, or midnight when the time is left blank (issue #94).
+        Supplier<LocalDateTime> departureAt =
+                () -> combine(departureDate.getValue(), departureTime.getValue());
+        Supplier<LocalDateTime> returnAt =
+                () -> combine(returnDate.getValue(), returnTime.getValue());
+
+        // Keep the range valid from the date pickers themselves: once a departure
+        // date is chosen the return can't go to an earlier day, and vice versa — so
         // the "Return must be after the departure" error only ever appears if the
-        // user types an invalid date/time by hand (the overlay can't produce one).
-        // Registered before readBean so an edited trip's values initialise them.
-        departure.addValueChangeListener(event -> returnAt.setMin(event.getValue()));
-        returnAt.addValueChangeListener(event -> departure.setMax(event.getValue()));
+        // user picks the same day with an earlier return time (the return-before-
+        // departure guard lives at the domain/service layers). Registered before
+        // readBean so an edited trip's values initialise them.
+        departureDate.addValueChangeListener(event -> returnDate.setMin(event.getValue()));
+        returnDate.addValueChangeListener(event -> departureDate.setMax(event.getValue()));
+        // Choosing a departure date for the first time fills the return date to match
+        // it (issue #94): only when the return date is still empty, so it never
+        // overwrites a return the user has already set.
+        departureDate.addValueChangeListener(event -> {
+            if (event.getValue() != null && returnDate.isEmpty()) {
+                returnDate.setValue(event.getValue());
+            }
+        });
 
         // Destination country: Finland (domestic) + every country with a foreign
         // rate for the trip's year. The list depends on the departure year, so it is
@@ -109,8 +147,8 @@ final class TravelEditorDialog extends Dialog {
         Runnable refreshCountries = () -> {
             // Prefer the field, fall back to the model's departure (so the initial
             // population before readBean uses an edited trip's year), else this year.
-            LocalDateTime departureFor = departure.getValue() != null
-                    ? departure.getValue() : model.getDepartureAt();
+            LocalDateTime departureFor = departureAt.get() != null
+                    ? departureAt.get() : model.getDepartureAt();
             int year = departureFor != null
                     ? departureFor.getYear() : Year.now().getValue();
             List<String> items = new ArrayList<>();
@@ -153,18 +191,20 @@ final class TravelEditorDialog extends Dialog {
         // both dates are set; while incomplete or invalid the preview simply hides
         // (Save still surfaces any reason). Registered before readBean so an edited
         // trip previews immediately on open.
-        Runnable recompute = () -> refreshPreview(departure.getValue(),
-                returnAt.getValue(), country.getValue(), destinations.getValue(),
+        Runnable recompute = () -> refreshPreview(departureAt.get(),
+                returnAt.get(), country.getValue(), destinations.getValue(),
                 purpose.getValue(), notEligible.getValue(), freeLunch.getValue(),
                 chargeToCustomer.getValue(), kilometres.getValue(), payMeal.getValue(),
                 parkingFees.getValue());
         // The available countries depend on the departure year, so refresh them
         // first, then recompute the preview (which reads the country).
-        departure.addValueChangeListener(event -> {
+        departureDate.addValueChangeListener(event -> {
             refreshCountries.run();
             recompute.run();
         });
-        returnAt.addValueChangeListener(event -> recompute.run());
+        departureTime.addValueChangeListener(event -> recompute.run());
+        returnDate.addValueChangeListener(event -> recompute.run());
+        returnTime.addValueChangeListener(event -> recompute.run());
         country.addValueChangeListener(event -> recompute.run());
         // Domain coupling (issue #93): a meal allowance (ateriakorvaus) is paid
         // only when no per-diem applies, and the free-meal reduction exists only to
@@ -196,12 +236,18 @@ final class TravelEditorDialog extends Dialog {
         kilometres.addValueChangeListener(event -> recompute.run());
         parkingFees.addValueChangeListener(event -> recompute.run());
 
-        binder.forField(departure)
-                .asRequired("Departure date & time is required")
-                .bind(TravelFormModel::getDepartureAt, TravelFormModel::setDepartureAt);
-        binder.forField(returnAt)
-                .asRequired("Return date & time is required")
-                .bind(TravelFormModel::getReturnAt, TravelFormModel::setReturnAt);
+        // Only the dates are required; the times are optional (empty → 00:00, the
+        // midnight default lives in the model's composed getters, issue #94).
+        binder.forField(departureDate)
+                .asRequired("Departure date is required")
+                .bind(TravelFormModel::getDepartureDate, TravelFormModel::setDepartureDate);
+        binder.forField(departureTime)
+                .bind(TravelFormModel::getDepartureTime, TravelFormModel::setDepartureTime);
+        binder.forField(returnDate)
+                .asRequired("Return date is required")
+                .bind(TravelFormModel::getReturnDate, TravelFormModel::setReturnDate);
+        binder.forField(returnTime)
+                .bind(TravelFormModel::getReturnTime, TravelFormModel::setReturnTime);
         binder.forField(country)
                 .asRequired("Destination country is required")
                 .bind(TravelFormModel::getCountry, TravelFormModel::setCountry);
@@ -242,9 +288,11 @@ final class TravelEditorDialog extends Dialog {
         refreshCountries.run();
         binder.readBean(model);
 
-        var form = new FormLayout(departure, returnAt, country, destinations, purpose,
-                kilometres, parkingFees, notEligible, freeLunch, payMeal,
-                chargeToCustomer);
+        // Two columns: departure date | time on one row, return date | time on the
+        // next, then the wide fields span both.
+        var form = new FormLayout(departureDate, departureTime, returnDate, returnTime,
+                country, destinations, purpose, kilometres, parkingFees, notEligible,
+                freeLunch, payMeal, chargeToCustomer);
         form.setResponsiveSteps(new FormLayout.ResponsiveStep("0", 1),
                 new FormLayout.ResponsiveStep("24rem", 2));
         form.setColspan(country, 2);
@@ -358,18 +406,30 @@ final class TravelEditorDialog extends Dialog {
         }
     }
 
+    /** A date + optional time as a {@link LocalDateTime}; empty time → midnight. */
+    private static LocalDateTime combine(LocalDate date, LocalTime time) {
+        return date == null ? null
+                : LocalDateTime.of(date, time == null ? LocalTime.MIDNIGHT : time);
+    }
+
     /**
-     * Error messages for a departure/return picker's non-configurable input
-     * constraints. Without these the field goes invalid with a <em>blank</em> message
-     * when the user enters only the date and not the time (V25 treats that partial
-     * input as invalid) or types an unparseable value — which surfaced as an empty
-     * bullet in the error summary (issue #85). The required-field message stays with
-     * the binder's {@code asRequired}.
+     * Bad-input message for a departure/return <em>date</em> picker. Without it the
+     * field goes invalid with a <em>blank</em> message when the user types an
+     * unparseable value — which surfaced as an empty bullet in the error summary
+     * (issue #85). The required-field message stays with the binder's
+     * {@code asRequired}.
      */
-    private static DateTimePickerI18n dateTimeErrorMessages() {
-        return new DateTimePickerI18n()
-                .setIncompleteInputErrorMessage("Enter both a date and a time")
-                .setBadInputErrorMessage("Enter a valid date and time");
+    private static DatePickerI18n dateErrorMessages() {
+        return new DatePickerI18n().setBadInputErrorMessage("Enter a valid date");
+    }
+
+    /**
+     * Bad-input message for a departure/return <em>time</em> picker (the time is
+     * optional, issue #94, so there is no required message). Without it an
+     * unparseable time would reach the error summary as an empty bullet (issue #85).
+     */
+    private static TimePickerI18n timeErrorMessages() {
+        return new TimePickerI18n().setBadInputErrorMessage("Enter a valid time");
     }
 
     /** Blank a zero amount so an untouched money field shows empty, not "0.00". */
