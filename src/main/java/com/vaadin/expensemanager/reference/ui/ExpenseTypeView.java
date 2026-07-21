@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.vaadin.expensemanager.base.ui.EditorDialog;
-import com.vaadin.expensemanager.base.ui.FormErrorHandler;
 import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.ReferenceDataService;
 import com.vaadin.expensemanager.reference.VatRateDto;
@@ -47,9 +46,8 @@ import static com.vaadin.expensemanager.reference.ui.ReferenceViewSupport.format
 public class ExpenseTypeView extends ReferenceConfigView<ExpenseTypeDto> {
 
     private final transient ReferenceDataService service;
-    private final transient FormErrorHandler errorHandler;
 
-    public ExpenseTypeView(ReferenceDataService service, FormErrorHandler errorHandler) {
+    public ExpenseTypeView(ReferenceDataService service) {
         super("Expense types",
                 "The expense types a line is classified as, each with a default "
                         + "VAT rate a new line pre-fills. Deactivating a type hides "
@@ -57,7 +55,6 @@ public class ExpenseTypeView extends ReferenceConfigView<ExpenseTypeDto> {
                         + "is deleted.",
                 "Add expense type");
         this.service = service;
-        this.errorHandler = errorHandler;
 
         grid.addColumn(ExpenseTypeDto::name)
                 .setHeader("Name").setAutoWidth(true).setFlexGrow(1);
@@ -131,7 +128,7 @@ public class ExpenseTypeView extends ReferenceConfigView<ExpenseTypeDto> {
         form.setSpacing(false);
 
         new EditorDialog<>(existing == null ? "Add expense type" : "Edit expense type",
-                form, binder, model, errorHandler)
+                form, binder, model)
                 .onSave(() -> {
                     Long rateId = model.getDefaultVatRate().id();
                     if (existing == null) {

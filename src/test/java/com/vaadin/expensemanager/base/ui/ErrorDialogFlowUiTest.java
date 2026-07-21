@@ -8,6 +8,8 @@ import com.vaadin.flow.component.HasText;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.data.binder.Binder;
+import com.vaadin.flow.server.ErrorEvent;
+import com.vaadin.flow.server.VaadinSession;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -20,14 +22,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Browserless end-to-end test (pyramid layer 3, ADR-0012) for the shared error
- * routing (issue #86), driven through the real {@link EditorDialog} + the real
- * {@link FormErrorHandler} Spring bean.
+ * routing (issue #86).
  *
- * <p>Proves the acceptance split live, in a real UI: a save action that fails with a
- * <em>technical</em> error opens the generic {@link ErrorDialog} and leaves the
- * form's error summary hidden (the raw cause never reaches the user under the
- * non-local {@code test} profile), while a {@link DomainRuleException} lands its
- * message in the summary and opens no dialog.
+ * <p>Two halves of the acceptance split:
+ * <ul>
+ *   <li><strong>Technical</strong> — the global {@link UiErrorHandler} is installed as
+ *       the session's error handler (so any uncaught action failure reaches it in
+ *       production), and when it handles an error it opens the generic
+ *       {@link ErrorDialog} showing only the reassuring message, never the raw cause
+ *       under the non-local {@code test} profile. (The browserless harness rethrows an
+ *       uncaught listener exception to the test rather than routing it through the
+ *       session handler, so the handler is exercised directly; the production route
+ *       Vaadin → session handler is verified by hand — see docs/manual-verification.)</li>
+ *   <li><strong>Domain rule</strong> — a {@link DomainRuleException} from a save is
+ *       caught locally by the {@link EditorDialog} and lands in the form's summary,
+ *       opening no dialog.</li>
+ * </ul>
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -43,30 +53,40 @@ class ErrorDialogFlowUiTest extends SpringBrowserlessTest {
     }
 
     @Autowired
-    private FormErrorHandler errorHandler;
+    private UiErrorHandler errorHandler;
 
     @Test
-    void aTechnicalFailureOpensTheDialogAndLeavesTheSummaryHidden() {
+    void theGlobalHandlerIsInstalledAsTheSessionErrorHandler() {
         navigate(DashboardView.class);
-        openEditorWhoseSaveThrows(new IllegalStateException("stack trace guts"));
 
-        clickSave();
+        // The VaadinServiceInitListener wired it onto the session, so any uncaught
+        // action failure is routed here in production (issue #86).
+        assertThat(VaadinSession.getCurrent().getErrorHandler())
+                .isInstanceOf(UiErrorHandler.class);
+    }
 
-        // The generic dialog is up, showing the reassuring message but never the raw
-        // cause (test != local profile).
+    @Test
+    void aTechnicalErrorOpensTheGenericDialogWithoutTheCause() {
+        navigate(DashboardView.class);
+
+        errorHandler.error(new ErrorEvent(new IllegalStateException("stack trace guts")));
+
         var dialogs = $(ErrorDialog.class).all();
         assertThat(dialogs).hasSize(1);
         String dialogText = textOf(dialogs.getFirst());
         assertThat(dialogText).contains(ErrorDialog.MESSAGE);
         assertThat(dialogText).doesNotContain("stack trace guts");
-        // The form's own summary stays hidden — the failure did not leak into it.
-        assertThat($(ErrorSummary.class).all()).noneMatch(Component::isVisible);
     }
 
     @Test
     void aDomainRuleLandsInTheSummaryAndOpensNoDialog() {
         navigate(DashboardView.class);
-        openEditorWhoseSaveThrows(new DomainRuleException("Name is required"));
+        new EditorDialog<>("Editor", new TextField("Name"),
+                new Binder<>(Object.class), new Object())
+                .onSave(() -> {
+                    throw new DomainRuleException("Name is required");
+                })
+                .open();
 
         clickSave();
 
@@ -75,16 +95,6 @@ class ErrorDialogFlowUiTest extends SpringBrowserlessTest {
         var summaries = $(ErrorSummary.class).all();
         assertThat(summaries).anyMatch(summary ->
                 summary.isVisible() && textOf(summary).contains("Name is required"));
-    }
-
-    /** Opens a minimal, always-valid editor whose Save action throws {@code failure}. */
-    private void openEditorWhoseSaveThrows(RuntimeException failure) {
-        new EditorDialog<>("Editor", new TextField("Name"),
-                new Binder<>(Object.class), new Object(), errorHandler)
-                .onSave(() -> {
-                    throw failure;
-                })
-                .open();
     }
 
     private void clickSave() {

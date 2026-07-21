@@ -3,8 +3,8 @@ package com.vaadin.expensemanager.user.ui;
 import java.util.List;
 import java.util.Locale;
 
+import com.vaadin.expensemanager.base.DomainRuleException;
 import com.vaadin.expensemanager.base.ui.ErrorSummary;
-import com.vaadin.expensemanager.base.ui.FormErrorHandler;
 import com.vaadin.expensemanager.user.Role;
 import com.vaadin.expensemanager.user.UserAdminService;
 import com.vaadin.expensemanager.user.UserSummaryDto;
@@ -66,7 +66,6 @@ public class UserManagementView extends VerticalLayout {
     private static final String REVOKED = "Revoked";
 
     private final transient UserAdminService service;
-    private final transient FormErrorHandler errorHandler;
     private final Grid<UserSummaryDto> grid = new Grid<>();
 
     private final TextField search = new TextField();
@@ -75,9 +74,8 @@ public class UserManagementView extends VerticalLayout {
 
     private List<UserSummaryDto> users = List.of();
 
-    public UserManagementView(UserAdminService service, FormErrorHandler errorHandler) {
+    public UserManagementView(UserAdminService service) {
         this.service = service;
-        this.errorHandler = errorHandler;
         setPadding(true);
         setSpacing(true);
 
@@ -158,8 +156,10 @@ public class UserManagementView extends VerticalLayout {
                 try {
                     applyChanges(user, model);
                     dialog.close();
-                } catch (RuntimeException ex) {
-                    errorHandler.handle(ex, errorSummary::show);
+                } catch (DomainRuleException ex) {
+                    // A lockout rule lands in the summary; anything technical
+                    // propagates to the global UiErrorHandler.
+                    errorSummary.show(ex.getMessage());
                 }
             } else {
                 errorSummary.showValidationErrors(binder.validate());

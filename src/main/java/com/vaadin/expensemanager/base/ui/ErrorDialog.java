@@ -10,8 +10,9 @@ import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 /**
  * The shared modal for a <strong>technical error</strong> (issue #86): an
  * unexpected failure the user cannot act on. It shows only a reassuring, generic
- * message — the real cause is logged server-side by {@link FormErrorHandler} and
- * never shown — with one exception: under the local (developer) profile the
+ * message — the real cause is logged server-side by the global
+ * {@link UiErrorHandler} and never shown — with one exception: under the local
+ * (developer) profile the
  * underlying detail is appended so a developer sees what broke without tailing the
  * log.
  *

@@ -10,10 +10,11 @@ package com.vaadin.expensemanager.base;
  * <p>It extends {@link IllegalArgumentException} deliberately: the domain and
  * services already model "bad input" as an {@code IllegalArgumentException}, and so
  * do their tests, so keeping that supertype preserves every existing type contract.
- * The UI's {@link com.vaadin.expensemanager.base.ui.FormErrorHandler} catches this
- * <em>before</em> the plain {@code IllegalArgumentException}/{@code IllegalStateException}
- * technical bucket, routing its message to the summary while the un-marked
- * exceptions fall through to a generic, logged error dialog.
+ * The editors catch this <em>specifically</em> — before the plain
+ * {@code IllegalArgumentException}/{@code IllegalStateException} technical bucket —
+ * to route its message to their error summary, while the un-marked exceptions fall
+ * through uncaught to the global {@link com.vaadin.expensemanager.base.ui.UiErrorHandler},
+ * which logs them and shows a generic error dialog.
  */
 public class DomainRuleException extends IllegalArgumentException {
 

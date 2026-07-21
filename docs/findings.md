@@ -1732,7 +1732,7 @@ Deployment/Observability · UX-spec
 - Workaround used: none needed for the product — the error originates in the
   **dev-mode toolbar**, absent in staging/prod builds; the second attempt worked and
   the browserless `ErrorDialogFlowUiTest` confirms the attach behaviour headlessly.
-- Evidence: `base/ui/ErrorDialog.java` / `base/ui/FormErrorHandler.java`; console
+- Evidence: `base/ui/ErrorDialog.java` / `base/ui/UiErrorHandler.java`; console
   `promoteToolbar (…indexhtml-*.js) → overlayListener`; server log "Technical error
   surfaced to the user as a generic dialog" fired on the first (non-rendering) try.
 - Impact: only a dev-mode flake — a dialog opened over an existing modal can silently

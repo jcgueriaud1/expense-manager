@@ -10,8 +10,8 @@ import java.util.function.Consumer;
 import java.util.function.IntFunction;
 import java.util.function.UnaryOperator;
 
+import com.vaadin.expensemanager.base.DomainRuleException;
 import com.vaadin.expensemanager.base.ui.ErrorSummary;
-import com.vaadin.expensemanager.base.ui.FormErrorHandler;
 import com.vaadin.expensemanager.report.service.GeneratedLineView;
 import com.vaadin.expensemanager.report.service.TravelDto;
 import com.vaadin.flow.component.button.Button;
@@ -64,7 +64,6 @@ final class TravelEditorDialog extends Dialog {
 
     private final TravelDto existing;
     private final UnaryOperator<TravelDto> costPreview;
-    private final transient FormErrorHandler errorHandler;
 
     /**
      * @param existing               the trip being edited, or {@code null} to add one
@@ -78,10 +77,9 @@ final class TravelEditorDialog extends Dialog {
      */
     TravelEditorDialog(TravelDto existing, UnaryOperator<TravelDto> costPreview,
             IntFunction<List<String>> foreignCountriesForYear,
-            Consumer<TravelDto> onSave, FormErrorHandler errorHandler) {
+            Consumer<TravelDto> onSave) {
         this.existing = existing;
         this.costPreview = costPreview;
-        this.errorHandler = errorHandler;
         setHeaderTitle(existing == null ? "Insert travel info" : "Edit trip");
         setWidth("32rem");
         addClassName("travel-dialog");
@@ -320,12 +318,12 @@ final class TravelEditorDialog extends Dialog {
                 model.isPayMealAllowance(), model.getParkingFees());
         try {
             return costPreview.apply(input);
-        } catch (RuntimeException ex) {
+        } catch (DomainRuleException ex) {
             // An invalid trip (a domain rule — e.g. return before departure) lands in
-            // the summary; a technical failure (e.g. no rate configured for the year)
-            // is logged and shown as the generic error dialog instead (issue #86).
+            // the summary. A technical failure (e.g. no rate configured for the year)
+            // propagates to the global UiErrorHandler as the generic dialog (issue #86).
             preview.setVisible(false);
-            errorHandler.handle(ex, errorSummary::show);
+            errorSummary.show(ex.getMessage());
             return null;
         }
     }

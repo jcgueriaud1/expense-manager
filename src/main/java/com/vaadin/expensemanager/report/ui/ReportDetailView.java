@@ -9,8 +9,8 @@ import java.util.List;
 import java.util.Map;
 
 import com.vaadin.expensemanager.approval.service.ApprovalService;
+import com.vaadin.expensemanager.base.DomainRuleException;
 import com.vaadin.expensemanager.base.ui.ErrorSummary;
-import com.vaadin.expensemanager.base.ui.FormErrorHandler;
 import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.ReferenceDataService;
 import com.vaadin.expensemanager.reference.VatRateDto;
@@ -54,6 +54,8 @@ import com.vaadin.flow.signals.local.ListSignal;
 import com.vaadin.flow.signals.local.ValueSignal;
 
 import jakarta.annotation.security.PermitAll;
+
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 
 import static com.vaadin.expensemanager.report.ui.ReportViewSupport.formatEur;
 import static com.vaadin.expensemanager.report.ui.ReportViewSupport.formatPercent;
@@ -125,7 +127,6 @@ public class ReportDetailView extends VerticalLayout
     private final transient ReferenceDataService referenceData;
     private final transient ApprovalService approvalService;
     private final transient CurrentUserProvider currentUserProvider;
-    private final transient FormErrorHandler errorHandler;
 
     private final ErrorSummary errorSummary = new ErrorSummary();
     /** Holds the freshly-built status badge; repopulated on each (re)load. */
@@ -200,12 +201,11 @@ public class ReportDetailView extends VerticalLayout
 
     public ReportDetailView(ExpenseReportService service,
             ReferenceDataService referenceData, ApprovalService approvalService,
-            CurrentUserProvider currentUserProvider, FormErrorHandler errorHandler) {
+            CurrentUserProvider currentUserProvider) {
         this.service = service;
         this.referenceData = referenceData;
         this.approvalService = approvalService;
         this.currentUserProvider = currentUserProvider;
-        this.errorHandler = errorHandler;
         setPadding(true);
         setSpacing(true);
         setMaxWidth("46rem");
@@ -393,10 +393,7 @@ public class ReportDetailView extends VerticalLayout
                 Notification.show("Report saved.");
             }
         } catch (RuntimeException ex) {
-            // One shared classify-and-render (issue #86): a conflict reloads, a
-            // domain-rule message lands in the summary, anything technical is logged
-            // and shown as the generic error dialog.
-            errorHandler.handle(ex, errorSummary::show, this::showConflict);
+            surface(ex);
         }
     }
 
@@ -485,10 +482,7 @@ public class ReportDetailView extends VerticalLayout
             Notification.show(rejected ? "Report resubmitted for approval."
                     : "Report submitted for approval.");
         } catch (RuntimeException ex) {
-            // One shared classify-and-render (issue #86): a conflict reloads, a
-            // domain-rule message lands in the summary, anything technical is logged
-            // and shown as the generic error dialog.
-            errorHandler.handle(ex, errorSummary::show, this::showConflict);
+            surface(ex);
         }
     }
 
@@ -505,10 +499,7 @@ public class ReportDetailView extends VerticalLayout
             load(approvalService.approve(working.id(), working.version()));
             Notification.show("Report approved.");
         } catch (RuntimeException ex) {
-            // One shared classify-and-render (issue #86): a conflict reloads, a
-            // domain-rule message lands in the summary, anything technical is logged
-            // and shown as the generic error dialog.
-            errorHandler.handle(ex, errorSummary::show, this::showConflict);
+            surface(ex);
         }
     }
 
@@ -568,10 +559,9 @@ public class ReportDetailView extends VerticalLayout
             load(updated);
             Notification.show("Report rejected.");
         } catch (RuntimeException ex) {
-            // The reject dialog always closes; the outcome then routes as usual —
-            // conflict → reload, domain rule → summary, technical → error dialog.
+            // The reject dialog always closes; the outcome then routes as usual.
             dialog.close();
-            errorHandler.handle(ex, errorSummary::show, this::showConflict);
+            surface(ex);
         }
     }
 
@@ -651,7 +641,7 @@ public class ReportDetailView extends VerticalLayout
     /** Opens the trip editor to insert a new trip (glossary: Travel Calculator). */
     private void addTravel() {
         new TravelEditorDialog(null, service::previewTravel,
-                service::foreignDestinations, travels::insertLast, errorHandler).open();
+                service::foreignDestinations, travels::insertLast).open();
     }
 
     /**
@@ -669,7 +659,7 @@ public class ReportDetailView extends VerticalLayout
                     .map(GeneratedLineView::kind).toList();
             pendingTravelReceipts.keySet().removeIf(
                     key -> key.travel().equals(entry) && !kinds.contains(key.kind()));
-        }, errorHandler).open();
+        }).open();
     }
 
     /** Carries each still-present kind's receipt summary from {@code before} onto {@code updated}. */
@@ -736,7 +726,7 @@ public class ReportDetailView extends VerticalLayout
             Notification.show("Report deleted.");
             getUI().ifPresent(ui -> ui.navigate(MyReportsView.class));
         } catch (RuntimeException ex) {
-            errorHandler.handle(ex, errorSummary::show);
+            surface(ex);
         }
     }
 
@@ -1259,6 +1249,26 @@ public class ReportDetailView extends VerticalLayout
 
     private void clearErrors() {
         errorSummary.clear();
+    }
+
+    /**
+     * Routes a failed action to its surface (issue #86): a user-actionable
+     * {@link DomainRuleException} to the top-of-form summary, an optimistic-lock
+     * conflict to the reload affordance (ADR-0011). Anything else is technical, so it
+     * is re-thrown and left to the global
+     * {@link com.vaadin.expensemanager.base.ui.UiErrorHandler}, which logs it and
+     * shows the generic error dialog rather than leaking it into the summary. This is
+     * the only form-local error routing the view needs — the technical rendering is
+     * no longer hand-wired here.
+     */
+    private void surface(RuntimeException error) {
+        if (error instanceof DomainRuleException) {
+            errorSummary.show(error.getMessage());
+        } else if (error instanceof ObjectOptimisticLockingFailureException) {
+            showConflict();
+        } else {
+            throw error;
+        }
     }
 
     /**

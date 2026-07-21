@@ -4,7 +4,6 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import com.vaadin.expensemanager.base.ui.EditorDialog;
-import com.vaadin.expensemanager.base.ui.FormErrorHandler;
 import com.vaadin.expensemanager.reference.ReferenceDataService;
 import com.vaadin.expensemanager.reference.VatRateDto;
 import com.vaadin.flow.component.Component;
@@ -45,9 +44,8 @@ import static com.vaadin.expensemanager.reference.ui.ReferenceViewSupport.format
 public class VatRateView extends ReferenceConfigView<VatRateDto> {
 
     private final transient ReferenceDataService service;
-    private final transient FormErrorHandler errorHandler;
 
-    public VatRateView(ReferenceDataService service, FormErrorHandler errorHandler) {
+    public VatRateView(ReferenceDataService service) {
         super("VAT rates",
                 "The VAT rates expense lines are filed against. Deactivating a "
                         + "rate hides it from new lines but keeps it on existing "
@@ -55,7 +53,6 @@ public class VatRateView extends ReferenceConfigView<VatRateDto> {
                         + "original rate.",
                 "Add VAT rate");
         this.service = service;
-        this.errorHandler = errorHandler;
 
         grid.addColumn(dto -> formatPercent(dto.value()))
                 .setHeader("Rate").setAutoWidth(true).setFlexGrow(0);
@@ -111,7 +108,7 @@ public class VatRateView extends ReferenceConfigView<VatRateDto> {
         binder.readBean(model);
 
         new EditorDialog<>(existing == null ? "Add VAT rate" : "Edit VAT rate",
-                valueField, binder, model, errorHandler)
+                valueField, binder, model)
                 .onSave(() -> {
                     if (existing == null) {
                         service.createVatRate(model.getValue());
