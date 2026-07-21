@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 
 import com.vaadin.expensemanager.base.AuditedEntity;
+import com.vaadin.expensemanager.base.DomainRuleException;
 import com.vaadin.expensemanager.reference.ExpenseType;
 import com.vaadin.expensemanager.reference.VatRate;
 
@@ -198,7 +199,7 @@ public class ExpenseLine extends AuditedEntity {
 
     private static ExpenseType requireType(ExpenseType expenseType) {
         if (expenseType == null) {
-            throw new IllegalArgumentException("Expense type is required");
+            throw new DomainRuleException("Expense type is required");
         }
         return expenseType;
     }
@@ -212,18 +213,18 @@ public class ExpenseLine extends AuditedEntity {
 
     private static VatRate requireRate(VatRate vatRate) {
         if (vatRate == null) {
-            throw new IllegalArgumentException("VAT rate is required");
+            throw new DomainRuleException("VAT rate is required");
         }
         return vatRate;
     }
 
     private static BigDecimal requireNonZeroAmount(BigDecimal amount) {
         if (amount == null) {
-            throw new IllegalArgumentException("Amount is required");
+            throw new DomainRuleException("Amount is required");
         }
         BigDecimal scaled = amount.setScale(2, RoundingMode.HALF_UP);
         if (scaled.signum() == 0) {
-            throw new IllegalArgumentException("Amount must not be zero");
+            throw new DomainRuleException("Amount must not be zero");
         }
         return scaled;
     }

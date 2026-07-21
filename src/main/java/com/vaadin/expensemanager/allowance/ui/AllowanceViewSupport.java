@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.util.function.Consumer;
 
 import com.vaadin.expensemanager.base.ui.EditorDialog;
+import com.vaadin.expensemanager.base.ui.FormErrorHandler;
 import com.vaadin.flow.component.textfield.BigDecimalField;
 import com.vaadin.flow.data.binder.Binder;
 
@@ -38,7 +39,8 @@ final class AllowanceViewSupport {
      * field. {@code persist} receives the entered value on a valid Save.
      */
     static void openDecimalEditor(String title, String fieldLabel, String noun,
-            BigDecimal current, Consumer<BigDecimal> persist) {
+            BigDecimal current, Consumer<BigDecimal> persist,
+            FormErrorHandler errorHandler) {
         var model = new DecimalHolder();
         var field = new BigDecimalField(fieldLabel);
         var binder = new Binder<DecimalHolder>();
@@ -49,7 +51,7 @@ final class AllowanceViewSupport {
         model.setValue(current);
         binder.readBean(model);
 
-        new EditorDialog<>(title, field, binder, model)
+        new EditorDialog<>(title, field, binder, model, errorHandler)
                 .onSave(() -> persist.accept(model.getValue()))
                 .open();
     }

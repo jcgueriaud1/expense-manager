@@ -116,6 +116,21 @@
 .error-summary-link::part(label) {
     text-decoration: underline;
 }
+/* Developer-only technical detail in the error dialog (local profile); hidden in
+   staging/prod. Monospace and scrollable so a long cause/message never widens the
+   dialog. */
+.error-dialog-detail {
+    margin: 0;
+    padding: var(--vaadin-padding-s);
+    max-width: 100%;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: var(--aura-font-size-xs);
+    color: var(--vaadin-text-color-secondary);
+    background: var(--vaadin-background-container);
+    border-radius: var(--vaadin-radius-s);
+}
 .report-detail-eyebrow {
     color: var(--vaadin-text-color-secondary);
     font-size: var(--aura-font-size-xs);

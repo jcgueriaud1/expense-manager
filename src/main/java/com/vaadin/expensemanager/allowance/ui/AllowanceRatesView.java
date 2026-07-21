@@ -6,6 +6,7 @@ import com.vaadin.expensemanager.allowance.AllowanceRateService;
 import com.vaadin.expensemanager.allowance.DomesticPerDiemDto;
 import com.vaadin.expensemanager.allowance.ForeignPerDiemDto;
 import com.vaadin.expensemanager.base.ui.EditorDialog;
+import com.vaadin.expensemanager.base.ui.FormErrorHandler;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
@@ -60,13 +61,16 @@ import static com.vaadin.expensemanager.allowance.ui.AllowanceViewSupport.openDe
 public class AllowanceRatesView extends VerticalLayout {
 
     private final transient AllowanceRateService service;
+    private final transient FormErrorHandler errorHandler;
 
     private final ComboBox<Integer> yearSelector = new ComboBox<>("Year");
     private final VerticalLayout yearSection = new VerticalLayout();
     private final Grid<ForeignPerDiemDto> foreignGrid = new Grid<>();
 
-    public AllowanceRatesView(AllowanceRateService service) {
+    public AllowanceRatesView(AllowanceRateService service,
+            FormErrorHandler errorHandler) {
         this.service = service;
+        this.errorHandler = errorHandler;
         setPadding(true);
         setSpacing(true);
 
@@ -204,7 +208,7 @@ public class AllowanceRatesView extends VerticalLayout {
                 .bind(IntField::getValue, IntField::setValue);
         binder.readBean(model);
 
-        new EditorDialog<>("Add year", yearField, binder, model)
+        new EditorDialog<>("Add year", yearField, binder, model, errorHandler)
                 .onSave(() -> {
                     service.addYear(model.getValue());
                     refreshYears(model.getValue());
@@ -243,7 +247,8 @@ public class AllowanceRatesView extends VerticalLayout {
         form.setPadding(false);
         form.setSpacing(false);
 
-        new EditorDialog<>("Edit domestic per diem — " + year, form, binder, model)
+        new EditorDialog<>("Edit domestic per diem — " + year, form, binder, model,
+                errorHandler)
                 .onSave(() -> {
                     service.updateDomesticPerDiem(year, model.getFullAmount(),
                             model.getPartialAmount(), model.getFullHours(),
@@ -258,7 +263,7 @@ public class AllowanceRatesView extends VerticalLayout {
                 current, value -> {
                     service.updateKilometreRate(year, value);
                     renderYear(year);
-                });
+                }, errorHandler);
     }
 
     private void openMealEditor(int year, BigDecimal current) {
@@ -266,7 +271,7 @@ public class AllowanceRatesView extends VerticalLayout {
                 current, value -> {
                     service.updateMealAllowance(year, value);
                     renderYear(year);
-                });
+                }, errorHandler);
     }
 
     private void openForeignEditor(int year, ForeignPerDiemDto existing) {
@@ -274,7 +279,7 @@ public class AllowanceRatesView extends VerticalLayout {
                 "Amount (€)", "Amount", existing.amount(), value -> {
                     service.updateForeignPerDiem(existing.id(), value);
                     renderYear(year);
-                });
+                }, errorHandler);
     }
 
     private void openAddCountryEditor(int year) {
@@ -295,7 +300,7 @@ public class AllowanceRatesView extends VerticalLayout {
         form.setPadding(false);
         form.setSpacing(false);
 
-        new EditorDialog<>("Add country — " + year, form, binder, model)
+        new EditorDialog<>("Add country — " + year, form, binder, model, errorHandler)
                 .onSave(() -> {
                     service.addForeignPerDiem(year, model.getCountry(), model.getAmount());
                     renderYear(year);

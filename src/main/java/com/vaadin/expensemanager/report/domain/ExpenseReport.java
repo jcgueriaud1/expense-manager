@@ -12,6 +12,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import com.vaadin.expensemanager.base.AuditedEntity;
+import com.vaadin.expensemanager.base.DomainRuleException;
 import com.vaadin.expensemanager.user.User;
 
 import jakarta.persistence.CascadeType;
@@ -176,7 +177,7 @@ public class ExpenseReport extends AuditedEntity {
                     "Report " + id + " is " + status + " and cannot be submitted");
         }
         if (lines.isEmpty()) {
-            throw new IllegalStateException(
+            throw new DomainRuleException(
                     "Add at least one line before submitting.");
         }
         ReportStatus from = status;
@@ -208,7 +209,7 @@ public class ExpenseReport extends AuditedEntity {
                     "Report " + id + " is " + status + " and cannot be resubmitted");
         }
         if (lines.isEmpty()) {
-            throw new IllegalStateException(
+            throw new DomainRuleException(
                     "Add at least one line before resubmitting.");
         }
         ReportStatus from = status;
@@ -606,14 +607,14 @@ public class ExpenseReport extends AuditedEntity {
      */
     private static String requireComment(String comment) {
         if (comment == null || comment.isBlank()) {
-            throw new IllegalArgumentException("A rejection comment is required.");
+            throw new DomainRuleException("A rejection comment is required.");
         }
         return comment.strip();
     }
 
     private static LocalDate requireDate(LocalDate reportDate) {
         if (reportDate == null) {
-            throw new IllegalArgumentException("Report date is required");
+            throw new DomainRuleException("Report date is required");
         }
         return reportDate;
     }

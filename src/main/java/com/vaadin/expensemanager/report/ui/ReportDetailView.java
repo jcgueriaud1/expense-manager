@@ -10,6 +10,7 @@ import java.util.Map;
 
 import com.vaadin.expensemanager.approval.service.ApprovalService;
 import com.vaadin.expensemanager.base.ui.ErrorSummary;
+import com.vaadin.expensemanager.base.ui.FormErrorHandler;
 import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.ReferenceDataService;
 import com.vaadin.expensemanager.reference.VatRateDto;
@@ -53,8 +54,6 @@ import com.vaadin.flow.signals.local.ListSignal;
 import com.vaadin.flow.signals.local.ValueSignal;
 
 import jakarta.annotation.security.PermitAll;
-
-import org.springframework.orm.ObjectOptimisticLockingFailureException;
 
 import static com.vaadin.expensemanager.report.ui.ReportViewSupport.formatEur;
 import static com.vaadin.expensemanager.report.ui.ReportViewSupport.formatPercent;
@@ -126,6 +125,7 @@ public class ReportDetailView extends VerticalLayout
     private final transient ReferenceDataService referenceData;
     private final transient ApprovalService approvalService;
     private final transient CurrentUserProvider currentUserProvider;
+    private final transient FormErrorHandler errorHandler;
 
     private final ErrorSummary errorSummary = new ErrorSummary();
     /** Holds the freshly-built status badge; repopulated on each (re)load. */
@@ -200,11 +200,12 @@ public class ReportDetailView extends VerticalLayout
 
     public ReportDetailView(ExpenseReportService service,
             ReferenceDataService referenceData, ApprovalService approvalService,
-            CurrentUserProvider currentUserProvider) {
+            CurrentUserProvider currentUserProvider, FormErrorHandler errorHandler) {
         this.service = service;
         this.referenceData = referenceData;
         this.approvalService = approvalService;
         this.currentUserProvider = currentUserProvider;
+        this.errorHandler = errorHandler;
         setPadding(true);
         setSpacing(true);
         setMaxWidth("46rem");
@@ -391,10 +392,11 @@ public class ReportDetailView extends VerticalLayout
                         travelReceipts));
                 Notification.show("Report saved.");
             }
-        } catch (ObjectOptimisticLockingFailureException stale) {
-            showConflict();
-        } catch (IllegalArgumentException | IllegalStateException invalid) {
-            errorSummary.show(invalid.getMessage());
+        } catch (RuntimeException ex) {
+            // One shared classify-and-render (issue #86): a conflict reloads, a
+            // domain-rule message lands in the summary, anything technical is logged
+            // and shown as the generic error dialog.
+            errorHandler.handle(ex, errorSummary::show, this::showConflict);
         }
     }
 
@@ -482,10 +484,11 @@ public class ReportDetailView extends VerticalLayout
                     receipts, travelReceipts));
             Notification.show(rejected ? "Report resubmitted for approval."
                     : "Report submitted for approval.");
-        } catch (ObjectOptimisticLockingFailureException stale) {
-            showConflict();
-        } catch (IllegalArgumentException | IllegalStateException invalid) {
-            errorSummary.show(invalid.getMessage());
+        } catch (RuntimeException ex) {
+            // One shared classify-and-render (issue #86): a conflict reloads, a
+            // domain-rule message lands in the summary, anything technical is logged
+            // and shown as the generic error dialog.
+            errorHandler.handle(ex, errorSummary::show, this::showConflict);
         }
     }
 
@@ -501,10 +504,11 @@ public class ReportDetailView extends VerticalLayout
         try {
             load(approvalService.approve(working.id(), working.version()));
             Notification.show("Report approved.");
-        } catch (ObjectOptimisticLockingFailureException stale) {
-            showConflict();
-        } catch (IllegalArgumentException | IllegalStateException invalid) {
-            errorSummary.show(invalid.getMessage());
+        } catch (RuntimeException ex) {
+            // One shared classify-and-render (issue #86): a conflict reloads, a
+            // domain-rule message lands in the summary, anything technical is logged
+            // and shown as the generic error dialog.
+            errorHandler.handle(ex, errorSummary::show, this::showConflict);
         }
     }
 
@@ -563,12 +567,11 @@ public class ReportDetailView extends VerticalLayout
             dialog.close();
             load(updated);
             Notification.show("Report rejected.");
-        } catch (ObjectOptimisticLockingFailureException stale) {
+        } catch (RuntimeException ex) {
+            // The reject dialog always closes; the outcome then routes as usual —
+            // conflict → reload, domain rule → summary, technical → error dialog.
             dialog.close();
-            showConflict();
-        } catch (IllegalArgumentException | IllegalStateException invalid) {
-            dialog.close();
-            errorSummary.show(invalid.getMessage());
+            errorHandler.handle(ex, errorSummary::show, this::showConflict);
         }
     }
 
@@ -648,7 +651,7 @@ public class ReportDetailView extends VerticalLayout
     /** Opens the trip editor to insert a new trip (glossary: Travel Calculator). */
     private void addTravel() {
         new TravelEditorDialog(null, service::previewTravel,
-                service::foreignDestinations, travels::insertLast).open();
+                service::foreignDestinations, travels::insertLast, errorHandler).open();
     }
 
     /**
@@ -666,7 +669,7 @@ public class ReportDetailView extends VerticalLayout
                     .map(GeneratedLineView::kind).toList();
             pendingTravelReceipts.keySet().removeIf(
                     key -> key.travel().equals(entry) && !kinds.contains(key.kind()));
-        }).open();
+        }, errorHandler).open();
     }
 
     /** Carries each still-present kind's receipt summary from {@code before} onto {@code updated}. */
@@ -732,8 +735,8 @@ public class ReportDetailView extends VerticalLayout
             service.delete(working.id());
             Notification.show("Report deleted.");
             getUI().ifPresent(ui -> ui.navigate(MyReportsView.class));
-        } catch (IllegalStateException | IllegalArgumentException ex) {
-            errorSummary.show(ex.getMessage());
+        } catch (RuntimeException ex) {
+            errorHandler.handle(ex, errorSummary::show);
         }
     }
 

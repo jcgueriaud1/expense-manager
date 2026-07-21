@@ -25,9 +25,11 @@ import com.vaadin.flow.data.binder.Binder;
  *
  * <p>On Save the bean is validated through the binder; on failure the summary
  * lists the messages and the dialog stays open. On success the {@code onSave}
- * action runs — if it throws {@link IllegalArgumentException} (a service-side
- * guard) its message shows in the same summary and the dialog stays open,
- * otherwise the dialog closes.
+ * action runs — if it throws a {@link com.vaadin.expensemanager.base.DomainRuleException}
+ * (a user-actionable service guard) its message shows in the same summary and the
+ * dialog stays open; any other failure is technical, so the shared
+ * {@link FormErrorHandler} logs it and shows the generic error dialog instead of
+ * leaking it into the summary (issue #86). Otherwise the dialog closes.
  *
  * @param <T> the form-bean type the binder writes to
  */
@@ -35,13 +37,16 @@ public class EditorDialog<T> extends Dialog {
 
     private final Binder<T> binder;
     private final T model;
+    private final transient FormErrorHandler errorHandler;
     private final ErrorSummary errorSummary = new ErrorSummary();
     private Runnable onSave = () -> {
     };
 
-    public EditorDialog(String title, Component form, Binder<T> binder, T model) {
+    public EditorDialog(String title, Component form, Binder<T> binder, T model,
+            FormErrorHandler errorHandler) {
         this.binder = binder;
         this.model = model;
+        this.errorHandler = errorHandler;
         setHeaderTitle(title);
 
         var save = new Button("Save", event -> save());
@@ -67,8 +72,10 @@ public class EditorDialog<T> extends Dialog {
             try {
                 onSave.run();
                 close();
-            } catch (IllegalArgumentException ex) {
-                errorSummary.show(ex.getMessage());
+            } catch (RuntimeException ex) {
+                // Domain-rule messages land in the summary; anything technical is
+                // logged and shown as the generic error dialog (issue #86).
+                errorHandler.handle(ex, errorSummary::show);
             }
         } else {
             errorSummary.showValidationErrors(binder.validate());

@@ -1714,3 +1714,32 @@ Deployment/Observability · UX-spec
   a default, not be the only thing standing between the user and a blank error.
 - Owner / next step: worked around in this change; the empty-default is a Vaadin
   platform issue to raise upstream.
+
+### F-053 — Dev-toolbar `hidePopover` error swallows the *first* overlay opened over another modal
+- Date: 2026-07-21
+- Area: Vaadin
+- Severity: Low
+- Task being attempted: visually verifying issue #86 — a technical error inside the
+  modal `TravelEditorDialog` opens the new generic `ErrorDialog` over it.
+- Expected vs actual: expected `new ErrorDialog(...).open()` to render immediately,
+  as the browserless test proves server-side. Actual: on the **first** trigger the
+  server logged the error and attached the dialog, but it never appeared in the DOM;
+  the browser console threw `NotSupportedError: Failed to execute 'hidePopover' …
+  Not supported on elements that are not popovers` from Vaadin's dev-mode
+  `promoteToolbar`/`overlayListener` (the Copilot dev toolbar) as the second overlay
+  opened. Re-triggering the exact same action rendered the dialog correctly (2 open
+  overlays, detail visible).
+- Workaround used: none needed for the product — the error originates in the
+  **dev-mode toolbar**, absent in staging/prod builds; the second attempt worked and
+  the browserless `ErrorDialogFlowUiTest` confirms the attach behaviour headlessly.
+- Evidence: `base/ui/ErrorDialog.java` / `base/ui/FormErrorHandler.java`; console
+  `promoteToolbar (…indexhtml-*.js) → overlayListener`; server log "Technical error
+  surfaced to the user as a generic dialog" fired on the first (non-rendering) try.
+- Impact: only a dev-mode flake — a dialog opened over an existing modal can silently
+  fail to render the first time, which is confusing when hand-verifying overlay-over-
+  overlay flows locally. No production impact.
+- Suggested Vaadin/product improvement: guard the dev toolbar's `beforetoggle`/
+  `hidePopover` overlay listener against non-popover elements so a stacked overlay
+  doesn't throw and abort the DOM patch.
+- Owner / next step: no product action; raise the dev-toolbar overlay-stacking error
+  upstream if it recurs.
