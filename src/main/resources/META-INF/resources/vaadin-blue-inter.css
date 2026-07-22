@@ -34,20 +34,60 @@ html {
   --vaadin-grid-header-font-weight: 600;
 }
 
+/*
+ * Input fields carry a full, visible border everywhere (issue #113). Set once
+ * on the shared --vaadin-input-field-* tokens so every field — DatePicker,
+ * TextField, TextArea, ComboBox, … — gets the same outlined look across the
+ * whole app, not just on any single view.
+ */
+html {
+  --vaadin-input-field-border-width: 1px;
+  --vaadin-input-field-border-color: var(--vaadin-border-color);
+}
+
+/*
+ * App shell (issue #113): a fixed dark-navy navigation drawer beside a light,
+ * gray content area — regardless of the content color scheme.
+ *
+ * The drawer is scoped to the dark color scheme so every Aura token inside it
+ * (text, secondary text, borders, side-nav item surfaces) is computed for a
+ * dark surface, giving white-on-navy contrast for free. Deriving those from a
+ * navy --aura-background-color-dark (rather than the neutral default) keeps the
+ * whole drawer harmoniously navy-toned; a medium-blue accent drives the
+ * selected item. The navbar keeps the global scheme (light), so it stays white.
+ */
+vaadin-app-layout::part(drawer) {
+  color-scheme: dark;
+  --aura-background-color-dark: #17324f;
+  --aura-accent-color-dark: #3b6fd6;
+  --vaadin-app-layout-drawer-background: #17324f;
+  border-inline-end: none;
+}
+
+/* The content area reads as a gray page behind the views' white cards. */
+vaadin-app-layout::part(content) {
+  background: var(--vaadin-background-container);
+}
+
 /* Side nav styling */
 vaadin-side-nav-item:not([current]) > vaadin-icon {
-  color: var(--aura-accent-text-color);
+  color: var(--vaadin-text-color-secondary);
 }
 
 vaadin-side-nav-item[current]::part(content) {
-  --vaadin-side-nav-item-background: var(--vaadin-background-container);
+  --vaadin-side-nav-item-background: var(--aura-accent-color);
+  --vaadin-side-nav-item-text-color: var(--aura-accent-contrast-color);
   --vaadin-side-nav-item-border-color: transparent;
+}
+
+vaadin-side-nav-item[current] > vaadin-icon {
+  color: var(--aura-accent-contrast-color);
 }
 
 vaadin-side-nav::part(label) {
   text-transform: uppercase;
   font-size: var(--aura-font-size-xs);
-  color: var(--vaadin-text-color);
+  color: var(--vaadin-text-color-secondary);
   letter-spacing: 0.03em;
 }
 

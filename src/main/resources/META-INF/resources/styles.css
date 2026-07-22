@@ -84,7 +84,18 @@
 }
 
 /* ---- Detail ---- */
-.report-detail { margin-inline: auto; }
+/*
+ * The whole detail editor is one white card floating on the gray content area
+ * (issue #113). The root layout keeps its own padding/spacing via the Java API;
+ * this class only carries the card decoration the API can't express.
+ */
+.report-detail {
+    margin-inline: auto;
+    background: var(--aura-surface-color-solid);
+    border: 1px solid var(--vaadin-border-color-secondary);
+    border-radius: var(--vaadin-radius-l);
+    box-shadow: var(--aura-shadow-s);
+}
 .error-summary {
     color: var(--aura-red-text);
     border: 1px solid color-mix(in srgb, var(--aura-red) 40%, transparent);
@@ -241,20 +252,27 @@
     font-size: var(--aura-font-size-l);
 }
 
+/*
+ * Totals block (issue #113): an outlined table whose rows are divided by hairline
+ * borders, with the grand total sitting in a filled, emphasised bottom row. The
+ * card itself carries no padding — each row carries its own — and clips its
+ * children so the fill and dividers meet the rounded corners cleanly.
+ */
 .totals-card {
-    padding: var(--vaadin-padding-l);
     border: 1px solid var(--vaadin-border-color);
-    border-radius: var(--vaadin-radius-l);
+    border-radius: var(--vaadin-radius-m);
     background: var(--aura-surface-color);
+    overflow: hidden;
 }
 .totals-row {
     color: var(--vaadin-text-color-secondary);
     font-size: var(--aura-font-size-s);
-    padding-block: 0.25rem;
+    padding: var(--vaadin-padding-s) var(--vaadin-padding-m);
+    border-bottom: 1px solid var(--vaadin-border-color-secondary);
 }
 .totals-total-row {
-    border-top: 1px solid var(--vaadin-border-color);
-    padding-top: var(--vaadin-gap-s);
+    padding: var(--vaadin-padding-s) var(--vaadin-padding-m);
+    background: var(--vaadin-background-container);
     font-weight: var(--aura-font-weight-semibold);
 }
 .totals-grand { font-weight: var(--aura-font-weight-semibold); font-size: var(--aura-font-size-xl); }
