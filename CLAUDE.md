@@ -62,3 +62,9 @@ Default vocabulary — each role's label string equals its name: `needs-triage`,
 
 Single-context. Glossary at `docs/glossary.md` (the `CONTEXT.md` equivalent for
 this repo), ADRs in `docs/adr/`. See `docs/agents/domain.md`.
+
+### Integration testing
+
+This project uses DramaFinder for Playwright integration tests. For any
+integration/IT test work (writing, editing, or running tests for Vaadin
+views), use the `vaadin-playwright-test` skill.
