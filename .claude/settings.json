@@ -1,5 +1,7 @@
 {
   "enabledPlugins": {
-    "vaadin-skills@vaadin-marketplace": true
+    "vaadin-skills@vaadin-marketplace": true,
+    "vaadin-playwright-test@dramafinder": true,
+    "visual-verification@dramafinder": true
   }
 }
