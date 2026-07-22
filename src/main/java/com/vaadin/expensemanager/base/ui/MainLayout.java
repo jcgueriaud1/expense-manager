@@ -86,7 +86,7 @@ public class MainLayout extends AppLayout {
 
         setPrimarySection(Section.DRAWER);
         addToNavbar(new DrawerToggle(), createUserMenu(currentUserProvider));
-        addToDrawer(createHeader(), new Scroller(createNavigation()));
+        addToDrawer(createDrawerContent());
     }
 
     /** A labelled group of navigation items and the views it collects. */
@@ -94,8 +94,27 @@ public class MainLayout extends AppLayout {
             List<Class<? extends Component>> views) {
     }
 
+    /**
+     * The drawer's slotted content wrapped in a single {@code .app-drawer}
+     * container. The wrapper carries the scoped dark {@code color-scheme} (issue
+     * #113): inherited CSS properties on slotted content resolve against their
+     * light-DOM parent, so the navy drawer's light-on-dark rendering must scope
+     * here rather than on the shadow-DOM {@code ::part(drawer)}.
+     */
+    private Component createDrawerContent() {
+        var nav = new Scroller(createNavigation());
+        var drawer = new VerticalLayout(createHeader(), nav);
+        drawer.setPadding(false);
+        drawer.setSpacing(false);
+        drawer.setSizeFull();
+        drawer.expand(nav);
+        drawer.addClassName("app-drawer");
+        return drawer;
+    }
+
     private Component createHeader() {
         var appName = new H1("Expense Manager");
+        appName.addClassName("app-name");
         appName.getStyle()
                 .setFontSize("var(--aura-font-size-l)")
                 .setMargin("var(--vaadin-padding-m)");

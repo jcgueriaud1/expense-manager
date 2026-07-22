@@ -1743,3 +1743,37 @@ Deployment/Observability · UX-spec
   doesn't throw and abort the DOM patch.
 - Owner / next step: no product action; raise the dev-toolbar overlay-stacking error
   upstream if it recurs.
+
+### F-054 — Aura's scoped `color-scheme` re-themes component internals but not `--vaadin-*` text tokens consumed by plain elements
+- Date: 2026-07-22
+- Area: Vaadin
+- Severity: Low
+- Task being attempted: issue #113 — a fixed dark-navy navigation drawer in an
+  otherwise light app. Per the Aura docs' "Scoped Color Scheme" guidance, the
+  drawer's slotted content wrapper (`.app-drawer`) carries `color-scheme: dark` so
+  the navy surface renders light-on-dark.
+- Expected vs actual: expected every descendant that resolves an Aura colour token
+  to adopt the dark-scheme value, since the `--vaadin-text-color`/`-secondary`
+  tokens are documented with the `light-dark()` badge (i.e. should re-derive per the
+  element's used `color-scheme`). Actual: the `vaadin-side-nav` internals *did* flip
+  to light, but a plain `H1` (`.app-name`) with computed `color-scheme: dark` still
+  resolved `--vaadin-text-color` to the near-black **light-scheme** value — so the
+  app title was invisible on navy until hardcoded. Same applies to
+  `--vaadin-text-color-secondary` on the `::part(label)` section headers.
+- Workaround used: hardcode fixed light foregrounds on the drawer's own elements
+  (`.app-name`, side-nav `::part(label)`, inactive icons). This is defensible here
+  because the drawer is a *fixed* dark surface in both global schemes, so a fixed
+  light foreground is correct regardless of the scoped-scheme mechanics.
+- Evidence: `getComputedStyle('.app-name').colorScheme === 'dark'` yet its `color`
+  computed to `oklch(0.15 …)` (the light-scheme text colour); side-nav labels beside
+  it rendered light. `META-INF/resources/vaadin-blue-inter.css` (drawer block).
+- Impact: the "scoped color scheme" pattern is only reliable for Vaadin components
+  that consume the tokens inside their own shadow DOM; any custom light-DOM element
+  styled directly with `--vaadin-*` colour tokens needs an explicit colour when it
+  lives under a scoped scheme, which the docs don't call out.
+- Suggested Vaadin/product improvement: either make the Aura `--vaadin-*` colour
+  tokens genuinely `light-dark()`-resolved so a scoped `color-scheme` re-derives them
+  for any consumer, or document that scoped color-scheme only re-themes component
+  internals and that custom elements must set their own colours.
+- Owner / next step: worked around in this change; raise the docs/behaviour gap
+  upstream.

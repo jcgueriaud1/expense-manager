@@ -34,20 +34,63 @@ html {
   --vaadin-grid-header-font-weight: 600;
 }
 
-/* Side nav styling */
-vaadin-side-nav-item:not([current]) > vaadin-icon {
-  color: var(--aura-accent-text-color);
+/*
+ * Global shape (issue #113): rounder inputs and buttons across the whole app, so
+ * every field and action shares one design (e.g. the DatePicker looks the same on
+ * every view). Set on the shared theme tokens rather than per-view, per CLAUDE.md.
+ */
+html {
+  --vaadin-input-field-border-radius: var(--vaadin-radius-l);
+  --vaadin-button-border-radius: var(--vaadin-radius-m);
 }
 
+/*
+ * Navy navigation drawer (issue #113). The drawer is a fixed dark-navy brand
+ * surface in both colour schemes; the navbar and content area stay on the global
+ * scheme. `color-scheme: dark` is scoped to the drawer's slotted content (the
+ * `.app-drawer` wrapper in MainLayout) so the side-nav, app name, and icons render
+ * light-on-dark via Aura's computed light/dark tokens — inherited CSS properties on
+ * slotted content come from the light-DOM parent, not from `::part(drawer)`, so the
+ * scheme must sit on the wrapper, while the fixed background sits on the part.
+ */
+vaadin-app-layout::part(drawer) {
+  background: #193b67;
+  border-inline-end: none;
+}
+.app-drawer {
+  color-scheme: dark;
+}
+
+/*
+ * The drawer is a fixed dark surface, so its foregrounds are fixed light values
+ * (the `--vaadin-text-color*` tokens are computed once for the global light scheme
+ * and don't recompute under the drawer's scoped dark scheme).
+ */
+.app-name {
+  color: #ffffff;
+  font-weight: var(--aura-font-weight-semibold);
+}
+
+/* Inactive items: muted light icons. */
+vaadin-side-nav-item:not([current]) > vaadin-icon {
+  color: rgba(255, 255, 255, 0.65);
+}
+
+/* Active item: a solid accent-blue pill with white label + icon (the mockup). */
 vaadin-side-nav-item[current]::part(content) {
-  --vaadin-side-nav-item-background: var(--vaadin-background-container);
+  --vaadin-side-nav-item-background: #3266e4;
+  --vaadin-side-nav-item-color: #ffffff;
   --vaadin-side-nav-item-border-color: transparent;
+  color: #ffffff;
+}
+vaadin-side-nav-item[current] > vaadin-icon {
+  color: #ffffff;
 }
 
 vaadin-side-nav::part(label) {
   text-transform: uppercase;
   font-size: var(--aura-font-size-xs);
-  color: var(--vaadin-text-color);
+  color: rgba(255, 255, 255, 0.55);
   letter-spacing: 0.03em;
 }
 

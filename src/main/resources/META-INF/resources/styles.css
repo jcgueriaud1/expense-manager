@@ -84,7 +84,20 @@
 }
 
 /* ---- Detail ---- */
-.report-detail { margin-inline: auto; }
+/*
+ * The detail view is a single white card floating on the (gray) content area
+ * (issue #113): the surface, radius, border, and shadow the AppLayout content
+ * background sets off. Structure (padding/spacing/max-width) stays on the Java
+ * VerticalLayout; only the decoration lives here.
+ */
+.report-detail {
+    margin-inline: auto;
+    margin-block: var(--vaadin-padding-l);
+    background: var(--aura-surface-color-solid);
+    border: 1px solid var(--vaadin-border-color-secondary);
+    border-radius: var(--vaadin-radius-l);
+    box-shadow: var(--aura-shadow-s);
+}
 .error-summary {
     color: var(--aura-red-text);
     border: 1px solid color-mix(in srgb, var(--aura-red) 40%, transparent);
@@ -241,20 +254,27 @@
     font-size: var(--aura-font-size-l);
 }
 
+/*
+ * Totals summary as a bordered table (issue #113): full-width rows separated by
+ * dividers, closed by a shaded, bold "total to reimburse" row. The card clips its
+ * rows to the rounded corners; row padding (not card padding) lets the dividers
+ * span edge to edge.
+ */
 .totals-card {
-    padding: var(--vaadin-padding-l);
     border: 1px solid var(--vaadin-border-color);
     border-radius: var(--vaadin-radius-l);
     background: var(--aura-surface-color);
+    overflow: hidden;
 }
 .totals-row {
     color: var(--vaadin-text-color-secondary);
-    font-size: var(--aura-font-size-s);
-    padding-block: 0.25rem;
+    font-size: var(--aura-font-size-m);
+    padding: var(--vaadin-padding-s) var(--vaadin-padding-l);
+    border-bottom: 1px solid var(--vaadin-border-color-secondary);
 }
 .totals-total-row {
-    border-top: 1px solid var(--vaadin-border-color);
-    padding-top: var(--vaadin-gap-s);
+    padding: var(--vaadin-padding-m) var(--vaadin-padding-l);
+    background: var(--vaadin-background-container);
     font-weight: var(--aura-font-weight-semibold);
 }
 .totals-grand { font-weight: var(--aura-font-weight-semibold); font-size: var(--aura-font-size-xl); }
