@@ -75,6 +75,9 @@ Keep runs small:
 Target: the kind of flow that once took ~52 calls (half of it UI setup) drops to
 ~12 with far fewer tokens.
 
-An agent driving this should follow the `visual-verification` skill
-(`.claude/skills/visual-verification`), which the `implement-use-case` skill's
-step 4 delegates to.
+An agent driving this should follow the `visual-verification@dramafinder` skill,
+which the `implement-use-case` skill's step 3 delegates to. That skill writes a
+temporary DramaFinder test that batch-captures screenshots against the running
+app (escalating to Playwright MCP only when the report can't diagnose a
+problem); the fixtures, logins, and deep-link routes above are how it reaches
+the state under test.

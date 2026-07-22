@@ -24,8 +24,8 @@ pin them first, aim every test at them, stop only when they are met.
    data, logic, or config rendered through existing, already-styled UI — skip it:
    the green suite plus a direct check (SQL query, `flyway validate`) is the
    verification. When you visually verify, follow the
-   [`visual-verification`](../visual-verification/SKILL.md) skill and view every
-   route the ticket touches.
+   `visual-verification@dramafinder` skill and view every route the ticket
+   touches.
 4. **Commit** on a feature branch off `main`.
 
 ## While you work
