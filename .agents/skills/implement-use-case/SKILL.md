@@ -23,10 +23,20 @@ pin them first, aim every test at them, stop only when they are met.
    component, a changed theme token, a field added to a form. When it doesn't —
    data, logic, or config rendered through existing, already-styled UI — skip it:
    the green suite plus a direct check (SQL query, `flyway validate`) is the
-   verification. When you visually verify, follow the
-   `visual-verification@dramafinder` skill and view every route the ticket
-   touches.
+   verification. When you visually verify, invoke
+   `vaadin-playwright-screenshot@dramafinder` to generate screenshots of every
+   route the ticket touches, then invoke the `visual-verdict` skill to validate
+   them against the reference. **Loop:** if the verdict scores below the 90
+   threshold, fix the issues its `differences[]`/`suggestions[]` call out,
+   re-screenshot, and re-run `visual-verdict`. Repeat until it clears 90 — a
+   low-scoring verdict is not done. Keep the final passing screenshots and
+   verdict; they go on the PR in step 5.
 4. **Commit** on a feature branch off `main`.
+5. **Open the PR, then post the visual proof as a separate comment.** After the
+   PR is created, add the final `visual-verdict` JSON and the passing
+   screenshots as their own PR comment (`gh pr comment`) — separate from the PR
+   description — so the visual sign-off is reviewable on its own. Skip only when
+   the change had nothing to visually verify (step 3 was skipped).
 
 ## While you work
 
