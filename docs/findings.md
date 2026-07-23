@@ -1743,3 +1743,33 @@ Deployment/Observability · UX-spec
   doesn't throw and abort the DOM patch.
 - Owner / next step: no product action; raise the dev-toolbar overlay-stacking error
   upstream if it recurs.
+
+### F-054 — Scoped `--aura-background-color-dark` override doesn't re-tint a part's `--aura-background-color`
+- Date: 2026-07-23
+- Area: Vaadin
+- Severity: Low
+- Task being attempted: Give the AppLayout drawer a dark navy background for the
+  #113 redesign, using the Aura-documented pattern — set `color-scheme: dark` on
+  `vaadin-app-layout::part(drawer)` and customize the navy via the `-dark`-suffixed
+  property, then apply it with the un-suffixed one:
+  `{ color-scheme: dark; --aura-background-color-dark: #193b67; background-color: var(--aura-background-color); }`.
+- Expected vs actual: The Aura docs say to customize a colour with its `-light`/
+  `-dark` property and *apply* the un-suffixed `--aura-background-color`. Expected the
+  drawer to paint `#193b67`. Actual: it painted near-black (`rgb(19,22,27)`), i.e. the
+  default dark-scheme background — the local `--aura-background-color-dark` override
+  did not reach the computed `--aura-background-color`, which is resolved once at
+  `:root` via `light-dark()` and inherited already-substituted, so re-declaring the
+  input var on a descendant part has no effect.
+- Workaround used: Set the drawer background to an explicit hex
+  (`background-color: #193b67`) and keep `color-scheme: dark` only for the light
+  text/icon computation. Pixel-verified the drawer at `rgb(25,59,103)`.
+- Evidence: `src/main/resources/META-INF/resources/vaadin-blue-inter.css`
+  (`vaadin-app-layout::part(drawer)`); PR #117; visual-verdict 93/100.
+- Impact: The documented "customize with `-dark`, apply with un-suffixed" guidance
+  is misleading for *scoped* recolouring of a single component/part — it only works
+  at `:root`. Cost ~1 screenshot iteration to diagnose.
+- Suggested Vaadin/product improvement: Document that `--aura-*-color-{light,dark}`
+  overrides only recompute the derived un-suffixed colour when set at `:root` (global
+  scheme), and that per-part recolouring needs an explicit colour or a re-declared
+  computed value.
+- Owner / next step: No product action; note for future per-part Aura recolouring.
