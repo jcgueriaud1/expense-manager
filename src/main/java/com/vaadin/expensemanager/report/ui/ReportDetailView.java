@@ -206,10 +206,14 @@ public class ReportDetailView extends VerticalLayout
         this.referenceData = referenceData;
         this.approvalService = approvalService;
         this.currentUserProvider = currentUserProvider;
+        // The view is the full-width grey page; the form lives in a centered white
+        // card (issue #113). The page provides the backdrop padding and centering;
+        // the card carries the surface, radius, shadow, and internal spacing.
         setPadding(true);
-        setSpacing(true);
-        setMaxWidth("46rem");
-        addClassName("report-detail");
+        setSpacing(false);
+        setWidthFull();
+        setAlignItems(FlexComponent.Alignment.CENTER);
+        addClassName("report-detail-page");
 
         statusCallout.setWidthFull();
         statusCallout.setVisible(false);
@@ -264,9 +268,15 @@ public class ReportDetailView extends VerticalLayout
         statusHistory.setVisible(false);
         statusHistory.addClassName("status-history");
 
-        add(headerRow(), errorSummary, statusCallout, reportDate,
-                additionalInformation, travelsSection(), linesSection(), totalsCard(),
-                statusHistory, actions);
+        var card = new VerticalLayout(headerRow(), errorSummary, statusCallout,
+                reportDate, additionalInformation, travelsSection(), linesSection(),
+                totalsCard(), statusHistory, actions);
+        card.setPadding(true);
+        card.setSpacing(true);
+        card.setWidthFull();
+        card.setMaxWidth("56rem");
+        card.addClassName("report-detail");
+        add(card);
     }
 
     @Override
@@ -732,7 +742,7 @@ public class ReportDetailView extends VerticalLayout
 
     private HorizontalLayout headerRow() {
         // Back returns to the approval queue in review mode, else the owner's list.
-        var back = new Button(VaadinIcon.ARROW_LEFT.create(), event -> getUI()
+        var back = new Button(VaadinIcon.ANGLE_LEFT.create(), event -> getUI()
                 .ifPresent(ui -> {
                     if (reviewMode) {
                         ui.navigate(APPROVAL_QUEUE_PATH);
@@ -740,7 +750,7 @@ public class ReportDetailView extends VerticalLayout
                         ui.navigate(MyReportsView.class);
                     }
                 }));
-        back.addThemeVariants(ButtonVariant.TERTIARY);
+        back.addClassName("icon-button");
         back.getElement().setAttribute("aria-label", "Back to reports");
 
         headerId.addClassName("report-detail-eyebrow");
@@ -1100,6 +1110,7 @@ public class ReportDetailView extends VerticalLayout
 
         var section = new Div(emptyState, cardList, addLine);
         section.setWidthFull();
+        section.addClassName("lines-section");
         return section;
     }
 

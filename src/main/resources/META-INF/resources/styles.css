@@ -84,7 +84,27 @@
 }
 
 /* ---- Detail ---- */
-.report-detail { margin-inline: auto; }
+/* The report form sits in a white, elevated card centered on the grey page
+ * backdrop (issue #113). */
+.report-detail {
+    background: var(--aura-surface-color);
+    border: 1px solid var(--vaadin-border-color-secondary);
+    border-radius: var(--vaadin-radius-l);
+    box-shadow: var(--aura-shadow-s);
+    padding: var(--vaadin-padding-xl);
+}
+
+/* A bordered, rounded square button for icon-only actions (e.g. the header back
+ * button), matching the shell's drawer toggle. */
+.icon-button {
+    --vaadin-button-background: var(--aura-surface-color);
+    --vaadin-button-border-width: 1px;
+    --vaadin-button-border-color: var(--vaadin-border-color);
+    --vaadin-button-text-color: var(--aura-accent-text-color);
+}
+.icon-button vaadin-icon {
+    color: var(--aura-accent-text-color);
+}
 .error-summary {
     color: var(--aura-red-text);
     border: 1px solid color-mix(in srgb, var(--aura-red) 40%, transparent);
@@ -137,7 +157,7 @@
 }
 .report-detail-title {
     font-weight: var(--aura-font-weight-semibold);
-    font-size: var(--aura-font-size-l);
+    font-size: var(--aura-font-size-xl);
 }
 
 .status-callout {
@@ -193,6 +213,16 @@
     margin-top: var(--vaadin-gap-xs);
 }
 
+/* The expenses block: a hairline divider separates it from the travel section
+ * above, then the empty-state / cards / add-expense action stack (issue #113). */
+.lines-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--vaadin-gap-m);
+    padding-top: var(--vaadin-padding-m);
+    border-top: 1px solid var(--vaadin-border-color-secondary);
+}
+
 .line-card {
     padding: var(--vaadin-padding-l);
     border: 1px solid var(--vaadin-border-color);
@@ -241,20 +271,24 @@
     font-size: var(--aura-font-size-l);
 }
 
+/* A bordered summary "table": each row is separated by a hairline and the final
+ * total-to-reimburse row is shaded to stand out (issue #113). Rows carry their
+ * own padding, so the card itself has none. */
 .totals-card {
-    padding: var(--vaadin-padding-l);
     border: 1px solid var(--vaadin-border-color);
-    border-radius: var(--vaadin-radius-l);
+    border-radius: var(--vaadin-radius-m);
     background: var(--aura-surface-color);
+    overflow: hidden;
 }
 .totals-row {
     color: var(--vaadin-text-color-secondary);
     font-size: var(--aura-font-size-s);
-    padding-block: 0.25rem;
+    padding: var(--vaadin-padding-m);
+    border-bottom: 1px solid var(--vaadin-border-color-secondary);
 }
 .totals-total-row {
-    border-top: 1px solid var(--vaadin-border-color);
-    padding-top: var(--vaadin-gap-s);
+    padding: var(--vaadin-padding-m);
+    background: var(--vaadin-background-container);
     font-weight: var(--aura-font-weight-semibold);
 }
 .totals-grand { font-weight: var(--aura-font-weight-semibold); font-size: var(--aura-font-size-xl); }

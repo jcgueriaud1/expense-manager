@@ -20,6 +20,18 @@ html {
   --aura-accent-color-light: #155dfc;
   --aura-base-font-size: 15;
   --aura-font-family: 'Inter', var(--aura-font-family-system);
+
+  /* App Layout runs edge-to-edge (issue #113): the drawer and navbar sit flush
+   * against the viewport, matching the redesign, rather than the default inset
+   * "floating content" look. */
+  --aura-app-layout-inset: 0px;
+
+  /* Global input-field look (issue #113): a single bordered, rounded field
+   * design applied to every DatePicker/TextArea/TextField/ComboBox in the app —
+   * never scoped to one view — so the same field renders identically everywhere. */
+  --vaadin-input-field-border-width: 1px;
+  --vaadin-input-field-border-color: var(--vaadin-border-color-secondary);
+  --vaadin-input-field-border-radius: var(--vaadin-radius-m);
 }
 
 /* Polished weight scale for Inter (variable-weight font) */
@@ -34,20 +46,61 @@ html {
   --vaadin-grid-header-font-weight: 600;
 }
 
-/* Side nav styling */
-vaadin-side-nav-item:not([current]) > vaadin-icon {
-  color: var(--aura-accent-text-color);
+/* ---- App shell (issue #113) ---- */
+
+/* Dark navy drawer: run the drawer as its own dark colour scheme keyed off a
+ * navy background, so every text/border/surface colour inside it (the app name,
+ * nav items, section labels) recomputes for the dark surface automatically. */
+vaadin-app-layout::part(drawer) {
+  /* color-scheme: dark makes the drawer's text/icons resolve light against the
+   * navy surface; the navy itself is set explicitly (the computed
+   * --aura-background-color resolves at :root, so it can't be re-tinted here). */
+  color-scheme: dark;
+  --aura-background-color-dark: #193b67;
+  background-color: #193b67;
+  border-inline-end: 0;
+}
+
+/* Navbar: a flat white bar with a hairline bottom border separating it from the
+ * content area. */
+vaadin-app-layout::part(navbar) {
+  background-color: var(--vaadin-background-color);
+  border-bottom: 1px solid var(--vaadin-border-color-secondary);
+}
+
+/* Drawer toggle reads as a bordered, rounded square button (the redesign's
+ * hamburger), not a bare icon. */
+vaadin-drawer-toggle {
+  --vaadin-button-background: var(--vaadin-background-color);
+  --vaadin-button-border-width: 1px;
+  --vaadin-button-border-color: var(--vaadin-border-color);
+}
+
+/* Content area sits on a soft grey backdrop so the white view card reads as
+ * elevated above it. */
+vaadin-app-layout::part(content) {
+  background: var(--vaadin-background-container);
+}
+
+/* Side nav: light icons on the navy drawer; the active item is a solid accent
+ * pill with contrasting text. */
+vaadin-side-nav-item > vaadin-icon {
+  color: var(--vaadin-text-color-secondary);
 }
 
 vaadin-side-nav-item[current]::part(content) {
-  --vaadin-side-nav-item-background: var(--vaadin-background-container);
+  --vaadin-side-nav-item-background: #2f6fed;
+  --vaadin-side-nav-item-text-color: #ffffff;
   --vaadin-side-nav-item-border-color: transparent;
+}
+vaadin-side-nav-item[current] > vaadin-icon {
+  color: #ffffff;
 }
 
 vaadin-side-nav::part(label) {
   text-transform: uppercase;
   font-size: var(--aura-font-size-xs);
-  color: var(--vaadin-text-color);
+  color: var(--vaadin-text-color-secondary);
   letter-spacing: 0.03em;
 }
 
