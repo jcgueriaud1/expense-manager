@@ -1743,3 +1743,28 @@ Deployment/Observability · UX-spec
   doesn't throw and abort the DOM patch.
 - Owner / next step: no product action; raise the dev-toolbar overlay-stacking error
   upstream if it recurs.
+
+### F-054 — `VerticalLayout.setPadding(String)` does not exist, though `setSpacing(String)` does and the theming doc shows `setPadding("…")`
+- Date: 2026-07-24
+- Area: Vaadin
+- Severity: Low
+- Task being attempted: giving `ReportDetailView` (a `VerticalLayout`) a
+  `var(--vaadin-padding-l)` card padding for the issue #113 redesign, following
+  `docs/theming-layouts.md` which lists `layout.setPadding("var(--vaadin-padding-m)")`
+  as the "custom padding value" API.
+- Expected vs actual: expected `setPadding("var(--vaadin-padding-l)")` to compile like
+  the sibling `setSpacing("var(--vaadin-gap-m)")` (which the codebase uses widely).
+  Actual: compile error `incompatible types: String cannot be converted to boolean` —
+  `HasComponents`/`ThemableLayout` exposes only `setPadding(boolean)`, while
+  `setSpacing` has both the `boolean` and `String` overloads.
+- Workaround used: `setPadding(false)` and moved the padding onto the `.report-detail`
+  CSS class (`padding: var(--vaadin-padding-l)`), which is where card decoration
+  belongs anyway.
+- Evidence: `report/ui/ReportDetailView.java` constructor; `docs/theming-layouts.md`
+  decision table row "Custom padding value → `layout.setPadding("var(--vaadin-padding-m)")`".
+- Impact: the theming doc's own decision table suggests an API that doesn't exist for
+  the padding case, so following it verbatim fails to compile and misleads.
+- Suggested Vaadin/product improvement: add a `setPadding(String)` overload to match
+  `setSpacing(String)`; meanwhile correct the `docs/theming-layouts.md` row to note
+  padding takes only a boolean (custom values go through CSS).
+- Owner / next step: fix the decision-table row in `docs/theming-layouts.md`.
