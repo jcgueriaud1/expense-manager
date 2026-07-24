@@ -206,7 +206,9 @@ public class ReportDetailView extends VerticalLayout
         this.referenceData = referenceData;
         this.approvalService = approvalService;
         this.currentUserProvider = currentUserProvider;
-        setPadding(true);
+        // Card padding is set on the .report-detail class (var(--vaadin-padding-l))
+        // so it travels with the card styling; the layout's own padding is off.
+        setPadding(false);
         setSpacing(true);
         setMaxWidth("46rem");
         addClassName("report-detail");
@@ -732,7 +734,9 @@ public class ReportDetailView extends VerticalLayout
 
     private HorizontalLayout headerRow() {
         // Back returns to the approval queue in review mode, else the owner's list.
-        var back = new Button(VaadinIcon.ARROW_LEFT.create(), event -> getUI()
+        // A boxed icon button (the design's bordered chevron), matching the
+        // drawer toggle's affordance rather than a bare tertiary glyph.
+        var back = new Button(VaadinIcon.ANGLE_LEFT.create(), event -> getUI()
                 .ifPresent(ui -> {
                     if (reviewMode) {
                         ui.navigate(APPROVAL_QUEUE_PATH);
@@ -740,7 +744,6 @@ public class ReportDetailView extends VerticalLayout
                         ui.navigate(MyReportsView.class);
                     }
                 }));
-        back.addThemeVariants(ButtonVariant.TERTIARY);
         back.getElement().setAttribute("aria-label", "Back to reports");
 
         headerId.addClassName("report-detail-eyebrow");

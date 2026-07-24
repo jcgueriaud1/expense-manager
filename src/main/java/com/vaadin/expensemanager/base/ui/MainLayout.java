@@ -20,6 +20,7 @@ import com.vaadin.flow.component.orderedlayout.Scroller;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.sidenav.SideNav;
 import com.vaadin.flow.component.sidenav.SideNavItem;
+import com.vaadin.flow.component.sidenav.SideNavVariant;
 import com.vaadin.flow.router.Layout;
 import com.vaadin.flow.server.menu.MenuConfiguration;
 import com.vaadin.flow.server.menu.MenuEntry;
@@ -96,6 +97,10 @@ public class MainLayout extends AppLayout {
 
     private Component createHeader() {
         var appName = new H1("Expense Manager");
+        // Colour lives in the .app-name class: the drawer's computed --vaadin-text-color
+        // does not re-resolve for a slotted H1 under the scoped dark scheme, so the
+        // light-on-navy title is set explicitly there (issue #113).
+        appName.addClassName("app-name");
         appName.getStyle()
                 .setFontSize("var(--aura-font-size-l)")
                 .setMargin("var(--vaadin-padding-m)");
@@ -154,6 +159,9 @@ public class MainLayout extends AppLayout {
             return;
         }
         var nav = new SideNav();
+        // FILLED gives the current item a solid accent fill (issue #113 design),
+        // instead of the default subtle container tint.
+        nav.addThemeVariants(SideNavVariant.AURA_FILLED);
         if (label != null) {
             nav.setLabel(label);
         }

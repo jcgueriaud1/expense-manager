@@ -17,7 +17,7 @@
 html {
   color-scheme: light dark;
   --aura-accent-color-dark: #60A5FA;
-  --aura-accent-color-light: #155dfc;
+  --aura-accent-color-light: #3266e4;
   --aura-base-font-size: 15;
   --aura-font-family: 'Inter', var(--aura-font-family-system);
 }
@@ -34,21 +34,68 @@ html {
   --vaadin-grid-header-font-weight: 600;
 }
 
-/* Side nav styling */
-vaadin-side-nav-item:not([current]) > vaadin-icon {
-  color: var(--aura-accent-text-color);
+/* --------------------------------------------------------------------------
+ * Dark navy navigation drawer (issue #113).
+ *
+ * The drawer is a persistent dark surface regardless of the app's light/dark
+ * content scheme: scoping `color-scheme: dark` to the drawer part lets Aura
+ * recompute light-on-dark text, border, and surface colours automatically,
+ * while `--aura-background-color-dark` repaints that computed background as the
+ * brand navy. The accent is pinned to the design blue so the FILLED active
+ * item and the focus ring match. The navbar and content area follow the global
+ * scheme (OS/light) and stay light.
+ * ------------------------------------------------------------------------ */
+vaadin-app-layout::part(drawer) {
+  color-scheme: dark;
+  --aura-background-color-dark: #193b67;
+  --aura-accent-color-dark: #3266e4;
+  --vaadin-app-layout-drawer-background: #193b67;
+  --vaadin-side-nav-item-text-color: #c3d0e6;
+  --vaadin-side-nav-label-color: #8193ac;
 }
 
-vaadin-side-nav-item[current]::part(content) {
-  --vaadin-side-nav-item-background: var(--vaadin-background-container);
-  --vaadin-side-nav-item-border-color: transparent;
+/* App name in the navy drawer header: solid white, bold (issue #113). The H1 is
+ * slotted light-DOM content, so it is targeted directly rather than through the
+ * drawer part (which does not reach slotted children); it only ever renders in
+ * the navy drawer, so white is always correct. */
+.app-name {
+  color: #ffffff;
+  font-weight: var(--aura-font-weight-semibold);
 }
 
+/* Section headers ("REFERENCE TABLES", …): muted, uppercase, and tracked. */
 vaadin-side-nav::part(label) {
   text-transform: uppercase;
   font-size: var(--aura-font-size-xs);
-  color: var(--vaadin-text-color);
-  letter-spacing: 0.03em;
+  letter-spacing: 0.05em;
+}
+
+/* Inset the item fill so the FILLED current item reads as a floating pill with
+ * side margins (issue #113 design), rather than a bar spanning the drawer edge
+ * to edge. */
+vaadin-app-layout::part(drawer) vaadin-side-nav-item::part(content) {
+  margin-inline: var(--vaadin-gap-xs);
+}
+
+/* Inactive item icons ride the muted item text colour; the FILLED current item
+ * flips both label and icon to solid white over the accent fill. */
+vaadin-app-layout::part(drawer) vaadin-side-nav-item > vaadin-icon {
+  color: #c3d0e6;
+}
+vaadin-app-layout::part(drawer) vaadin-side-nav-item[current] {
+  --vaadin-side-nav-item-text-color: #ffffff;
+}
+vaadin-app-layout::part(drawer) vaadin-side-nav-item[current] > vaadin-icon {
+  color: #ffffff;
+}
+
+/* --------------------------------------------------------------------------
+ * Light-grey content canvas (issue #113) so elevated white view cards read as
+ * distinct panels floating on the page. Light scheme only; the dark scheme
+ * keeps Aura's computed app background.
+ * ------------------------------------------------------------------------ */
+vaadin-app-layout::part(content) {
+  background: light-dark(#eceff2, var(--aura-app-background));
 }
 
 /* Neutral secondary/default buttons (accent reserved for primary/tertiary) */

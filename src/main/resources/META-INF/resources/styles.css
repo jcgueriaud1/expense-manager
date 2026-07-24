@@ -84,7 +84,19 @@
 }
 
 /* ---- Detail ---- */
-.report-detail { margin-inline: auto; }
+/* The report editor is an elevated white card floating on the grey content
+ * canvas (issue #113): the surface colour keeps it scheme-aware (near-white in
+ * light, an elevated dark panel in dark), and the shadow + hairline border
+ * lift it off the page. */
+.report-detail {
+    margin-inline: auto;
+    margin-block: var(--vaadin-padding-l);
+    padding: var(--vaadin-padding-l);
+    background: var(--aura-surface-color-solid);
+    border: 1px solid var(--vaadin-border-color-secondary);
+    border-radius: var(--vaadin-radius-l);
+    box-shadow: var(--aura-shadow-s);
+}
 .error-summary {
     color: var(--aura-red-text);
     border: 1px solid color-mix(in srgb, var(--aura-red) 40%, transparent);
@@ -254,7 +266,17 @@
 }
 .totals-total-row {
     border-top: 1px solid var(--vaadin-border-color);
+    /* A subtle filled band sets the grand total apart from the breakdown rows
+     * (issue #113 design). Negative inline margin + matching padding let the
+     * band bleed to the card's inner edges without widening the row. */
+    margin-inline: calc(-1 * var(--vaadin-padding-l));
+    margin-bottom: calc(-1 * var(--vaadin-padding-l));
+    padding-inline: var(--vaadin-padding-l);
     padding-top: var(--vaadin-gap-s);
+    padding-bottom: var(--vaadin-gap-s);
+    background: var(--vaadin-background-container);
+    border-bottom-left-radius: var(--vaadin-radius-l);
+    border-bottom-right-radius: var(--vaadin-radius-l);
     font-weight: var(--aura-font-weight-semibold);
 }
 .totals-grand { font-weight: var(--aura-font-weight-semibold); font-size: var(--aura-font-size-xl); }
