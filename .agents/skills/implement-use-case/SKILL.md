@@ -23,9 +23,8 @@ pin them first, aim every test at them, stop only when they are met.
    component, a changed theme token, a field added to a form. When it doesn't —
    data, logic, or config rendered through existing, already-styled UI — skip it:
    the green suite plus a direct check (SQL query, `flyway validate`) is the
-   verification. When you visually verify, follow the
-   [`visual-verification`](../visual-verification/SKILL.md) skill to screenshot
-   every route the ticket touches (Playwright MCP), then invoke the
+   verification. When you visually verify, screenshot every route the ticket
+   touches with Playwright MCP, then invoke the
    [`visual-verdict`](../visual-verdict/SKILL.md) skill to score each screenshot
    against the reference. **Loop:** if the verdict scores below the 90 threshold,
    fix the issues its `differences[]`/`suggestions[]` call out, re-screenshot,
