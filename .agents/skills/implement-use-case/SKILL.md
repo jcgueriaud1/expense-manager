@@ -24,9 +24,21 @@ pin them first, aim every test at them, stop only when they are met.
    data, logic, or config rendered through existing, already-styled UI — skip it:
    the green suite plus a direct check (SQL query, `flyway validate`) is the
    verification. When you visually verify, follow the
-   [`visual-verification`](../visual-verification/SKILL.md) skill and view every
-   route the ticket touches.
+   [`visual-verification`](../visual-verification/SKILL.md) skill to screenshot
+   every route the ticket touches (Playwright MCP), then invoke the
+   [`visual-verdict`](../visual-verdict/SKILL.md) skill to score each screenshot
+   against the reference. **Loop:** if the verdict scores below the 90 threshold,
+   fix the issues its `differences[]`/`suggestions[]` call out, re-screenshot,
+   and re-run `visual-verdict`. Repeat until it clears 90 — a low-scoring verdict
+   is not done. Keep the final passing screenshots and verdict; they go on the PR
+   in step 5.
 4. **Commit** on a feature branch off `main`.
+5. **Open the PR, then attach the visual proof.** After the PR is created, commit
+   the passing screenshots into `docs/screenshots/` (name each by its view; if a
+   screenshot of the same view exists from a previous issue, overwrite it), then
+   post the final `visual-verdict` JSON as a separate `gh pr comment` linking to
+   them. Skip only when the change had nothing to visually verify (step 3 was
+   skipped).
 
 ## While you work
 

@@ -77,4 +77,5 @@ Target: the kind of flow that once took ~52 calls (half of it UI setup) drops to
 
 An agent driving this should follow the `visual-verification` skill
 (`.claude/skills/visual-verification`), which the `implement-use-case` skill's
-step 4 delegates to.
+step 3 delegates to for screenshots; step 3 then scores them with the
+`visual-verdict` skill and loops until they clear the 90 threshold.
