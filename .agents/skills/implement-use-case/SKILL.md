@@ -32,11 +32,12 @@ pin them first, aim every test at them, stop only when they are met.
    low-scoring verdict is not done. Keep the final passing screenshots and
    verdict; they go on the PR in step 5.
 4. **Commit** on a feature branch off `main`.
-5. **Open the PR, then post the visual proof as a separate comment.** After the
-   PR is created, add the final `visual-verdict` JSON and the passing
-   screenshots as their own PR comment (`gh pr comment`) — separate from the PR
-   description — so the visual sign-off is reviewable on its own. Skip only when
-   the change had nothing to visually verify (step 3 was skipped).
+5. **Open the PR, then attach the visual proof.** After the PR is created, commit
+   the passing screenshots into `docs/screenshots/` (name each by its view; if a
+   screenshot of the same view exists from a previous issue, overwrite it), then
+   post the final `visual-verdict` JSON as a separate `gh pr comment` linking to
+   them. Skip only when the change had nothing to visually verify (step 3 was
+   skipped).
 
 ## While you work
 
