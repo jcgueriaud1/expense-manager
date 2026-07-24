@@ -14,16 +14,18 @@ the domain sharpens.
   label in My Reports) and optional **Additional Information** free text. No
   title. The total is derived (sum of line amounts), not stored.
 - **Expense Line** — a single expense within a report: **expense type**, gross
-  **amount**, **VAT rate**, optional **comment**, optional receipt image.
-  Belongs to one report; editable only while the report is editable — i.e. in
-  `DRAFT` or `REJECTED` (see Resubmit), never in `SUBMITTED` or `APPROVED`. A
-  line has **no business date** (its timing is the audit `createdAt`; the
-  report's `reportDate` is the meaningful date) and **no description** (the
-  optional comment is the only free text). `amount` is the gross (total paid),
-  required and **non-zero** — negatives are allowed for credits/corrections. The
-  VAT rate defaults from the expense type but is manually overridable and
-  **required**; the VAT amount is **derived** (`amount − amount/(1+rate)`,
-  HALF_UP scale 2), not stored.
+  **unit price** (`amount`), a **quantity**, **VAT rate**, optional **comment**,
+  optional receipt image. Belongs to one report; editable only while the report
+  is editable — i.e. in `DRAFT` or `REJECTED` (see Resubmit), never in
+  `SUBMITTED` or `APPROVED`. A line has **no business date** (its timing is the
+  audit `createdAt`; the report's `reportDate` is the meaningful date) and **no
+  description** (the optional comment is the only free text). `amount` is the
+  gross **unit price** (per-item total paid), required and **non-zero** —
+  negatives are allowed for credits/corrections (never a negative quantity). The
+  line **gross** is derived: `amount × quantity` (HALF_UP scale 2). The VAT rate
+  defaults from the expense type but is manually overridable and **required**;
+  the VAT amount is **derived** from the gross (`gross − gross/(1+rate)`,
+  HALF_UP scale 2), not stored. See **Quantity** (ADR-0023).
 - **Expense Type** — admin-editable config classifying a line (e.g. Travel
   allowance, Taxi/transport, Accommodation, Restaurant/meals, Office
   supplies/goods, Publications, Other — the general catch-all). Has a display
@@ -85,14 +87,27 @@ the domain sharpens.
 
 ## Money & allowances
 
-- **Amount** — a monetary value: `BigDecimal` scale 2, EUR (ADR-0010).
+- **Amount** — a monetary value: `BigDecimal` scale 2, EUR (ADR-0010). On an
+  **Expense Line** it is the gross **unit price** (per item), not the line total
+  (ADR-0023).
+- **Quantity** — the count on an **Expense Line**: `BigDecimal(19,2)`, strictly
+  `> 0`, default `1`. The line gross is `amount × quantity` (HALF_UP scale 2).
+  Manual lines take any positive quantity (whole or fractional); generated lines
+  carry real quantities where meaningful — kilometre (`km`), foreign per-diem
+  (`days`), split domestic per-diem (`full days` / `partial days`) — and `1` for
+  meal and parking. Never negative: credits use a negative unit price (ADR-0023).
 - **VAT** — value-added tax. Captured per line as a **VAT Rate** (config
   reference, defaulted from the line's Expense Type, overridable, required); the
   VAT amount is derived from the gross amount, never stored. See **Expense Type**
   and **VAT Rate** under Core entities.
-- **Per Diem** — daily allowance for a trip. **Domestic** is auto-calculated
-  (including the **free-meal halving** — the per-diem is halved when a free meal
-  was provided). **Foreign** uses a country-rate lookup or a manual override.
+- **Per Diem** — daily allowance for a trip. **Domestic** is auto-calculated and
+  generates **two lines** — a full-day line (`full days × full rate`) and a
+  partial-day line (`partial days × partial rate`) — so each is an honest
+  `quantity × unit price` (ADR-0023); the full+partial mix per trip is
+  unchanged. The **free-meal halving** halves the **unit price** of those lines
+  (the per-diem is halved when a free meal was provided), keeping quantity an
+  honest day count. **Foreign** uses a country-rate lookup (`days × country
+  rate`) or a manual override.
 - **Kilometre Compensation** — allowance for driving, rate × kilometres.
 - **Manual Override** — an operator-entered allowance adjustment with a mandatory
   explanation, used when auto-calculation doesn't fit.

@@ -28,5 +28,6 @@ Status values: `Accepted`, `Superseded by ADR-XXXX`, `Deprecated`.
 | [0020](0020-accessible-and-mobile-friendly.md) | Accessible (WCAG 2.1 AA) and mobile-friendly baseline | Accepted |
 | [0021](0021-receipt-entity-upload-serving.md) | Receipt: separate entity, buffered upload, summary-only DTO | Accepted |
 | [0022](0022-form-models-top-level.md) | Binder form-backing models are top-level classes, not view inner classes | Accepted |
+| [0023](0023-expense-line-quantity.md) | Expense-line quantity: `amount` becomes a unit price, gross derived | Accepted |
 
 See also: [../glossary.md](../glossary.md) · [../plan.md](../plan.md) · [../findings.md](../findings.md)
