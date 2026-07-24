@@ -106,6 +106,36 @@ class ApprovalQueueViewUiTest extends AbstractApprovalViewUiTest {
     }
 
     @Test
+    void reviewHistoryShowsTerminalReportsAcrossOwnersWithTheDecisionAndReviewLinks() {
+        var approvedId = seedApprovedReportForOwner(LocalUserSeeder.PLAIN_USER_EMAIL,
+                LocalDate.of(2026, 6, 2), "approved trip");
+        seedRejectedReportForOwner(ADMIN_EMAIL, LocalDate.of(2026, 6, 1),
+                "rejected trip", "Please itemise the taxi fares.");
+        // A still-pending report must NOT leak into the history.
+        seedSubmittedReportForOwner(ADMIN_EMAIL, LocalDate.of(2026, 6, 3), "pending trip");
+
+        navigate(ReviewHistoryView.class);
+
+        var text = getCurrentView().getElement().getTextRecursively();
+        assertThat(text).contains("approved trip", "rejected trip", "Approved",
+                "Rejected", "Demo User", "Expense Admin",
+                "Please itemise the taxi fares.");
+        assertThat(text).doesNotContain("pending trip");
+        // Each row is a real router link into the /review/{id} alias.
+        assertThat($(RouterLink.class).all().stream()
+                .anyMatch(a -> ("review/" + approvedId).equals(
+                        a.getElement().getAttribute("href")))).isTrue();
+    }
+
+    @Test
+    void anEmptyReviewHistoryShowsTheEmptyState() {
+        navigate(ReviewHistoryView.class);
+
+        assertThat(getCurrentView().getElement().getTextRecursively())
+                .contains("No reviewed reports yet");
+    }
+
+    @Test
     void rejectingWithAReasonRecordsItAndMovesTheReportToRejected() {
         var id = seedSubmittedReportForOwner(LocalUserSeeder.PLAIN_USER_EMAIL,
                 LocalDate.of(2026, 6, 2), "user trip");

@@ -1,5 +1,6 @@
 package com.vaadin.expensemanager.report.service;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -33,4 +34,14 @@ public interface ExpenseReportRepository extends JpaRepository<ExpenseReport, Lo
      * caller re-orders by submitted-at (the SUBMITTED status change's timestamp).
      */
     List<ExpenseReport> findByStatusOrderByIdDesc(ReportStatus status);
+
+    /**
+     * Reports in any of the given statuses across <strong>all</strong> owners,
+     * newest id first — the admin review history's non-owner-scoped query (Issue
+     * #110, ADR-0008). Like {@link #findByStatusOrderByIdDesc} it is not
+     * owner-bound by design: only the {@code ADMIN}-guarded {@code ApprovalService}
+     * calls it. The caller re-orders by decided-at (the terminal status change's
+     * timestamp).
+     */
+    List<ExpenseReport> findByStatusInOrderByIdDesc(Collection<ReportStatus> statuses);
 }

@@ -84,9 +84,10 @@ class NavigationShellUiTest extends SpringBrowserlessTest {
                 .containsExactly(null, "Reference tables", "User management");
 
         // Everyday views lead the top group, in Dashboard → My reports →
-        // Approvals order; no admin views leak into it.
+        // Approvals → Review history order; no reference/user-management views
+        // leak into it.
         assertThat(itemLabels(navs.get(0)))
-                .containsExactly("Dashboard", "My reports", "Approvals");
+                .containsExactly("Dashboard", "My reports", "Approvals", "Review history");
 
         // The reference tables and user management are their own sections.
         assertThat(itemLabels(navs.get(1)))

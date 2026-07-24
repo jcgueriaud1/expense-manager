@@ -34,6 +34,12 @@ class ApprovalAccessUiTest extends AbstractApprovalViewUiTest {
     }
 
     @Test
+    void aNonAdminCannotReachTheReviewHistoryRoute() {
+        assertThatThrownBy(() -> navigate(ReviewHistoryView.class))
+                .isInstanceOf(Exception.class);
+    }
+
+    @Test
     void aNonAdminCannotEnterReviewMode() {
         var id = seedSubmittedReportForOwner(LocalUserSeeder.PLAIN_USER_EMAIL,
                 LocalDate.of(2026, 6, 2), "user trip");
