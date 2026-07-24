@@ -71,6 +71,27 @@ public class ApprovalService {
     }
 
     /**
+     * Every report in a terminal status ({@code APPROVED} or {@code REJECTED})
+     * across all owners, newest <em>decision</em> first — the admin review history
+     * (Issue #110, ADR-0008, non-owner-scoped). Where {@link #listSubmitted} keys on
+     * submitted-at, this keys on the decision: each row carries the deciding admin
+     * and decided-at (the {@code → APPROVED} / {@code → REJECTED} transition), plus
+     * the rejection comment when the outcome was a rejection.
+     */
+    @RolesAllowed("ADMIN")
+    @Transactional(readOnly = true)
+    public List<ReviewedSummaryDto> listReviewed() {
+        return reportRepository
+                .findByStatusInOrderByIdDesc(
+                        List.of(ReportStatus.APPROVED, ReportStatus.REJECTED))
+                .stream()
+                .map(ApprovalService::toReviewedSummary)
+                .sorted(Comparator.comparing(ReviewedSummaryDto::decidedAt,
+                        Comparator.nullsLast(Comparator.reverseOrder())))
+                .toList();
+    }
+
+    /**
      * Loads any report as a detail working copy for read-only review —
      * <strong>not</strong> owner-scoped (ADR-0008), so an admin can open another
      * user's report. The same {@link ReportDetailDto} the owner path uses, carrying
@@ -153,6 +174,29 @@ public class ApprovalService {
                 .filter(change -> change.getToStatus() == ReportStatus.SUBMITTED)
                 .map(StatusChange::getChangedAt)
                 .max(Comparator.naturalOrder())
+                .orElse(null);
+    }
+
+    private static ReviewedSummaryDto toReviewedSummary(ExpenseReport r) {
+        var decision = decisionChange(r);
+        return new ReviewedSummaryDto(r.getId(), r.getReportDate(),
+                r.getAdditionalInformation(), r.getStatus(), r.total(),
+                r.getOwner().getName(),
+                decision == null ? null : decision.getActingUser().getName(),
+                decision == null ? null : decision.getChangedAt(),
+                r.getStatus() == ReportStatus.REJECTED && decision != null
+                        ? decision.getComment() : null);
+    }
+
+    /**
+     * The report's most recent transition <em>into</em> its current terminal
+     * status — the decision that put it in the history: the {@code → APPROVED} or
+     * {@code → REJECTED} change carrying the deciding admin, timestamp and comment.
+     */
+    private static StatusChange decisionChange(ExpenseReport r) {
+        return r.getStatusHistory().stream()
+                .filter(change -> change.getToStatus() == r.getStatus())
+                .max(Comparator.comparing(StatusChange::getChangedAt))
                 .orElse(null);
     }
 }

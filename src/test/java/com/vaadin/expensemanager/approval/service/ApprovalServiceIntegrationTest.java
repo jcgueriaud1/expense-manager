@@ -99,6 +99,39 @@ class ApprovalServiceIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void listReviewedSpansAllOwnersNewestDecisionFirstCarryingTheDecision() {
+        authenticateAs(ADMIN_EMAIL);
+        // One approved and one rejected report owned by different users, decided at
+        // different times, plus a SUBMITTED and a DRAFT that must never appear.
+        var approved = seedApprovedReport(ADMIN_EMAIL, LocalDate.of(2026, 6, 1),
+                "admin trip", Instant.parse("2026-07-14T08:00:00Z"));
+        var rejected = seedRejectedReport(LocalUserSeeder.PLAIN_USER_EMAIL,
+                LocalDate.of(2026, 6, 2), "user trip",
+                "Please itemise the taxi fares.", Instant.parse("2026-07-16T08:00:00Z"));
+        seedSubmittedReport(LocalUserSeeder.PLAIN_USER_EMAIL, LocalDate.of(2026, 6, 3),
+                "pending", Instant.parse("2026-07-12T09:00:00Z"));
+        seedDraft(LocalUserSeeder.PLAIN_USER_EMAIL, LocalDate.of(2026, 6, 4), "draft");
+
+        var history = approvalService.listReviewed();
+
+        // Only terminal statuses, newest decision first (rejection was later).
+        assertThat(history).extracting(ReviewedSummaryDto::id)
+                .containsExactly(rejected, approved);
+        assertThat(history).extracting(ReviewedSummaryDto::status)
+                .containsExactly(ReportStatus.REJECTED, ReportStatus.APPROVED);
+        // The decision is carried: deciding admin, decided-at, and the reason (reject only).
+        var first = history.getFirst();
+        assertThat(first.submitterName()).isEqualTo("Demo User");
+        assertThat(first.decidedByName()).isEqualTo("Expense Admin");
+        assertThat(first.decidedAt()).isEqualTo(Instant.parse("2026-07-16T08:00:00Z"));
+        assertThat(first.rejectionComment()).isEqualTo("Please itemise the taxi fares.");
+        // The approved row carries no rejection comment.
+        assertThat(history.get(1).decidedByName()).isEqualTo("Expense Admin");
+        assertThat(history.get(1).decidedAt()).isEqualTo(Instant.parse("2026-07-14T08:00:00Z"));
+        assertThat(history.get(1).rejectionComment()).isNull();
+    }
+
+    @Test
     void findForReviewLoadsAnotherUsersReport() {
         authenticateAs(ADMIN_EMAIL);
         var userReport = seedSubmittedReport(LocalUserSeeder.PLAIN_USER_EMAIL,
@@ -223,6 +256,8 @@ class ApprovalServiceIntegrationTest extends AbstractIntegrationTest {
 
         assertThatThrownBy(() -> approvalService.listSubmitted())
                 .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> approvalService.listReviewed())
+                .isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> approvalService.findForReview(1L))
                 .isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> approvalService.approve(1L, 0L))
@@ -251,6 +286,31 @@ class ApprovalServiceIntegrationTest extends AbstractIntegrationTest {
         report.reconcileLines(List.of(new ExpenseLineSpec(null, firstType(),
                 new BigDecimal("100.00"), firstRate(), null)));
         report.submit(owner, at);
+        return reportRepository.save(report).getId();
+    }
+
+    /** Seeds an APPROVED report owned by {@code email}, decided by the admin at {@code at}. */
+    private Long seedApprovedReport(String email, LocalDate date, String info, Instant at) {
+        var owner = userRepository.findByEmail(email).orElseThrow();
+        var admin = userRepository.findByEmail(ADMIN_EMAIL).orElseThrow();
+        var report = new ExpenseReport(owner, date, info);
+        report.reconcileLines(List.of(new ExpenseLineSpec(null, firstType(),
+                new BigDecimal("100.00"), firstRate(), null)));
+        report.submit(owner, Instant.parse("2026-07-10T09:00:00Z"));
+        report.approve(admin, at);
+        return reportRepository.save(report).getId();
+    }
+
+    /** Seeds a REJECTED report owned by {@code email}, decided by the admin at {@code at}. */
+    private Long seedRejectedReport(String email, LocalDate date, String info,
+            String reason, Instant at) {
+        var owner = userRepository.findByEmail(email).orElseThrow();
+        var admin = userRepository.findByEmail(ADMIN_EMAIL).orElseThrow();
+        var report = new ExpenseReport(owner, date, info);
+        report.reconcileLines(List.of(new ExpenseLineSpec(null, firstType(),
+                new BigDecimal("100.00"), firstRate(), null)));
+        report.submit(owner, Instant.parse("2026-07-10T09:00:00Z"));
+        report.reject(admin, reason, at);
         return reportRepository.save(report).getId();
     }
 

@@ -108,6 +108,23 @@ abstract class AbstractApprovalViewUiTest extends SpringBrowserlessTest
         return track(reportRepository.save(report).getId());
     }
 
+    /**
+     * Seeds a REJECTED report owned by {@code email} (the seeded admin recorded as
+     * the rejecting reviewer, with a reason), so a history test sees a rejected
+     * outcome. Returns its id.
+     */
+    protected Long seedRejectedReportForOwner(String email, LocalDate date,
+            String info, String reason) {
+        var owner = userRepository.findByEmail(email).orElseThrow();
+        var admin = userRepository.findByEmail("admin@vaadin.com").orElseThrow();
+        var report = new ExpenseReport(owner, date, info);
+        report.reconcileLines(List.of(new ExpenseLineSpec(null, firstType(),
+                new BigDecimal("100.00"), firstRate(), null)));
+        report.submit(owner, Instant.parse("2026-07-12T09:00:00Z"));
+        report.reject(admin, reason, Instant.parse("2026-07-15T08:00:00Z"));
+        return track(reportRepository.save(report).getId());
+    }
+
     private Long track(Long id) {
         createdReportIds.add(id);
         return id;
