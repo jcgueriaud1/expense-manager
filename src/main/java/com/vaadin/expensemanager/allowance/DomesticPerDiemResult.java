@@ -3,25 +3,51 @@ package com.vaadin.expensemanager.allowance;
 import java.math.BigDecimal;
 
 /**
- * The outcome of a domestic per-diem calculation (Phase 4.2, ADR-0006).
+ * The outcome of a domestic per-diem calculation (Phase 4.2, ADR-0006) — the
+ * Verohallinto full/partial day split, as <strong>two</strong> honest
+ * {@code days × per-day rate} components (ADR-0023, issue #124).
  *
- * <p>The {@link #amount} is the tax-free daily allowance the trip earns, EUR at
- * scale 2 (ADR-0010) — {@code 0.00} when the trip is too short or not eligible.
- * The {@link #explanation} is a short human-readable breakdown of how that
- * amount was reached (full/partial days, free-meal halving); it is written into
- * the generated line's comment so the Phase-5 approval UI can show <em>why</em>
- * the allowance is what it is, without recomputing.
+ * <p>Each component becomes its own generated line — {@code PER_DIEM_FULL} and
+ * {@code PER_DIEM_PARTIAL} — so a 30 h trip reads "1 × €54.00" plus "1 × €25.00"
+ * rather than one €79.00 lump. The full+partial mix per trip and the total euros are
+ * the same as before the split; a {@linkplain PerDiemComponent#isEarned() component
+ * that earned nothing} (no full days, or a leftover under the partial threshold)
+ * simply generates no line, and a trip that is too short or not eligible earns
+ * {@linkplain #none() neither}.
  *
- * @param amount      the tax-free per-diem, EUR scale 2 (never negative)
- * @param fullDays    number of whole 24-hour periods that earned a full day
- * @param partialDays {@code 1} if the leftover earned a partial day, else {@code 0}
- * @param explanation short breakdown for the line comment / approval UI
+ * <p>Free-meal halving is applied to each component's <em>unit price</em>, so the
+ * day counts stay honest and each line rounds to cents independently (ADR-0023's
+ * accepted per-line rounding). The {@link #amount()} — the trip's whole per-diem —
+ * is derived by summing the components, never stored.
+ *
+ * @param full    the whole 24-hour periods valued at the full-day rate
+ * @param partial the leftover valued at the partial-day rate (at most one day)
  */
-public record DomesticPerDiemResult(BigDecimal amount, int fullDays, int partialDays,
-        String explanation) {
+public record DomesticPerDiemResult(PerDiemComponent full, PerDiemComponent partial) {
 
-    /** Whether the trip earned any allowance (drives whether a line is generated). */
+    /** The trip earned no per-diem at all — too short, or not eligible. */
+    static DomesticPerDiemResult none() {
+        return new DomesticPerDiemResult(PerDiemComponent.none(),
+                PerDiemComponent.none());
+    }
+
+    /** The trip's whole per-diem, EUR scale 2 — the two components summed. */
+    public BigDecimal amount() {
+        return full.amount().add(partial.amount());
+    }
+
+    /** Whether the trip earned any allowance (drives whether lines are generated). */
     public boolean hasAllowance() {
-        return amount.signum() != 0;
+        return amount().signum() != 0;
+    }
+
+    /** Number of whole 24-hour periods that earned a full day. */
+    public int fullDays() {
+        return full.days();
+    }
+
+    /** {@code 1} if the leftover earned a partial day, else {@code 0}. */
+    public int partialDays() {
+        return partial.days();
     }
 }

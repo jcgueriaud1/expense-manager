@@ -65,7 +65,11 @@ Keep runs small:
   `input[name="username"]` / `input[name="password"]` + pressing **Enter**
   submits without hunting for the shadow-DOM submit button.
 - **Batch form entry** with `browser_fill_form` (one call, many fields) instead
-  of many `browser_type` calls.
+  of many `browser_type` calls — but **leave ComboBoxes out of the batch**: a
+  `type: "combobox"` field fails with "Element is not a `<select>` element" and
+  takes the whole batch down with it (F-054). Drive each ComboBox with two clicks
+  instead: its `input` (`#input-vaadin-combo-box-<n>`), then
+  `vaadin-combo-box-item:has-text("…")` in the overlay.
 - **Screenshot only unique visual states** — layout, colour, status badges,
   callouts. Don't re-drive flows the browserless tests (pyramid layer 3) already
   cover behaviourally; those assertions belong there, not in a browser run.

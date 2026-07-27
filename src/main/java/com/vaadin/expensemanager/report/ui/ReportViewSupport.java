@@ -78,10 +78,15 @@ public final class ReportViewSupport {
         return "var(" + CATEGORY_COLORS[index] + ")";
     }
 
-    /** A friendly label for a generated (travel-owned) line kind (Phase 4.3). */
+    /**
+     * A friendly label for a generated (travel-owned) line kind (Phase 4.3). The two
+     * per-diem kinds name the day they price — the card then reads
+     * "days × per-day rate = gross" (issue #124).
+     */
     static String generatedLineLabel(GeneratedLineKind kind) {
         return switch (kind) {
-            case PER_DIEM -> "Per diem allowance";
+            case PER_DIEM_FULL -> "Per diem allowance (full day)";
+            case PER_DIEM_PARTIAL -> "Per diem allowance (partial day)";
             case KILOMETRE -> "Kilometre allowance";
             case MEAL -> "Meal allowance";
             case PARKING -> "Parking";

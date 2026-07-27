@@ -642,7 +642,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         // step (11 h → one full day €54). The preview lives in the dialog overlay
         // (attached to the UI, not the view), so assert against the whole UI tree.
         assertThat(UI.getCurrent().getElement().getTextRecursively())
-                .contains("Per diem allowance: €54.00");
+                .contains("Per diem allowance (full day): €54.00");
 
         findButton().withText("Save trip").click();
 
@@ -679,7 +679,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
 
         // Costed against Germany's €71.00/day, not the Finnish €54.00.
         assertThat(UI.getCurrent().getElement().getTextRecursively())
-                .contains("Per diem allowance: €71.00", "Germany");
+                .contains("Per diem allowance (full day): €71.00", "Germany");
 
         findButton().withText("Save trip").click();
         // The chosen country shows on the Trip & Allowance card ("destinations, country").
@@ -821,7 +821,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         navigate(ReportDetailView.class, id);
 
         // Each earned line is listed under the trip with an attach affordance.
-        assertThat(findButton().withAriaLabel("Add receipt: Per diem allowance")
+        assertThat(findButton().withAriaLabel("Add receipt: Per diem allowance (full day)")
                 .exists()).isTrue();
         assertThat(findButton().withAriaLabel("Add receipt: Parking").exists()).isTrue();
 
@@ -860,6 +860,64 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findButton().withText("Save").click();
 
         assertThat(service.findMine(id).perDiemTotal()).isEqualByComparingTo("27.00");
+    }
+
+    @Test
+    void aTripEarningAPartialDayListsTwoPerDiemCardsUnderOneSubtotal() {
+        // Issue #124: 31 h → a full-day card (1 × €54.00) and a partial-day card
+        // (1 × €25.00), each labelled by the day it prices, both folded into the single
+        // "Per diem allowance" subtotal row (€79.00).
+        var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(31));
+        navigate(ReportDetailView.class, id);
+
+        var shown = getCurrentView().getElement().getTextRecursively();
+        assertThat(shown).contains("Per diem allowance (full day)", "€54.00",
+                "Per diem allowance (partial day)", "€25.00");
+        // One subtotal row for both lines, and it is the sum.
+        assertThat(findSpan().withText("Per diem allowance").exists()).isTrue();
+        assertThat(shown).contains("€79.00");
+
+        var loaded = service.findMine(id);
+        assertThat(loaded.perDiemTotal()).isEqualByComparingTo("79.00");
+        assertThat(loaded.total()).isEqualByComparingTo("79.00");
+        assertThat(loaded.travels().getFirst().generatedLines()).hasSize(2);
+    }
+
+    @Test
+    void aMultiDayPerDiemCardShowsTheDaysTimesRateBreakdown() {
+        // 55 h → 2 full days + 1 partial: the full-day card reads like an invoice line
+        // (ADR-0023), the partial-day card stays a plain quantity-1 card.
+        var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(55));
+        navigate(ReportDetailView.class, id);
+
+        var shown = getCurrentView().getElement().getTextRecursively();
+        assertThat(shown).contains("2 × €54.00 = €108.00")
+                .doesNotContain("1 × €25.00");
+        assertThat(service.findMine(id).perDiemTotal()).isEqualByComparingTo("133.00");
+    }
+
+    @Test
+    void reCostingATripDropsThePerDiemCardItNoLongerEarns() {
+        var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(31));
+        navigate(ReportDetailView.class, id);
+        assertThat(getCurrentView().getElement().getTextRecursively())
+                .contains("Per diem allowance (partial day)");
+
+        // Shorten the trip to a whole 24 h through its editor: the partial-day card
+        // disappears, the full-day one stays, and the subtotal follows live.
+        findButton().withText("Edit").click();
+        findDateTimePicker().withLabel("Return").setValue(DEP.plusHours(24));
+        findButton().withText("Save trip").click();
+
+        var shown = getCurrentView().getElement().getTextRecursively();
+        assertThat(shown).contains("Per diem allowance (full day)")
+                .doesNotContain("Per diem allowance (partial day)");
+
+        findButton().withText("Save").click();
+
+        var loaded = service.findMine(id);
+        assertThat(loaded.perDiemTotal()).isEqualByComparingTo("54.00");
+        assertThat(loaded.travels().getFirst().generatedLines()).hasSize(1);
     }
 
     // --- Meal-allowance / eligibility checkbox coupling (issue #93) ---

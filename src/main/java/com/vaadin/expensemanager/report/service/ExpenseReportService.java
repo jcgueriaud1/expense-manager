@@ -15,10 +15,10 @@ import com.vaadin.expensemanager.allowance.AllowanceRateService;
 import com.vaadin.expensemanager.allowance.DomesticPerDiemDto;
 import com.vaadin.expensemanager.allowance.DomesticPerDiemResult;
 import com.vaadin.expensemanager.allowance.ForeignPerDiemDto;
-import com.vaadin.expensemanager.allowance.ForeignPerDiemResult;
 import com.vaadin.expensemanager.allowance.KilometreAllowance;
 import com.vaadin.expensemanager.allowance.KilometreRateDto;
 import com.vaadin.expensemanager.allowance.MealAllowanceDto;
+import com.vaadin.expensemanager.allowance.PerDiemComponent;
 import com.vaadin.expensemanager.report.domain.ExpenseLine;
 import com.vaadin.expensemanager.report.domain.ExpenseLineSpec;
 import com.vaadin.expensemanager.report.domain.ExpenseReport;
@@ -588,34 +588,31 @@ public class ExpenseReportService {
 
     /**
      * The generated lines a trip earns (ADR-0006): one {@link GeneratedLineSpec}
-     * per non-zero output — per-diem, kilometre, meal, parking — recomputed
-     * server-side from the trip-year rates (the client never sends money). A kind
-     * that produced nothing is omitted, so the aggregate removes any prior line of
-     * it. A missing rate for a requested output is surfaced (ADR-0020).
+     * per non-zero output — the full-day and partial-day per-diem, kilometre, meal,
+     * parking — recomputed server-side from the trip-year rates (the client never
+     * sends money). A kind that produced nothing is omitted, so the aggregate removes
+     * any prior line of it. A missing rate for a requested output is surfaced
+     * (ADR-0020).
      */
     private List<GeneratedLineSpec> earnedLines(TravelDto t, GeneratedLineTypes types) {
         if (t.departureAt() == null || t.returnAt() == null) {
             throw new IllegalArgumentException(
                     "Departure and return date & time are required");
         }
-        List<GeneratedLineSpec> lines = new ArrayList<>(4);
+        List<GeneratedLineSpec> lines = new ArrayList<>(5);
         // The destination country decides how the per-diem is costed: a Finnish trip
-        // against the domestic full/partial rate, a foreign one against the country's
-        // flat per-year rate (never a silent Finnish default). Both file the line
-        // under the same tax-free PER_DIEM kind (ADR-0006).
-        BigDecimal perDiemAmount;
-        String perDiemComment;
+        // against the domestic full/partial rates — two lines, one per rate (issue
+        // #124) — a foreign one against the country's flat per-year rate, every day at
+        // the full rate (never a silent Finnish default). Each line is an honest
+        // days × per-day rate (ADR-0023), and both kinds share the per-diem subtotal.
         if (isForeign(t.country())) {
-            ForeignPerDiemResult foreign = costForeign(t);
-            perDiemAmount = foreign.amount();
-            perDiemComment = foreign.explanation();
+            addPerDiemSpec(lines, GeneratedLineKind.PER_DIEM_FULL, costForeign(t), types);
         } else {
             DomesticPerDiemResult perDiem = costDomestic(t);
-            perDiemAmount = perDiem.amount();
-            perDiemComment = perDiem.explanation();
+            addPerDiemSpec(lines, GeneratedLineKind.PER_DIEM_FULL, perDiem.full(), types);
+            addPerDiemSpec(lines, GeneratedLineKind.PER_DIEM_PARTIAL, perDiem.partial(),
+                    types);
         }
-        addFlatSpec(lines, GeneratedLineKind.PER_DIEM, types.perDiemType(),
-                types.zeroVat(), perDiemAmount, perDiemComment);
         // The one genuine multiple (ADR-0023): the line carries the distance as its
         // quantity and the year's €/km rate as its unit price, so its card reads
         // "12.5 × €0.55 = €6.88" and the euros are unchanged.
@@ -642,7 +639,20 @@ public class ExpenseReportService {
         }
     }
 
-    /** Adds a flat (quantity-1) generated line — per-diem, meal, parking (ADR-0023). */
+    /**
+     * Adds one per-diem line — {@code quantity = days}, {@code unit price = the
+     * per-day rate} (ADR-0023, issue #124) — if the trip earned that component. A
+     * component with no days is dropped by {@link #addSpec}, so a trip earning no
+     * partial day generates no partial-day line and any prior one is removed.
+     */
+    private static void addPerDiemSpec(List<GeneratedLineSpec> into,
+            GeneratedLineKind kind, PerDiemComponent component,
+            GeneratedLineTypes types) {
+        addSpec(into, kind, types.perDiemType(), types.zeroVat(), component.perDay(),
+                component.quantity(), component.explanation());
+    }
+
+    /** Adds a flat (quantity-1) generated line — meal or parking (ADR-0023). */
     private static void addFlatSpec(List<GeneratedLineSpec> into, GeneratedLineKind kind,
             ExpenseType type, VatRate rate, BigDecimal amount, String comment) {
         addSpec(into, kind, type, rate, amount, BigDecimal.ONE, comment);
@@ -687,7 +697,7 @@ public class ExpenseReportService {
      * thresholds come from the year's domestic rate (the statutory 10 h / 6 h
      * thresholds shared by every per-diem).
      */
-    private ForeignPerDiemResult costForeign(TravelDto t) {
+    private PerDiemComponent costForeign(TravelDto t) {
         int year = t.departureAt().getYear();
         ForeignPerDiemDto rate = allowanceRateService.foreignPerDiem(year, t.country())
                 .orElseThrow(() -> new IllegalArgumentException(
