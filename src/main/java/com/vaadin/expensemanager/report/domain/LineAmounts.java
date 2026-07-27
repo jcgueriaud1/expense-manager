@@ -47,6 +47,34 @@ public record LineAmounts(BigDecimal net, BigDecimal vat, BigDecimal gross) {
         return new LineAmounts(net, vat, g);
     }
 
+    /**
+     * The gross of a unit price × quantity line, HALF_UP scale 2 (ADR-0023).
+     *
+     * <p>The single place that multiplication happens: {@link ExpenseLine#gross()}
+     * and the live-totals UI both call it, so a persisted line and an unsaved edit
+     * can never round differently.
+     *
+     * @param unitPrice the gross unit price, each (required; may be negative)
+     * @param quantity  the line quantity (required; the domain enforces {@code > 0})
+     * @throws IllegalArgumentException if either argument is {@code null}
+     */
+    public static BigDecimal grossOf(BigDecimal unitPrice, BigDecimal quantity) {
+        if (unitPrice == null || quantity == null) {
+            throw new IllegalArgumentException("Unit price and quantity are required");
+        }
+        return unitPrice.multiply(quantity).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Derives net/VAT/gross from a unit price × quantity line (ADR-0023) — the
+     * gross is {@link #grossOf} and net/VAT come off <em>that</em>, never off the
+     * unit price.
+     */
+    public static LineAmounts ofLine(BigDecimal unitPrice, BigDecimal quantity,
+            BigDecimal ratePercent) {
+        return of(grossOf(unitPrice, quantity), ratePercent);
+    }
+
     /** The additive identity — a zero total at scale 2, for empty reductions. */
     public static LineAmounts zero() {
         BigDecimal z = BigDecimal.ZERO.setScale(2);

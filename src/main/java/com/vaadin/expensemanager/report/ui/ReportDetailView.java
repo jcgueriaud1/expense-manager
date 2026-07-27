@@ -2,7 +2,6 @@ package com.vaadin.expensemanager.report.ui;
 
 import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
@@ -59,6 +58,7 @@ import org.springframework.orm.ObjectOptimisticLockingFailureException;
 
 import static com.vaadin.expensemanager.report.ui.ReportViewSupport.formatEur;
 import static com.vaadin.expensemanager.report.ui.ReportViewSupport.formatPercent;
+import static com.vaadin.expensemanager.report.ui.ReportViewSupport.formatQuantity;
 
 /**
  * Create and edit a single report with its expense lines (UC-001/UC-005,
@@ -1137,10 +1137,16 @@ public class ReportDetailView extends VerticalLayout
         var gross = new Span();
         gross.bindText(entry.map(dto -> formatEur(grossOf(dto))));
         gross.addClassName("line-amount");
+        // qty × unit = gross, shown only for a multi-unit line (ADR-0023); a
+        // quantity-1 card carries no extra row and reads exactly as before.
+        var quantity = new Span();
+        quantity.bindText(entry.map(ReportDetailView::quantityBreakdownOf));
+        quantity.bindVisible(entry.map(ReportDetailView::showsQuantity));
+        quantity.addClassName("muted-xs");
         var breakdown = new Span();
         breakdown.bindText(entry.map(ReportDetailView::breakdownOf));
         breakdown.addClassName("muted-xs");
-        var amounts = new VerticalLayout(gross, breakdown);
+        var amounts = new VerticalLayout(gross, quantity, breakdown);
         amounts.setPadding(false);
         amounts.setSpacing(false);
         amounts.setAlignItems(FlexComponent.Alignment.END);
@@ -1189,8 +1195,10 @@ public class ReportDetailView extends VerticalLayout
      */
     private LineAmounts currentTotals() {
         var manual = lines.get().stream().map(ValueSignal::get)
-                .filter(dto -> dto.amount() != null && dto.vatRatePercent() != null)
-                .map(dto -> LineAmounts.of(dto.amount(), dto.vatRatePercent()))
+                .filter(dto -> dto.amount() != null && dto.quantity() != null
+                        && dto.vatRatePercent() != null)
+                .map(dto -> LineAmounts.ofLine(dto.amount(), dto.quantity(),
+                        dto.vatRatePercent()))
                 .reduce(LineAmounts.zero(), LineAmounts::add);
         // Each trip's VAT-bearing generated lines (parking) fold into Net/VAT too.
         return travels.get().stream().map(ValueSignal::get)
@@ -1226,8 +1234,26 @@ public class ReportDetailView extends VerticalLayout
     }
 
     private static BigDecimal grossOf(ExpenseLineDto dto) {
-        return dto.amount() == null ? BigDecimal.ZERO.setScale(2)
-                : dto.amount().setScale(2, RoundingMode.HALF_UP);
+        return ReportViewSupport.lineGross(dto.amount(), dto.quantity());
+    }
+
+    /**
+     * Whether the card shows the {@code qty × unit = gross} breakdown: only when
+     * the quantity is not 1, so a plain single-item line reads exactly as it did
+     * before quantity existed (ADR-0023).
+     */
+    private static boolean showsQuantity(ExpenseLineDto dto) {
+        return dto.amount() != null && dto.quantity() != null
+                && dto.quantity().compareTo(BigDecimal.ONE) != 0;
+    }
+
+    /** The {@code 3 × €12.50 = €37.50} line for a multi-unit card (ADR-0023). */
+    private static String quantityBreakdownOf(ExpenseLineDto dto) {
+        if (!showsQuantity(dto)) {
+            return "";
+        }
+        return formatQuantity(dto.quantity()) + " × " + formatEur(dto.amount()) + " = "
+                + formatEur(grossOf(dto));
     }
 
     private static String subtitleOf(ExpenseLineDto dto) {
@@ -1239,10 +1265,12 @@ public class ReportDetailView extends VerticalLayout
     }
 
     private static String breakdownOf(ExpenseLineDto dto) {
-        if (dto.amount() == null || dto.vatRatePercent() == null) {
+        if (dto.amount() == null || dto.quantity() == null
+                || dto.vatRatePercent() == null) {
             return "";
         }
-        var totals = LineAmounts.of(dto.amount(), dto.vatRatePercent());
+        var totals = LineAmounts.ofLine(dto.amount(), dto.quantity(),
+                dto.vatRatePercent());
         return "net " + formatEur(totals.net()) + " · VAT " + formatEur(totals.vat())
                 + " (" + formatPercent(dto.vatRatePercent()) + ")";
     }

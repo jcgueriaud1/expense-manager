@@ -9,9 +9,11 @@ import java.math.BigDecimal;
  * <p>Carries the reference-data <em>ids</em> that drive persistence
  * ({@link #expenseTypeId}, {@link #vatRateId}) plus flattened display fields
  * ({@link #expenseTypeName}, {@link #vatRatePercent}) so the receipt cards render
- * without ever dereferencing a JPA association. Net/VAT are not carried — the UI
- * derives them live from {@link #amount} + {@link #vatRatePercent} via the shared
- * domain helper, so an unsaved edit and a persisted line use the same maths.
+ * without ever dereferencing a JPA association. Gross/net/VAT are not carried —
+ * the UI derives them live from {@link #amount} × {@link #quantity} +
+ * {@link #vatRatePercent} via the shared domain helper
+ * ({@code LineAmounts.ofLine}), so an unsaved edit and a persisted line use the
+ * same maths (ADR-0023).
  *
  * <p><strong>Receipt summary, never the bytes (ADR-0021).</strong> The trailing
  * fields describe the line's attached receipt — {@link #receiptId},
@@ -34,7 +36,9 @@ import java.math.BigDecimal;
  * @param vatRateId          chosen VAT rate id (required to be valid on save)
  * @param vatRatePercent     VAT rate as a percent, e.g. {@code 25.50}, for display
  *                           and live derivation
- * @param amount             gross amount as entered (required, non-zero on save)
+ * @param amount             gross unit price, each (required, non-zero on save)
+ * @param quantity           line quantity (required, strictly positive on save;
+ *                           {@code 1} for a plain single-item line)
  * @param comment            optional free-text note, may be {@code null}
  * @param receiptId          attached receipt's id, or {@code null} if none / unsaved
  * @param receiptFilename    attached receipt's filename, or {@code null} if none
@@ -43,25 +47,34 @@ import java.math.BigDecimal;
  */
 public record ExpenseLineDto(Long id, Long expenseTypeId, String expenseTypeName,
         Long vatRateId, BigDecimal vatRatePercent, BigDecimal amount,
-        String comment, Long receiptId, String receiptFilename,
+        BigDecimal quantity, String comment, Long receiptId, String receiptFilename,
         String receiptContentType, Long receiptSizeBytes) {
 
     /**
-     * A line with no receipt (the common construction site: new lines, tests, and
+     * A single-unit line with no receipt — quantity {@code 1}, so the unit price
+     * <em>is</em> the gross (the common construction site: new lines, tests, and
      * the editor before an upload is buffered).
      */
     public static ExpenseLineDto of(Long id, Long expenseTypeId, String expenseTypeName,
             Long vatRateId, BigDecimal vatRatePercent, BigDecimal amount,
             String comment) {
+        return of(id, expenseTypeId, expenseTypeName, vatRateId, vatRatePercent,
+                amount, BigDecimal.ONE, comment);
+    }
+
+    /** A line with an explicit quantity and no receipt (ADR-0023). */
+    public static ExpenseLineDto of(Long id, Long expenseTypeId, String expenseTypeName,
+            Long vatRateId, BigDecimal vatRatePercent, BigDecimal amount,
+            BigDecimal quantity, String comment) {
         return new ExpenseLineDto(id, expenseTypeId, expenseTypeName, vatRateId,
-                vatRatePercent, amount, comment, null, null, null, null);
+                vatRatePercent, amount, quantity, comment, null, null, null, null);
     }
 
     /** This line with its receipt summary fields replaced (load path / optimistic). */
     public ExpenseLineDto withReceipt(Long receiptId, String receiptFilename,
             String receiptContentType, Long receiptSizeBytes) {
         return new ExpenseLineDto(id, expenseTypeId, expenseTypeName, vatRateId,
-                vatRatePercent, amount, comment, receiptId, receiptFilename,
+                vatRatePercent, amount, quantity, comment, receiptId, receiptFilename,
                 receiptContentType, receiptSizeBytes);
     }
 

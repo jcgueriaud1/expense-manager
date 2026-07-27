@@ -106,7 +106,8 @@ public class ReportDtoMapper {
         var type = line.getExpenseType();
         var rate = line.getVatRate();
         var dto = ExpenseLineDto.of(line.getId(), type.getId(), type.getName(),
-                rate.getId(), rate.getValue(), line.getAmount(), line.getComment());
+                rate.getId(), rate.getValue(), line.getAmount(), line.getQuantity(),
+                line.getComment());
         if (receipt == null) {
             return dto;
         }

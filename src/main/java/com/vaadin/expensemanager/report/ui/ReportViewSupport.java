@@ -9,6 +9,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
 import com.vaadin.expensemanager.report.domain.GeneratedLineKind;
+import com.vaadin.expensemanager.report.domain.LineAmounts;
 import com.vaadin.expensemanager.report.domain.ReportStatus;
 import com.vaadin.flow.component.badge.Badge;
 import com.vaadin.flow.component.badge.BadgeVariant;
@@ -85,6 +86,24 @@ public final class ReportViewSupport {
             case MEAL -> "Meal allowance";
             case PARKING -> "Parking";
         };
+    }
+
+    /**
+     * A line's gross for display — unit price × quantity (ADR-0023), via the same
+     * domain helper the persisted line uses, so the editor's live "Line total", the
+     * card, and the saved figure can never disagree. A half-filled line (either
+     * part still empty) reads as {@code 0.00}.
+     */
+    static BigDecimal lineGross(BigDecimal unitPrice, BigDecimal quantity) {
+        if (unitPrice == null || quantity == null) {
+            return BigDecimal.ZERO.setScale(2);
+        }
+        return LineAmounts.grossOf(unitPrice, quantity);
+    }
+
+    /** Quantity without trailing zeros, e.g. {@code "3"} or {@code "12.5"}. */
+    static String formatQuantity(BigDecimal quantity) {
+        return quantity.stripTrailingZeros().toPlainString();
     }
 
     /** EUR amount at scale 2, e.g. {@code "€0.00"} (ADR-0010). */

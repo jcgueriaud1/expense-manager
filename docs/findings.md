@@ -1088,6 +1088,10 @@ Deployment/Observability · UX-spec
 - Suggested Vaadin/product improvement: either add a `getValue()` alias on the
   value-bearing locators or surface the locator method list in the browserless
   testing docs so the tester vocabulary is discoverable without reading jars.
+- Recurrence (2026-07-27, issue #122): the same gap on `BigDecimalFieldLocator`
+  and `DialogLocator` — the former has `setValue`/`clear` but no `getValue`, the
+  latter no `getElement`. Read through the component instead:
+  `findBigDecimalField().withLabel("Quantity").getComponent().getValue()`.
 - Owner / next step: none.
 
 ### F-034 — Generated per-diem line is coupled to reference data by name/value, with no first-class marker

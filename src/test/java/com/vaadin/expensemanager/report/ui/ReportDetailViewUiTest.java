@@ -13,6 +13,7 @@ import com.vaadin.flow.component.checkbox.Checkbox;
 import com.vaadin.flow.component.datepicker.DatePicker;
 import com.vaadin.flow.component.datetimepicker.DateTimePicker;
 import com.vaadin.flow.component.html.Image;
+import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.test.context.support.WithUserDetails;
 
@@ -118,7 +119,8 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
                 .selectItem("Parking/supplies/goods");
         findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
-        findBigDecimalField().setValue(new BigDecimal("100"));
+        findBigDecimalField().withLabel("Unit price (gross, each)")
+                .setValue(new BigDecimal("100"));
         findButton().withText("Save expense").click();
 
         // Live total bar reflects the added line before the report is saved.
@@ -130,6 +132,104 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         assertThat(reloaded.lines()).hasSize(1);
         assertThat(reloaded.lines().getFirst().amount()).isEqualByComparingTo("100.00");
         assertThat(reloaded.total()).isEqualByComparingTo("100.00");
+    }
+
+    @Test
+    void lineEditorDefaultsQuantityToOneAndShowsTheLineTotalLive() {
+        var id = seedReport(LocalDate.of(2026, 7, 1), "trip");
+        navigate(ReportDetailView.class, id);
+
+        findButton().withText("Add expense").click();
+
+        // Quantity starts at 1, so the line total is the unit price itself.
+        assertThat(findBigDecimalField().withLabel("Quantity").getComponent().getValue())
+                .isEqualByComparingTo("1");
+        findBigDecimalField().withLabel("Unit price (gross, each)")
+                .setValue(new BigDecimal("12.50"));
+        assertThat(findDialog().getComponent().getElement().getTextRecursively())
+                .contains("Line total").contains("€12.50");
+
+        // Raising the quantity recomputes the total before anything is saved.
+        findBigDecimalField().withLabel("Quantity").setValue(new BigDecimal("3"));
+        assertThat(findDialog().getComponent().getElement().getTextRecursively()).contains("€37.50");
+    }
+
+    @Test
+    void aQuantityLinePersistsItsUnitPriceAndTotalsTheProduct() {
+        var id = seedReport(LocalDate.of(2026, 7, 1), "trip");
+        navigate(ReportDetailView.class, id);
+
+        findButton().withText("Add expense").click();
+        findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
+                .selectItem("Parking/supplies/goods");
+        findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
+        findBigDecimalField().withLabel("Unit price (gross, each)")
+                .setValue(new BigDecimal("100"));
+        findBigDecimalField().withLabel("Quantity").setValue(new BigDecimal("3"));
+        findButton().withText("Save expense").click();
+
+        // The card shows the qty × unit = gross breakdown and the live total bar
+        // reflects the product, both before the report is saved.
+        var shown = getCurrentView().getElement().getTextRecursively();
+        assertThat(shown).contains("3 × €100.00 = €300.00").contains("€300.00");
+
+        findButton().withText("Save").click();
+
+        var line = service.findMine(id).lines().getFirst();
+        assertThat(line.amount()).isEqualByComparingTo("100.00");     // unit price
+        assertThat(line.quantity()).isEqualByComparingTo("3.00");
+        assertThat(service.findMine(id).total()).isEqualByComparingTo("300.00");
+    }
+
+    @Test
+    void aQuantityOneCardShowsNoQuantityBreakdown() {
+        // The feature is invisible until used (ADR-0023).
+        var id = seedReportWithLine(LocalDate.of(2026, 7, 1), "100.00");
+        navigate(ReportDetailView.class, id);
+
+        assertThat(getCurrentView().getElement().getTextRecursively())
+                .contains("€100.00")
+                .doesNotContain("1 × €100.00");
+    }
+
+    @Test
+    void aNonPositiveQuantityIsBlockedWithAnErrorSummary() {
+        var id = seedReport(LocalDate.of(2026, 7, 1), "trip");
+        navigate(ReportDetailView.class, id);
+
+        findButton().withText("Add expense").click();
+        findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
+                .selectItem("Parking/supplies/goods");
+        findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
+        findBigDecimalField().withLabel("Unit price (gross, each)")
+                .setValue(new BigDecimal("100"));
+        findBigDecimalField().withLabel("Quantity").setValue(BigDecimal.ZERO);
+        // Always-enabled Save (ADR-0020): the click is allowed, the reason shows.
+        findButton().withText("Save expense").click();
+
+        assertThat(findDialog().getComponent().getElement().getTextRecursively())
+                .contains("Quantity must be greater than zero");
+        assertThat(service.findMine(id).lines()).isEmpty();
+    }
+
+    @Test
+    void editingALineLoadsAndUpdatesItsQuantity() {
+        var id = seedReportWithLine(LocalDate.of(2026, 7, 1), "50.00");
+        navigate(ReportDetailView.class, id);
+
+        // Open the existing (quantity-1) line and give it a quantity. The card body
+        // itself carries the click listener (no Edit button), so click that.
+        openLineCardEditor();
+        assertThat(findBigDecimalField().withLabel("Quantity").getComponent().getValue())
+                .isEqualByComparingTo("1");
+        findBigDecimalField().withLabel("Quantity").setValue(new BigDecimal("4"));
+        findButton().withText("Save expense").click();
+        findButton().withText("Save").click();
+
+        var line = service.findMine(id).lines().getFirst();
+        assertThat(line.amount()).isEqualByComparingTo("50.00");
+        assertThat(line.quantity()).isEqualByComparingTo("4.00");
+        assertThat(service.findMine(id).total()).isEqualByComparingTo("200.00");
     }
 
     @Test
@@ -220,7 +320,8 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
                 .selectItem("Parking/supplies/goods");
         findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
-        findBigDecimalField().setValue(new BigDecimal("100"));
+        findBigDecimalField().withLabel("Unit price (gross, each)")
+                .setValue(new BigDecimal("100"));
         findButton().withText("Save expense").click();
 
         findButton().withText("Submit for approval").click();
@@ -393,7 +494,8 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
                 .selectItem("Parking/supplies/goods");
         findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
-        findBigDecimalField().setValue(new BigDecimal("100"));
+        findBigDecimalField().withLabel("Unit price (gross, each)")
+                .setValue(new BigDecimal("100"));
         // Drive the real UploadHandler: bytes are validated server-side by magic
         // bytes and buffered in memory (the browser mime is not trusted).
         findUpload().upload("taxi.jpg", "image/jpeg", jpegBytes());
@@ -424,7 +526,8 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
                 .selectItem("Parking/supplies/goods");
         findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
-        findBigDecimalField().setValue(new BigDecimal("100"));
+        findBigDecimalField().withLabel("Unit price (gross, each)")
+                .setValue(new BigDecimal("100"));
         // A text file renamed to .jpg: magic-byte check rejects it at upload; the
         // control is never disabled, the reason is surfaced instead (ADR-0020).
         findUpload().upload("fake.jpg", "image/jpeg", "not an image".getBytes());
@@ -485,7 +588,8 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
                 .selectItem("Parking/supplies/goods");
         findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
-        findBigDecimalField().setValue(new BigDecimal("100"));
+        findBigDecimalField().withLabel("Unit price (gross, each)")
+                .setValue(new BigDecimal("100"));
         findUpload().upload("taxi.jpg", "image/jpeg", jpegBytes());
 
         // The preview affordance appears in the still-open dialog, before any save.
@@ -505,7 +609,8 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
                 .selectItem("Parking/supplies/goods");
         findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
-        findBigDecimalField().setValue(new BigDecimal("100"));
+        findBigDecimalField().withLabel("Unit price (gross, each)")
+                .setValue(new BigDecimal("100"));
         findUpload().upload("taxi.jpg", "image/jpeg", jpegBytes());
         findButton().withText("Save expense").click();
 
@@ -889,5 +994,14 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findButton().withText("Save").click();
 
         assertThat(service.findMine(id).lines()).isEmpty();
+    }
+
+    /**
+     * Opens the line editor for the report's first line card. The card has no Edit
+     * button — the whole card body is the click target ({@code .clickable}) — so the
+     * click goes to that layout rather than to a locator-findable control.
+     */
+    private void openLineCardEditor() {
+        test($(HorizontalLayout.class).withClassName("clickable").first()).click();
     }
 }

@@ -144,6 +144,113 @@ class ExpenseReportTest {
     }
 
     @Test
+    void quantityMultipliesTheUnitPriceIntoTheLineGross() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+
+        report.reconcileLines(List.of(spec(null, "100.00", "3", RATE_255)));
+
+        var line = report.getLines().getFirst();
+        assertThat(line.getAmount()).isEqualByComparingTo("100.00");   // unit price
+        assertThat(line.getQuantity()).isEqualByComparingTo("3.00");
+        assertThat(line.gross()).isEqualByComparingTo("300.00");
+        // Net/VAT derive from the *gross*, not from the unit price.
+        assertThat(line.net()).isEqualByComparingTo("239.04");
+        assertThat(line.vat()).isEqualByComparingTo("60.96");
+        assertThat(report.total()).isEqualByComparingTo("300.00");
+        assertThat(report.netTotal()).isEqualByComparingTo("239.04");
+        assertThat(report.vatTotal()).isEqualByComparingTo("60.96");
+    }
+
+    @Test
+    void quantityOneLeavesTheLineExactlyAsBefore() {
+        // The invisible-until-used guarantee (ADR-0023): default quantity, old maths.
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+
+        report.reconcileLines(List.of(spec(null, "100.00", RATE_255)));
+
+        var line = report.getLines().getFirst();
+        assertThat(line.getQuantity()).isEqualByComparingTo("1.00");
+        assertThat(line.gross()).isEqualByComparingTo("100.00");
+        assertThat(line.net()).isEqualByComparingTo("79.68");
+        assertThat(line.vat()).isEqualByComparingTo("20.32");
+    }
+
+    @Test
+    void aNegativeUnitPriceWithAQuantityCreditsTheWholeGross() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+
+        report.reconcileLines(List.of(
+                spec(null, "100.00", "3", RATE_0),
+                spec(null, "-30.00", "2", RATE_0)));
+
+        assertThat(report.getLines().get(1).gross()).isEqualByComparingTo("-60.00");
+        assertThat(report.total()).isEqualByComparingTo("240.00");
+    }
+
+    @Test
+    void reconcileRejectsAZeroQuantity() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+
+        assertThatThrownBy(() -> report.reconcileLines(
+                List.of(spec(null, "100.00", "0", RATE_255))))
+                .isInstanceOf(DomainRuleException.class)
+                .hasMessageContaining("Quantity");
+    }
+
+    @Test
+    void reconcileRejectsANegativeQuantity() {
+        // Credits ride a negative unit price, never a negative quantity (ADR-0023).
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+
+        assertThatThrownBy(() -> report.reconcileLines(
+                List.of(spec(null, "100.00", "-2", RATE_255))))
+                .isInstanceOf(DomainRuleException.class)
+                .hasMessageContaining("Quantity");
+    }
+
+    @Test
+    void reconcileRejectsAMissingQuantity() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+
+        assertThatThrownBy(() -> report.reconcileLines(List.of(
+                new ExpenseLineSpec(null, TYPE, new BigDecimal("100.00"), null,
+                        RATE_255, null))))
+                .isInstanceOf(DomainRuleException.class)
+                .hasMessageContaining("Quantity is required");
+    }
+
+    @Test
+    void reReconcilingWithADifferentQuantityRetotalsTheReport() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+        report.reconcileLines(List.of(spec(null, "100.00", "3", RATE_255)));
+        var line = report.getLines().getFirst();
+
+        // No persistent id yet, so the null-id set replaces rather than updates
+        // (the in-place update path is covered by the integration test).
+        report.reconcileLines(List.of(spec(null, "100.00", "2", RATE_255)));
+
+        assertThat(report.getLines()).hasSize(1).doesNotContain(line);
+        assertThat(report.total()).isEqualByComparingTo("200.00");
+    }
+
+    @Test
+    void generatedTravelLinesArePinnedToQuantityOne() {
+        // This slice keeps travel euros identical: the calculator's full computed
+        // gross is the unit price × 1 (issue #122).
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+
+        report.reconcileTravels(List.of(travelSpec(null, "54.00", "11 h")));
+
+        var generated = report.getLines().getFirst();
+        assertThat(generated.isGenerated()).isTrue();
+        assertThat(generated.getQuantity()).isEqualByComparingTo("1.00");
+        assertThat(generated.getAmount()).isEqualByComparingTo("54.00");
+        assertThat(generated.gross()).isEqualByComparingTo("54.00");
+        assertThat(report.perDiemTotal()).isEqualByComparingTo("54.00");
+        assertThat(report.total()).isEqualByComparingTo("54.00");
+    }
+
+    @Test
     void reconcileReplacesUnmatchedLinesOnRepeatedCall() {
         var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
         report.reconcileLines(List.of(spec(null, "100.00", RATE_255)));
@@ -587,7 +694,14 @@ class ExpenseReportTest {
     }
 
     private static ExpenseLineSpec spec(Long id, String amount, VatRate rate) {
-        return new ExpenseLineSpec(id, TYPE, new BigDecimal(amount), rate, null);
+        return ExpenseLineSpec.of(id, TYPE, new BigDecimal(amount), rate, null);
+    }
+
+    /** A spec with an explicit quantity — {@code amount} is the unit price (ADR-0023). */
+    private static ExpenseLineSpec spec(Long id, String unitPrice, String quantity,
+            VatRate rate) {
+        return new ExpenseLineSpec(id, TYPE, new BigDecimal(unitPrice),
+                new BigDecimal(quantity), rate, null);
     }
 
     private static TravelSpec travelSpec(Long id, String perDiem, String explanation) {

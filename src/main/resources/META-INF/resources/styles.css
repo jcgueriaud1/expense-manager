@@ -211,6 +211,22 @@
 .line-amount { font-weight: var(--aura-font-weight-semibold); font-size: var(--aura-font-size-m); }
 .line-receipt { margin-top: var(--vaadin-gap-s); }
 
+/* The line editor's read-only "Line total" row (unit price × quantity,
+   ADR-0023) — a summary figure, not an editable field, so it borrows the totals
+   bar's look rather than a field's. */
+.line-total-row {
+    border-top: 1px solid var(--vaadin-border-color-secondary);
+    padding-top: var(--vaadin-padding-xs);
+}
+.line-total-label {
+    color: var(--vaadin-text-color-secondary);
+    font-size: var(--aura-font-size-s);
+}
+.line-total-value {
+    font-weight: var(--aura-font-weight-semibold);
+    font-size: var(--aura-font-size-m);
+}
+
 /* ---- Trip & Allowance card (Phase 4.2/4.3) ---- */
 .travel-card {
     /* A subtle accent-tinted surface so a trip reads as the report's headline,

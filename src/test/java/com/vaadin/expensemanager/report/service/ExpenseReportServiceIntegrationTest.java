@@ -248,6 +248,91 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void aQuantityRoundTripsAndTotalsFromTheMultipliedGross() {
+        var type = firstActiveType();
+        var rate = rateByValue("25.5");
+
+        var id = service.create(dtoWithLines(null, LocalDate.of(2026, 7, 10), 0L,
+                List.of(newLine(type, rate, "100.00", "3", "3 nights"))));
+
+        entityManager.clear();
+        var loaded = service.findMine(id);
+        var line = loaded.lines().getFirst();
+        // The stored amount is the unit price; the gross is unit × quantity.
+        assertThat(line.amount()).isEqualByComparingTo("100.00");
+        assertThat(line.quantity()).isEqualByComparingTo("3.00");
+        assertThat(loaded.total()).isEqualByComparingTo("300.00");
+        assertThat(loaded.netTotal()).isEqualByComparingTo("239.04");
+        assertThat(loaded.vatTotal()).isEqualByComparingTo("60.96");
+    }
+
+    @Test
+    void updatingAPersistedLinesQuantityKeepsItsIdentityAndRetotals() {
+        var type = firstActiveType();
+        var rate = rateByValue("25.5");
+        var id = service.create(dtoWithLines(null, LocalDate.of(2026, 7, 10), 0L,
+                List.of(newLine(type, rate, "100.00", "3 nights"))));
+        var loaded = service.findMine(id);
+        var line = loaded.lines().getFirst();
+        entityManager.clear();
+
+        service.update(id, dtoWithLines(id, LocalDate.of(2026, 7, 10),
+                loaded.version(),
+                List.of(ExpenseLineDto.of(line.id(), type.getId(), type.getName(),
+                        rate.getId(), rate.getValue(), new BigDecimal("100.00"),
+                        new BigDecimal("3"), "3 nights"))),
+                loaded.version());
+
+        var reloaded = service.findMine(id);
+        assertThat(reloaded.lines()).hasSize(1);
+        assertThat(reloaded.lines().getFirst().id()).isEqualTo(line.id());
+        assertThat(reloaded.lines().getFirst().quantity()).isEqualByComparingTo("3.00");
+        assertThat(reloaded.total()).isEqualByComparingTo("300.00");
+    }
+
+    @Test
+    void aPreMigrationLineBackfillsToQuantityOneAndTotalsAsBefore() {
+        // A row written the way every line was written before ADR-0023: no quantity
+        // column in the insert, so V12's `default 1` backfills it. The stored amount
+        // must be untouched and the report must total exactly as it did.
+        var type = firstActiveType();
+        var rate = rateByValue("25.5");
+        var id = service.create(draftDto(LocalDate.of(2026, 7, 10), "legacy"));
+
+        entityManager.createNativeQuery("""
+                insert into expense_line (report_id, line_index, expense_type_id,
+                        vat_rate_id, amount, comment, created_at, updated_at)
+                values (?1, 0, ?2, ?3, 100.00, 'legacy', now(), now())
+                """)
+                .setParameter(1, id)
+                .setParameter(2, type.getId())
+                .setParameter(3, rate.getId())
+                .executeUpdate();
+        entityManager.flush();
+        entityManager.clear();
+
+        var loaded = service.findMine(id);
+        var line = loaded.lines().getFirst();
+        assertThat(line.amount()).isEqualByComparingTo("100.00");
+        assertThat(line.quantity()).isEqualByComparingTo("1.00");
+        assertThat(loaded.total()).isEqualByComparingTo("100.00");
+        assertThat(loaded.netTotal()).isEqualByComparingTo("79.68");
+        assertThat(loaded.vatTotal()).isEqualByComparingTo("20.32");
+    }
+
+    @Test
+    void aZeroQuantityIsRejectedOnSave() {
+        var type = firstActiveType();
+        var rate = rateByValue("25.5");
+
+        assertThatThrownBy(() -> service.create(dtoWithLines(null,
+                LocalDate.of(2026, 7, 10), 0L,
+                List.of(newLine(type, rate, "100.00", "0", "nothing")))))
+                .isInstanceOf(DomainRuleException.class)
+                .hasMessageContaining("Quantity");
+    }
+
+    @Test
     void aLineFiledUnderANowDeactivatedRateStillResolvesOnSave() {
         var type = firstActiveType();
         // Deactivate a rate after a line references it (ADR-0018 history rule).
@@ -462,7 +547,7 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
      */
     private Long seedRejectedReport(User owner) {
         var report = new ExpenseReport(owner, LocalDate.of(2026, 7, 10), "needs work");
-        report.reconcileLines(List.of(new ExpenseLineSpec(null, firstActiveType(),
+        report.reconcileLines(List.of(ExpenseLineSpec.of(null, firstActiveType(),
                 new BigDecimal("100.00"), rateByValue("25.5"), "hotel")));
         var admin = userRepository.findByEmail("admin@vaadin.com").orElseThrow();
         report.submit(owner, Instant.parse("2026-07-11T09:00:00Z"));
@@ -615,7 +700,7 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
         // A receipt on another user's report, seeded past the owner-scoped service.
         var admin = userRepository.findByEmail("admin@vaadin.com").orElseThrow();
         var report = new ExpenseReport(admin, LocalDate.of(2026, 8, 1), "admin's");
-        report.reconcileLines(List.of(new ExpenseLineSpec(null, firstActiveType(),
+        report.reconcileLines(List.of(ExpenseLineSpec.of(null, firstActiveType(),
                 new BigDecimal("10.00"), rateByValue("25.5"), "x")));
         reportRepository.save(report);
         reportRepository.flush();
@@ -1059,6 +1144,14 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
             String amount, String comment) {
         return ExpenseLineDto.of(null, type.getId(), type.getName(), rate.getId(),
                 rate.getValue(), new BigDecimal(amount), comment);
+    }
+
+    /** A new line with an explicit quantity — {@code unitPrice} is per item. */
+    private static ExpenseLineDto newLine(ExpenseType type, VatRate rate,
+            String unitPrice, String quantity, String comment) {
+        return ExpenseLineDto.of(null, type.getId(), type.getName(), rate.getId(),
+                rate.getValue(), new BigDecimal(unitPrice), new BigDecimal(quantity),
+                comment);
     }
 
     private static ReportDetailDto draftDto(LocalDate date, String info) {

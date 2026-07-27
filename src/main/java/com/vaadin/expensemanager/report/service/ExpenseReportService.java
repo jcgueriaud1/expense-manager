@@ -542,7 +542,8 @@ public class ExpenseReportService {
 
     private ExpenseLineSpec toSpec(ExpenseLineDto dto) {
         return new ExpenseLineSpec(dto.id(), requireType(dto.expenseTypeId()),
-                dto.amount(), requireRate(dto.vatRateId()), dto.comment());
+                dto.amount(), dto.quantity(), requireRate(dto.vatRateId()),
+                dto.comment());
     }
 
     private ExpenseType requireType(Long id) {
