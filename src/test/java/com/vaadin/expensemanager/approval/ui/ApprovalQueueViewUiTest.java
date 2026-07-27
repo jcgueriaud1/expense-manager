@@ -86,6 +86,31 @@ class ApprovalQueueViewUiTest extends AbstractApprovalViewUiTest {
     }
 
     @Test
+    void anApproverSeesAnOverriddenLineWithItsReasonAndBaselineReadOnly() {
+        // Quantity Override (ADR-0024): the approver must see where a judgement call
+        // was made, why, and how far it deviates from the statutory figure — through
+        // the same review route, entirely read-only.
+        var id = seedSubmittedReportWithOverriddenPerDiem(
+                LocalUserSeeder.PLAIN_USER_EMAIL, LocalDate.of(2026, 6, 2), "user trip",
+                "the Wednesday was personal");
+
+        navigate("review/" + id, ReportDetailView.class);
+
+        var text = getCurrentView().getElement().getTextRecursively();
+        assertThat(text).contains("Overridden",
+                "Reason: the Wednesday was personal",
+                "Calculated: 2 × €54.00 = €108.00",
+                "€54.00");
+        // No editing surface: an approver rejects with a comment, never corrects.
+        assertThat(findButton()
+                .withAriaLabel("Edit override: Per diem allowance (full day)").exists())
+                .isFalse();
+        assertThat(findButton()
+                .withAriaLabel("Reset to calculated: Per diem allowance (full day)")
+                .exists()).isFalse();
+    }
+
+    @Test
     void rejectingWithAnEmptyCommentShowsTheReasonRequiredErrorAndDoesNotSubmit() {
         var id = seedSubmittedReportForOwner(LocalUserSeeder.PLAIN_USER_EMAIL,
                 LocalDate.of(2026, 6, 2), "user trip");

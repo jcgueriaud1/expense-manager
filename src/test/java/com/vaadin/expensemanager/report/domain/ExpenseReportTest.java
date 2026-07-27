@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import com.vaadin.expensemanager.base.DomainRuleException;
@@ -605,6 +606,112 @@ class ExpenseReportTest {
         assertThat(report.perDiemTotal()).isEqualByComparingTo("0.00");
     }
 
+    // --- Quantity Override invariants (ADR-0024, issue #131) ---
+    //
+    // The pair (count, reason) is indivisible and lives in the value object; the
+    // rules that depend on WHICH line is corrected — overridable kinds, the
+    // partial-day cap — belong to the trip, which alone knows the map key. Every
+    // violation is a DomainRuleException like any other trip invariant (ADR-0006).
+
+    @Test
+    void anOverrideNeedsAWholeCountAtOrAboveTheFloor() {
+        assertThatThrownBy(() -> new QuantityOverride(null, "personal day"))
+                .isInstanceOf(DomainRuleException.class)
+                .hasMessageContaining("count is required");
+        assertThatThrownBy(() -> new QuantityOverride(new BigDecimal("1.5"), "half"))
+                .isInstanceOf(DomainRuleException.class)
+                .hasMessageContaining("whole number");
+        // The floor is 1 in this slice; issue #132 lowers it to 0 (suppress the line).
+        assertThatThrownBy(() -> new QuantityOverride(BigDecimal.ZERO, "drop it"))
+                .isInstanceOf(DomainRuleException.class)
+                .hasMessageContaining("less than 1");
+
+        // A whole count at money scale round-trips.
+        assertThat(new QuantityOverride(new BigDecimal("2"), "two days").quantity())
+                .isEqualByComparingTo("2.00");
+    }
+
+    @Test
+    void anOverrideNeedsAReasonAndStoresItTrimmed() {
+        assertThatThrownBy(() -> new QuantityOverride(BigDecimal.ONE, null))
+                .isInstanceOf(DomainRuleException.class)
+                .hasMessageContaining("reason");
+        assertThatThrownBy(() -> new QuantityOverride(BigDecimal.ONE, "   "))
+                .isInstanceOf(DomainRuleException.class)
+                .hasMessageContaining("reason");
+
+        assertThat(new QuantityOverride(BigDecimal.ONE, "  the Wednesday was personal  ")
+                .reason()).isEqualTo("the Wednesday was personal");
+    }
+
+    @Test
+    void onlyThePerDiemAndMealKindsAcceptAnOverride() {
+        for (GeneratedLineKind kind : List.of(GeneratedLineKind.PER_DIEM_FULL,
+                GeneratedLineKind.PER_DIEM_PARTIAL, GeneratedLineKind.MEAL)) {
+            assertThat(kind.isOverridable()).as(kind.name()).isTrue();
+        }
+        // The distance and the parking fee are trip inputs with a single home.
+        assertThat(GeneratedLineKind.KILOMETRE.isOverridable()).isFalse();
+        assertThat(GeneratedLineKind.PARKING.isOverridable()).isFalse();
+    }
+
+    @Test
+    void aTripRejectsAnOverrideForANonOverridableKind() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+        var override = new QuantityOverride(new BigDecimal("2"), "drove less");
+
+        // Rejected by the domain, not silently ignored: the client learns why.
+        assertThatThrownBy(() -> report.reconcileTravels(List.of(travelSpecWith(null,
+                Map.of(GeneratedLineKind.KILOMETRE, override), List.of()))))
+                .isInstanceOf(DomainRuleException.class)
+                .hasMessageContaining("Kilometre allowance")
+                .hasMessageContaining("on the trip");
+        assertThat(report.getTravels()).isEmpty();
+    }
+
+    @Test
+    void aTripCapsThePartialDayOverrideAtOne() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+        // A trip's duration yields at most one leftover day by construction, so
+        // "2 partial days" is incoherent rather than merely generous.
+        assertThatThrownBy(() -> report.reconcileTravels(List.of(travelSpecWith(null,
+                Map.of(GeneratedLineKind.PER_DIEM_PARTIAL,
+                        new QuantityOverride(new BigDecimal("2"), "two leftovers")),
+                List.of()))))
+                .isInstanceOf(DomainRuleException.class)
+                .hasMessageContaining("one partial day");
+
+        // Exactly one is fine.
+        report.reconcileTravels(List.of(travelSpecWith(null,
+                Map.of(GeneratedLineKind.PER_DIEM_PARTIAL,
+                        new QuantityOverride(BigDecimal.ONE, "keep the leftover")),
+                List.of())));
+        assertThat(report.getTravels().getFirst().getQuantityOverrides())
+                .containsOnlyKeys(GeneratedLineKind.PER_DIEM_PARTIAL);
+    }
+
+    @Test
+    void aTripKeepsAtMostOneOverridePerKindAndReplacesThemOnEdit() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+        report.reconcileTravels(List.of(travelSpecWith(null,
+                Map.of(GeneratedLineKind.PER_DIEM_FULL,
+                        new QuantityOverride(new BigDecimal("2"), "one day was personal")),
+                List.of(generated(GeneratedLineKind.PER_DIEM_FULL, TRAVEL_TYPE, RATE_0,
+                        "54.00", "2")))));
+        setId(report.getTravels().getFirst());
+        var travelId = report.getTravels().getFirst().getId();
+        assertThat(report.getTravels().getFirst().getQuantityOverrides())
+                .hasSize(1);
+
+        // Re-saving the trip without the override clears it (the "Reset to
+        // calculated" path); the map is replaced wholesale, never merged.
+        report.reconcileTravels(List.of(travelSpecWith(travelId, Map.of(),
+                List.of(generated(GeneratedLineKind.PER_DIEM_FULL, TRAVEL_TYPE, RATE_0,
+                        "54.00", "3")))));
+
+        assertThat(report.getTravels().getFirst().getQuantityOverrides()).isEmpty();
+    }
+
     @Test
     void manualAndGeneratedLinesCoexistWithSplitTotals() {
         var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
@@ -847,9 +954,16 @@ class ExpenseReportTest {
     }
 
     private static TravelSpec travelSpecWith(Long id, List<GeneratedLineSpec> lines) {
+        return travelSpecWith(id, Map.of(), lines);
+    }
+
+    /** A trip spec carrying Quantity Overrides as trip inputs (ADR-0024). */
+    private static TravelSpec travelSpecWith(Long id,
+            Map<GeneratedLineKind, QuantityOverride> overrides,
+            List<GeneratedLineSpec> lines) {
         return new TravelSpec(id, DEP, DEP.plusHours(11), "Helsinki", "Client visit",
                 "Finland", false, false, false, BigDecimal.ZERO.setScale(2), false,
-                BigDecimal.ZERO.setScale(2), lines);
+                BigDecimal.ZERO.setScale(2), overrides, lines);
     }
 
     private static GeneratedLineSpec generated(GeneratedLineKind kind, ExpenseType type,

@@ -288,9 +288,10 @@ final class TravelEditorDialog extends Dialog {
             preview.setVisible(false);
             return;
         }
-        var input = TravelDto.of(existing == null ? null : existing.id(),
-                departure, returnAt, destinations, purpose, country, notEligible,
-                freeLunch, chargeToCustomer, kilometres, payMeal, parkingFees);
+        var input = withExistingOverrides(TravelDto.of(
+                existing == null ? null : existing.id(), departure, returnAt,
+                destinations, purpose, country, notEligible, freeLunch,
+                chargeToCustomer, kilometres, payMeal, parkingFees));
         try {
             renderPreview(costPreview.apply(input));
         } catch (IllegalArgumentException | IllegalStateException invalid) {
@@ -311,11 +312,12 @@ final class TravelEditorDialog extends Dialog {
             errorSummary.showValidationErrors(binder.validate());
             return null;
         }
-        var input = TravelDto.of(existing == null ? null : existing.id(),
-                model.getDepartureAt(), model.getReturnAt(), model.getDestinations(),
-                model.getPurpose(), model.getCountry(), model.isNotEligibleForAllowance(),
+        var input = withExistingOverrides(TravelDto.of(
+                existing == null ? null : existing.id(), model.getDepartureAt(),
+                model.getReturnAt(), model.getDestinations(), model.getPurpose(),
+                model.getCountry(), model.isNotEligibleForAllowance(),
                 model.isFreeLunch(), model.isChargeToCustomer(), model.getKilometres(),
-                model.isPayMealAllowance(), model.getParkingFees());
+                model.isPayMealAllowance(), model.getParkingFees()));
         try {
             return costPreview.apply(input);
         } catch (DomainRuleException ex) {
@@ -376,6 +378,18 @@ final class TravelEditorDialog extends Dialog {
         return new DateTimePickerI18n()
                 .setIncompleteInputErrorMessage("Enter both a date and a time")
                 .setBadInputErrorMessage("Enter a valid date and time");
+    }
+
+    /**
+     * Carries the edited trip's existing Quantity Overrides onto the dialog's input,
+     * so a trip edit does not silently discard a correction the user made on a
+     * generated-line row (ADR-0024). Editing an override never changes the
+     * calculation, and a trip edit only clears an override — behind a confirm naming
+     * the change — when the recalculated count actually moves (issue #133).
+     */
+    private TravelDto withExistingOverrides(TravelDto input) {
+        return existing == null ? input
+                : input.withQuantityOverrides(existing.quantityOverrides());
     }
 
     /** Blank a zero amount so an untouched money field shows empty, not "0.00". */

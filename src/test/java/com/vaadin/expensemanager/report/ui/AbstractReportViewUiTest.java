@@ -215,6 +215,21 @@ abstract class AbstractReportViewUiTest extends SpringBrowserlessTest
                 zero, zero, zero));
     }
 
+    /**
+     * Seeds a DRAFT report with one domestic trip that earns a <em>meal allowance</em>
+     * instead of a per-diem: the two are mutually exclusive under the Finnish rule
+     * (issue #93), so the trip is flagged not eligible. Returns its id.
+     */
+    protected Long seedReportWithMealTravel(LocalDate date, LocalDateTime departure,
+            LocalDateTime returnAt) {
+        var zero = BigDecimal.ZERO.setScale(2);
+        var travel = TravelDto.domestic(null, departure, returnAt, "Helsinki",
+                "Client visit", true, false, false, zero, true, zero);
+        return service.create(new ReportDetailDto(null, date, "seed",
+                ReportStatus.DRAFT, 0L, List.of(), List.of(travel), zero, zero, zero,
+                zero, zero, zero));
+    }
+
     /** Seeds a SUBMITTED report whose single generated line came from a trip. */
     protected Long seedSubmittedReportWithTravel(LocalDate date,
             LocalDateTime departure, LocalDateTime returnAt) {

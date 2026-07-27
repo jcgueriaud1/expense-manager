@@ -3,8 +3,12 @@ package com.vaadin.expensemanager.report.ui;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
+import com.vaadin.expensemanager.report.domain.GeneratedLineKind;
 import com.vaadin.expensemanager.report.domain.ReportStatus;
+import com.vaadin.expensemanager.report.service.ReportDetailDto;
+import com.vaadin.expensemanager.report.service.TravelDto;
 import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.VatRateDto;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
@@ -14,6 +18,7 @@ import com.vaadin.flow.component.datepicker.DatePicker;
 import com.vaadin.flow.component.datetimepicker.DateTimePicker;
 import com.vaadin.flow.component.html.Image;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
+import com.vaadin.flow.component.textfield.IntegerField;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.test.context.support.WithUserDetails;
 
@@ -918,6 +923,227 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         var loaded = service.findMine(id);
         assertThat(loaded.perDiemTotal()).isEqualByComparingTo("54.00");
         assertThat(loaded.travels().getFirst().generatedLines()).hasSize(1);
+    }
+
+    // --- Quantity Override on a generated line (ADR-0024, issue #131) ---
+    //
+    // The user corrects a travel-generated allowance line by changing its COUNT,
+    // with a mandatory reason; the unit price stays statutory and server-computed.
+
+    @Test
+    void overridingTheFullDayCountRescalesTheLineTheSubtotalAndTheTotal() {
+        // 55 h → 2 full days (€108.00) + 1 partial day (€25.00) = €133.00.
+        var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(55));
+        navigate(ReportDetailView.class, id);
+        assertThat(getCurrentView().getElement().getTextRecursively())
+                .contains("€133.00");
+
+        overrideCount("Per diem allowance (full day)", 1, "the Wednesday was personal");
+
+        // The row now reads the effective figures, badges the correction, gives the
+        // reason and names what the calculator produced — before any save.
+        var shown = getCurrentView().getElement().getTextRecursively();
+        assertThat(shown).contains("Overridden",
+                "Reason: the Wednesday was personal",
+                "Calculated: 2 × €54.00 = €108.00");
+        // 1 full day + the untouched partial day, live in the subtotal and total.
+        assertThat(shown).contains("€79.00");
+
+        findButton().withText("Save").click();
+
+        var loaded = service.findMine(id);
+        assertThat(loaded.perDiemTotal()).isEqualByComparingTo("79.00");
+        assertThat(loaded.total()).isEqualByComparingTo("79.00");
+        // The unit price is the law — only the count moved.
+        var full = loaded.travels().getFirst()
+                .generatedLine(GeneratedLineKind.PER_DIEM_FULL).orElseThrow();
+        assertThat(full.unitPrice()).isEqualByComparingTo("54.00");
+        assertThat(full.quantity()).isEqualByComparingTo("1.00");
+    }
+
+    @Test
+    void anOverrideSurvivesSavingAndReloadingWithItsReason() {
+        var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(55));
+        navigate(ReportDetailView.class, id);
+        overrideCount("Per diem allowance (full day)", 1, "the Wednesday was personal");
+        findButton().withText("Save").click();
+
+        // Reload the persisted report from scratch: the badge, the reason and the
+        // statutory baseline are all still there.
+        navigate(ReportDetailView.class, id);
+
+        var shown = getCurrentView().getElement().getTextRecursively();
+        assertThat(shown).contains("Overridden",
+                "Reason: the Wednesday was personal",
+                "Calculated: 2 × €54.00 = €108.00", "€79.00");
+    }
+
+    @Test
+    void theMealAllowanceCountIsOverridableToo() {
+        // A not-eligible trip paying a meal allowance: one flat €13.50 line.
+        var id = seedReportWithMealTravel(LocalDate.of(2026, 7, 10), DEP,
+                DEP.plusHours(11));
+        navigate(ReportDetailView.class, id);
+
+        overrideCount("Meal allowance", 2, "two meals were taken");
+        findButton().withText("Save").click();
+
+        var loaded = service.findMine(id);
+        assertThat(loaded.mealTotal()).isEqualByComparingTo("27.00");
+        assertThat(loaded.travels().getFirst()
+                .generatedLine(GeneratedLineKind.MEAL).orElseThrow()
+                .overrideReason()).isEqualTo("two meals were taken");
+    }
+
+    @Test
+    void aBlankReasonIsRejectedInTheDialogsErrorSummaryAndChangesNothing() {
+        var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(55));
+        navigate(ReportDetailView.class, id);
+
+        findButton().withAriaLabel("Override count: Per diem allowance (full day)")
+                .click();
+        findIntegerField().withLabel("Count").setValue(1);
+        findTextArea().withLabel("Reason for the override").setValue("   ");
+        // Always-enabled submit (ADR-0020): the click is allowed, the reason shows.
+        findButton().withText("Save override").click();
+
+        assertThat(UI.getCurrent().getElement().getTextRecursively())
+                .contains("A reason for the override is required.");
+        // The dialog stays open and nothing was corrected.
+        assertThat(findButton().withText("Save override").exists()).isTrue();
+        assertThat(findSpan().withText("Overridden").exists()).isFalse();
+    }
+
+    @Test
+    void thePartialDayCountIsCappedAtOneWithTheReasonInTheErrorSummary() {
+        var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(55));
+        navigate(ReportDetailView.class, id);
+
+        findButton().withAriaLabel("Override count: Per diem allowance (partial day)")
+                .click();
+        findIntegerField().withLabel("Count").setValue(2);
+        findTextArea().withLabel("Reason for the override").setValue("two leftovers");
+        findButton().withText("Save override").click();
+
+        assertThat(UI.getCurrent().getElement().getTextRecursively())
+                .contains("one partial day");
+        assertThat(findButton().withText("Save override").exists()).isTrue();
+        assertThat(service.findMine(id).perDiemTotal()).isEqualByComparingTo("133.00");
+    }
+
+    @Test
+    void theCountFieldTakesWholeNumbersAtOrAboveTheFloor() {
+        // Integrality is enforced at the widget (an IntegerField) and the floor with
+        // it; the domain enforces both again on save. The tester refuses to set an
+        // out-of-range value, so assert the constraint that makes that so (F-021).
+        var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(55));
+        navigate(ReportDetailView.class, id);
+
+        findButton().withAriaLabel("Override count: Per diem allowance (full day)")
+                .click();
+
+        var count = (IntegerField) findIntegerField().withLabel("Count").getComponent();
+        assertThat(count.getMin()).isEqualTo(1);
+    }
+
+    @Test
+    void kilometreAndParkingLinesOfferNoOverride() {
+        // Their numbers are trip inputs with a single home — edited on the trip.
+        var id = seedReportWithFullTravel(LocalDate.of(2026, 7, 10), DEP,
+                DEP.plusHours(11), new BigDecimal("120"), false,
+                new BigDecimal("12.00"));
+        navigate(ReportDetailView.class, id);
+
+        assertThat(findButton()
+                .withAriaLabel("Override count: Per diem allowance (full day)").exists())
+                .isTrue();
+        assertThat(findButton().withAriaLabel("Override count: Kilometre allowance")
+                .exists()).isFalse();
+        assertThat(findButton().withAriaLabel("Override count: Parking").exists())
+                .isFalse();
+    }
+
+    @Test
+    void resetToCalculatedRemovesTheOverrideWithoutTouchingTheTrip() {
+        var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(55));
+        navigate(ReportDetailView.class, id);
+        overrideCount("Per diem allowance (full day)", 1, "the Wednesday was personal");
+        findButton().withText("Save").click();
+
+        findButton().withAriaLabel("Reset to calculated: Per diem allowance (full day)")
+                .click();
+
+        // Back to the statutory figure, live, and the badge is gone.
+        var shown = getCurrentView().getElement().getTextRecursively();
+        assertThat(shown).contains("€133.00").doesNotContain("Overridden");
+
+        findButton().withText("Save").click();
+
+        var loaded = service.findMine(id);
+        assertThat(loaded.perDiemTotal()).isEqualByComparingTo("133.00");
+        assertThat(loaded.travels().getFirst().quantityOverrides()).isEmpty();
+        // The trip itself was never edited.
+        assertThat(loaded.travels().getFirst().returnAt()).isEqualTo(DEP.plusHours(55));
+    }
+
+    @Test
+    void aSubmittedReportShowsAnOverrideReadOnlyWithNoWayToChangeIt() {
+        var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(55));
+        navigate(ReportDetailView.class, id);
+        overrideCount("Per diem allowance (full day)", 1, "the Wednesday was personal");
+        findButton().withText("Save").click();
+        service.submit(id, service.findMine(id).version());
+
+        navigate(ReportDetailView.class, id);
+
+        // Editability falls out of the existing DRAFT/REJECTED gating — the badge,
+        // reason and baseline still read, but every mutation surface is gone.
+        var shown = getCurrentView().getElement().getTextRecursively();
+        assertThat(shown).contains("Overridden", "Reason: the Wednesday was personal",
+                "Calculated: 2 × €54.00 = €108.00");
+        assertThat(findButton()
+                .withAriaLabel("Override count: Per diem allowance (full day)").exists())
+                .isFalse();
+        assertThat(findButton()
+                .withAriaLabel("Edit override: Per diem allowance (full day)").exists())
+                .isFalse();
+        assertThat(findButton()
+                .withAriaLabel("Reset to calculated: Per diem allowance (full day)")
+                .exists()).isFalse();
+    }
+
+    @Test
+    void aRejectedReportCanStillBeCorrectedWithAnOverride() {
+        // The owner acts on an approver's feedback: REJECTED is editable again.
+        var id = seedRejectedReport(LocalDate.of(2026, 7, 1), "100",
+                "The Wednesday looks personal.");
+        var loaded = service.findMine(id);
+        service.update(id, new ReportDetailDto(id, loaded.reportDate(),
+                loaded.additionalInformation(), loaded.status(), loaded.version(),
+                loaded.lines(), List.of(TravelDto.domestic(null, DEP,
+                        DEP.plusHours(55), "Helsinki", "Client visit", false, false,
+                        false, BigDecimal.ZERO.setScale(2), false,
+                        BigDecimal.ZERO.setScale(2))),
+                loaded.total(), loaded.netTotal(), loaded.vatTotal(),
+                loaded.perDiemTotal(), loaded.kilometreTotal(), loaded.mealTotal()),
+                loaded.version());
+        navigate(ReportDetailView.class, id);
+
+        overrideCount("Per diem allowance (full day)", 1, "the Wednesday was personal");
+        findButton().withText("Save").click();
+
+        assertThat(service.findMine(id).perDiemTotal()).isEqualByComparingTo("79.00");
+    }
+
+    /**
+     * Drives the whole override flow for one generated line: opens the row's
+     * override dialog, enters a count and a reason, and confirms.
+     */
+    private void overrideCount(String lineLabel, int count, String reason) {
+        findButton().withAriaLabel("Override count: " + lineLabel).click();
+        findIntegerField().withLabel("Count").setValue(count);
+        findTextArea().withLabel("Reason for the override").setValue(reason);
+        findButton().withText("Save override").click();
     }
 
     // --- Meal-allowance / eligibility checkbox coupling (issue #93) ---

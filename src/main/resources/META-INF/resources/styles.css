@@ -241,6 +241,36 @@
     flex: none;
 }
 
+/* A generated line's actions (receipt, Quantity Override, reset). Several small
+   buttons on one row, so they wrap onto a second line rather than squeezing the
+   amount off a phone screen (ADR-0020). */
+.travel-line-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+/* The line's label plus its "Overridden" badge. Wrapping keeps the badge from
+   squeezing the label into a three-line column on a narrow row: it drops below
+   the (unbroken) label instead. */
+.travel-line-heading {
+    flex-wrap: wrap;
+}
+.travel-line-heading .line-name {
+    white-space: nowrap;
+}
+
+/* Below tablet width a generated line's three columns — label, amount, actions —
+   no longer fit side by side, and the override actions would otherwise push the
+   card off the screen. Stack the actions under the line instead (ADR-0020). */
+@media (max-width: 34rem) {
+    .travel-line-row {
+        flex-wrap: wrap;
+    }
+    .travel-line-actions {
+        width: 100%;
+    }
+}
+
 /* The computed per-diem preview inside the trip dialog. */
 .travel-preview {
     display: flex;

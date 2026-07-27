@@ -3,15 +3,24 @@ package com.vaadin.expensemanager.report.domain;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.Map;
 
 import com.vaadin.expensemanager.base.AuditedEntity;
 import com.vaadin.expensemanager.base.DomainRuleException;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapKeyColumn;
+import jakarta.persistence.MapKeyEnumerated;
 import jakarta.persistence.Table;
 
 /**
@@ -79,6 +88,23 @@ public class Travel extends AuditedEntity {
     @Column(name = "parking_fees", nullable = false, precision = 19, scale = 2)
     private BigDecimal parkingFees = ZERO;
 
+    /**
+     * The trip's {@linkplain QuantityOverride Quantity Overrides}, at most one per
+     * generated-line kind (ADR-0024). An override is a trip <em>input</em> like
+     * {@link #kilometres} — it says "claim 2 full days, not the 3 you calculated" —
+     * so it lives here, and the generated lines stay pure derivations the aggregate
+     * recomputes on every save. Keyed by kind, so the overridable-kind list is data
+     * rather than schema; the rows live in {@code travel_override} and cascade with
+     * the trip.
+     */
+    @ElementCollection
+    @CollectionTable(name = "travel_override",
+            joinColumns = @JoinColumn(name = "travel_id"))
+    @MapKeyEnumerated(EnumType.STRING)
+    @MapKeyColumn(name = "generated_kind", length = 20)
+    private Map<GeneratedLineKind, QuantityOverride> quantityOverrides =
+            new EnumMap<>(GeneratedLineKind.class);
+
     /** JPA constructor. */
     protected Travel() {
     }
@@ -107,6 +133,32 @@ public class Travel extends AuditedEntity {
         this.kilometres = normalizeAmount(spec.kilometres());
         this.payMealAllowance = spec.payMealAllowance();
         this.parkingFees = normalizeAmount(spec.parkingFees());
+        applyOverrides(spec.quantityOverrides());
+    }
+
+    /**
+     * Replaces the trip's Quantity Overrides with the incoming set, rejecting any
+     * that does not apply to its kind (ADR-0024). The value object has already
+     * validated the count and reason; the kind-specific rules — which kinds are
+     * overridable at all, and the partial-day cap — are enforced <em>here</em>,
+     * because the map key is the trip's knowledge, not the override's. An override
+     * for a non-overridable kind is <strong>rejected</strong>, never silently
+     * dropped, so a client that sends one learns why.
+     *
+     * @throws DomainRuleException if an override does not apply to its kind
+     */
+    private void applyOverrides(Map<GeneratedLineKind, QuantityOverride> incoming) {
+        quantityOverrides.clear();
+        if (incoming == null) {
+            return;
+        }
+        incoming.forEach((kind, override) -> {
+            if (override == null) {
+                throw new DomainRuleException("An override needs a count and a reason.");
+            }
+            override.assertValidFor(kind);
+            quantityOverrides.put(kind, override);
+        });
     }
 
     public Long getId() {
@@ -155,6 +207,14 @@ public class Travel extends AuditedEntity {
 
     public BigDecimal getParkingFees() {
         return parkingFees;
+    }
+
+    /**
+     * Unmodifiable view of the trip's Quantity Overrides by kind (ADR-0024); empty
+     * when the calculated figures were left alone.
+     */
+    public Map<GeneratedLineKind, QuantityOverride> getQuantityOverrides() {
+        return Collections.unmodifiableMap(quantityOverrides);
     }
 
     /** A trip input amount at money scale, defaulting {@code null} to zero. */
