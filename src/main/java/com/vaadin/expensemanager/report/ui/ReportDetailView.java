@@ -1042,7 +1042,16 @@ public class ReportDetailView extends VerticalLayout
                     line.receiptContentType(),
                     pendingTravelReceipts.get(new TravelReceiptKey(entry, line.kind()))));
         }
-        var amounts = new VerticalLayout(amount, receipt);
+        var amounts = new VerticalLayout(amount);
+        // The km line is a multiple, so it reads "12.5 × €0.55 = €6.88" like a
+        // multi-unit manual card; the flat kinds are quantity 1 and show nothing
+        // extra (ADR-0023).
+        if (line.showsQuantity()) {
+            var quantity = new Span(quantityBreakdown(line.quantity(), line.unitPrice()));
+            quantity.addClassName("muted-xs");
+            amounts.add(quantity);
+        }
+        amounts.add(receipt);
         amounts.setPadding(false);
         amounts.setSpacing(false);
         amounts.setAlignItems(FlexComponent.Alignment.END);
@@ -1252,8 +1261,16 @@ public class ReportDetailView extends VerticalLayout
         if (!showsQuantity(dto)) {
             return "";
         }
-        return formatQuantity(dto.quantity()) + " × " + formatEur(dto.amount()) + " = "
-                + formatEur(grossOf(dto));
+        return quantityBreakdown(dto.quantity(), dto.amount());
+    }
+
+    /**
+     * The {@code qty × unit = gross} text a multi-unit card shows — shared by the
+     * manual cards and the generated kilometre row so they read identically.
+     */
+    private static String quantityBreakdown(BigDecimal quantity, BigDecimal unitPrice) {
+        return formatQuantity(quantity) + " × " + formatEur(unitPrice) + " = "
+                + formatEur(ReportViewSupport.lineGross(unitPrice, quantity));
     }
 
     private static String subtitleOf(ExpenseLineDto dto) {

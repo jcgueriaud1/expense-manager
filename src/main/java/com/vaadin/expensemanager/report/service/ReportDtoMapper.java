@@ -77,7 +77,8 @@ public class ReportDtoMapper {
     /**
      * Maps a persisted trip to its working-copy DTO, reading each generated line
      * (per kind, in kind order) off the report into a {@link GeneratedLineView}
-     * with its amount, read-only explanation, id, and any attached receipt.
+     * with its unit price + quantity (ADR-0023), read-only explanation, id, and any
+     * attached receipt.
      */
     private static TravelDto toTravelDto(ExpenseReport r, Travel t,
             Map<Long, ReceiptSummaryView> byLine) {
@@ -85,8 +86,8 @@ public class ReportDtoMapper {
         for (GeneratedLineKind kind : GeneratedLineKind.values()) {
             r.generatedLineFor(t, kind).ifPresent(line -> {
                 var view = GeneratedLineView.of(kind, line.getExpenseType().getName(),
-                        line.gross(), line.getVatRate().getValue(), line.getComment(),
-                        line.getId());
+                        line.getAmount(), line.getQuantity(),
+                        line.getVatRate().getValue(), line.getComment(), line.getId());
                 var receipt = byLine.get(line.getId());
                 if (receipt != null) {
                     view = view.withReceipt(receipt.getId(), receipt.getFilename(),

@@ -16,6 +16,7 @@ import com.vaadin.expensemanager.allowance.DomesticPerDiemDto;
 import com.vaadin.expensemanager.allowance.DomesticPerDiemResult;
 import com.vaadin.expensemanager.allowance.ForeignPerDiemDto;
 import com.vaadin.expensemanager.allowance.ForeignPerDiemResult;
+import com.vaadin.expensemanager.allowance.KilometreAllowance;
 import com.vaadin.expensemanager.allowance.KilometreRateDto;
 import com.vaadin.expensemanager.allowance.MealAllowanceDto;
 import com.vaadin.expensemanager.report.domain.ExpenseLine;
@@ -613,32 +614,45 @@ public class ExpenseReportService {
             perDiemAmount = perDiem.amount();
             perDiemComment = perDiem.explanation();
         }
-        addSpec(lines, GeneratedLineKind.PER_DIEM, types.perDiemType(), types.zeroVat(),
-                perDiemAmount, perDiemComment);
-        AllowanceAmount km = costKilometre(t);
+        addFlatSpec(lines, GeneratedLineKind.PER_DIEM, types.perDiemType(),
+                types.zeroVat(), perDiemAmount, perDiemComment);
+        // The one genuine multiple (ADR-0023): the line carries the distance as its
+        // quantity and the year's €/km rate as its unit price, so its card reads
+        // "12.5 × €0.55 = €6.88" and the euros are unchanged.
+        KilometreAllowance km = costKilometre(t);
         addSpec(lines, GeneratedLineKind.KILOMETRE, types.kilometreType(),
-                types.zeroVat(), km.amount(), km.explanation());
+                types.zeroVat(), km.ratePerKm(), km.kilometres(), km.explanation());
         AllowanceAmount meal = costMeal(t);
-        addSpec(lines, GeneratedLineKind.MEAL, types.mealType(), types.zeroVat(),
+        addFlatSpec(lines, GeneratedLineKind.MEAL, types.mealType(), types.zeroVat(),
                 meal.amount(), meal.explanation());
         AllowanceAmount parking = calculator.parking(t.parkingFees());
-        addSpec(lines, GeneratedLineKind.PARKING, types.parkingType(),
+        addFlatSpec(lines, GeneratedLineKind.PARKING, types.parkingType(),
                 types.parkingType().getDefaultVatRate(), parking.amount(),
                 parking.explanation());
         return lines;
     }
 
+    /** Adds a unit-price × quantity generated line, if the rule earned one. */
     private static void addSpec(List<GeneratedLineSpec> into, GeneratedLineKind kind,
-            ExpenseType type, VatRate rate, BigDecimal amount, String comment) {
-        if (amount != null && amount.signum() != 0) {
-            into.add(new GeneratedLineSpec(kind, type, rate, amount, comment));
+            ExpenseType type, VatRate rate, BigDecimal unitPrice, BigDecimal quantity,
+            String comment) {
+        var spec = new GeneratedLineSpec(kind, type, rate, unitPrice, quantity, comment);
+        if (spec.isEarned()) {
+            into.add(spec);
         }
+    }
+
+    /** Adds a flat (quantity-1) generated line — per-diem, meal, parking (ADR-0023). */
+    private static void addFlatSpec(List<GeneratedLineSpec> into, GeneratedLineKind kind,
+            ExpenseType type, VatRate rate, BigDecimal amount, String comment) {
+        addSpec(into, kind, type, rate, amount, BigDecimal.ONE, comment);
     }
 
     /** A preview view of an earned generated line — no id or receipt yet. */
     private static GeneratedLineView toView(GeneratedLineSpec spec) {
         return GeneratedLineView.of(spec.kind(), spec.expenseType().getName(),
-                spec.amount(), spec.vatRate().getValue(), spec.comment(), null);
+                spec.unitPrice(), spec.quantity(), spec.vatRate().getValue(),
+                spec.comment(), null);
     }
 
     /** The resolved reference data the generated lines are filed under, per save. */
@@ -694,7 +708,7 @@ public class ExpenseReportService {
     }
 
     /** Server-authoritative kilometre allowance; needs a rate only when km &gt; 0. */
-    private AllowanceAmount costKilometre(TravelDto t) {
+    private KilometreAllowance costKilometre(TravelDto t) {
         BigDecimal km = t.kilometres();
         if (km == null || km.signum() <= 0) {
             return calculator.kilometreAllowance(km, null);

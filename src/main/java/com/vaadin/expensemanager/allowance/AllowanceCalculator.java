@@ -33,7 +33,10 @@ import java.time.LocalDateTime;
  * amount when the trip is flagged for it) — both tax-free — and carry
  * {@linkplain #parking parking fees} (a VAT-bearing expense passed through at
  * face value). Each is its own rule so it can be unit-tested in isolation and
- * skipped when it produced nothing (km = 0, meal not requested, fee = 0).
+ * skipped when it produced nothing (km = 0, meal not requested, fee = 0). The
+ * kilometre rule returns its two <em>factors</em> ({@link KilometreAllowance}) so
+ * its generated line can carry {@code km × €/km} rather than a lump (ADR-0023);
+ * the two flat rules return a plain {@link AllowanceAmount}.
  *
  * <p>Amounts are server-authoritative: this runs on inputs the client sent, and
  * the client never sends money. Kept as a plain instance (not a bean) so a unit
@@ -156,28 +159,32 @@ public final class AllowanceCalculator {
 
     /**
      * Computes the tax-free kilometre allowance for a trip: {@code kilometres ×}
-     * the year's €/km rate, rounded to cents (ADR-0010). A {@code null},
-     * zero, or negative distance earns <strong>nothing</strong> (no line is
-     * generated) and the rate is not consulted; any positive distance requires a
-     * rate — a missing one is rejected so the caller surfaces it (ADR-0020).
+     * the year's €/km rate, rounded to cents (ADR-0010). Returns the two factors
+     * rather than the product (ADR-0023) — the generated line persists the distance
+     * as its quantity and the €/km rate as its unit price — with the euros
+     * {@linkplain KilometreAllowance#amount() derived} from them.
+     *
+     * <p>A {@code null}, zero, or negative distance earns <strong>nothing</strong>
+     * (no line is generated) and the rate is not consulted; any positive distance
+     * requires a rate — a missing one is rejected so the caller surfaces it
+     * (ADR-0020).
      *
      * @param kilometres the distance driven, in km (may be {@code null}/zero → none)
      * @param rate       the trip-year kilometre rate (required when km &gt; 0)
      * @throws IllegalArgumentException if km &gt; 0 and {@code rate} is {@code null}
      */
-    public AllowanceAmount kilometreAllowance(BigDecimal kilometres,
+    public KilometreAllowance kilometreAllowance(BigDecimal kilometres,
             KilometreRateDto rate) {
         if (kilometres == null || kilometres.signum() <= 0) {
-            return new AllowanceAmount(ZERO, null);
+            return KilometreAllowance.none();
         }
         if (rate == null) {
             throw new IllegalArgumentException("No kilometre rate for the trip year");
         }
-        BigDecimal amount = kilometres.multiply(rate.amountPerKm())
-                .setScale(2, RoundingMode.HALF_UP);
-        String explanation = "Kilometre allowance: " + plainKm(kilometres) + " km × €"
-                + rate.amountPerKm().toPlainString() + "/km = " + eur(amount);
-        return new AllowanceAmount(amount, explanation);
+        var earned = new KilometreAllowance(kilometres, rate.amountPerKm(), null);
+        return earned.withExplanation("Kilometre allowance: " + plainKm(kilometres)
+                + " km × €" + rate.amountPerKm().toPlainString() + "/km = "
+                + eur(earned.amount()));
     }
 
     /**

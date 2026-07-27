@@ -432,10 +432,10 @@ public class ExpenseReport extends AuditedEntity {
                 ExpenseLine line = byKey.get(new GeneratedKey(travel, g.kind()));
                 if (line == null) {
                     line = ExpenseLine.generated(travel, g.kind(), g.expenseType(),
-                            g.amount(), g.vatRate(), g.comment());
+                            g.unitPrice(), g.quantity(), g.vatRate(), g.comment());
                 } else {
-                    line.updateGenerated(travel, g.kind(), g.expenseType(), g.amount(),
-                            g.vatRate(), g.comment());
+                    line.updateGenerated(travel, g.kind(), g.expenseType(),
+                            g.unitPrice(), g.quantity(), g.vatRate(), g.comment());
                 }
                 desiredGenerated.add(line);
             }
