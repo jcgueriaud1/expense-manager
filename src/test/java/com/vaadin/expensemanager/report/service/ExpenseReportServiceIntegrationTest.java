@@ -13,6 +13,7 @@ import com.vaadin.expensemanager.base.DomainRuleException;
 import com.vaadin.expensemanager.report.domain.ExpenseLineSpec;
 import com.vaadin.expensemanager.report.domain.ExpenseReport;
 import com.vaadin.expensemanager.report.domain.GeneratedLineKind;
+import com.vaadin.expensemanager.report.domain.QuantityOverride;
 import com.vaadin.expensemanager.report.domain.Receipt;
 import com.vaadin.expensemanager.report.domain.ReceiptRejectedException;
 import com.vaadin.expensemanager.report.domain.ReportStatus;
@@ -1305,6 +1306,178 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
                 domesticTravel(null, DEP, DEP.plusHours(11), false, false));
         assertThat(preview.amountOf(GeneratedLineKind.PER_DIEM_FULL))
                 .isEqualByComparingTo("54.00");
+    }
+
+    // --- Quantity Override (ADR-0024, issue #131) ---
+    //
+    // The four facts the view test cannot observe: the persisted comment string, the
+    // previewTravel contract, that an override can never conjure a line, and that a
+    // foreign trip's per-diem is overridable through the same PER_DIEM_FULL kind.
+
+    @Test
+    void previewAppliesTheOverrideAndAnOverridesStrippedCopyShowsTheBaseline() {
+        // 55 h → 2 full days (€54.00 each) + 1 partial; claim only 1 full day.
+        var trip = domesticTravel(null, DEP, DEP.plusHours(55), false, false)
+                .withQuantityOverride(GeneratedLineKind.PER_DIEM_FULL,
+                        new QuantityOverride(BigDecimal.ONE,
+                                "the Wednesday was personal"));
+
+        var preview = service.previewTravel(trip);
+
+        var full = preview.generatedLine(GeneratedLineKind.PER_DIEM_FULL).orElseThrow();
+        assertThat(full.quantity()).isEqualByComparingTo("1.00");
+        assertThat(full.unitPrice()).isEqualByComparingTo("54.00"); // still statutory
+        assertThat(full.amount()).isEqualByComparingTo("54.00");
+        // The view carries the override's substance, so the row needs no parsing.
+        assertThat(full.isOverridden()).isTrue();
+        assertThat(full.overrideReason()).isEqualTo("the Wednesday was personal");
+        assertThat(full.calculatedQuantity()).isEqualByComparingTo("2.00");
+        assertThat(full.comment()).isEqualTo("Per diem allowance (full day): "
+                + "1 × €54.00 = €54.00 — overridden from 2 days: "
+                + "the Wednesday was personal");
+        // The untouched partial-day line is unaffected.
+        assertThat(preview.amountOf(GeneratedLineKind.PER_DIEM_PARTIAL))
+                .isEqualByComparingTo("25.00");
+
+        // The same call on an overrides-stripped copy is the calculated baseline —
+        // no second service method.
+        var calculated = service.previewTravel(trip.withoutQuantityOverrides());
+        var calculatedFull = calculated
+                .generatedLine(GeneratedLineKind.PER_DIEM_FULL).orElseThrow();
+        assertThat(calculatedFull.quantity()).isEqualByComparingTo("2.00");
+        assertThat(calculatedFull.isOverridden()).isFalse();
+        assertThat(calculatedFull.amount()).isEqualByComparingTo("108.00");
+    }
+
+    @Test
+    void anOverriddenLinePersistsItsEffectiveQuantityGrossAndSelfDescribingComment() {
+        var trip = domesticTravel(null, DEP, DEP.plusHours(55), false, false)
+                .withQuantityOverride(GeneratedLineKind.PER_DIEM_FULL,
+                        new QuantityOverride(BigDecimal.ONE, "  personal day  "));
+        var id = service.create(dtoWithTravels(LocalDate.of(2026, 7, 10), List.of(trip)));
+
+        // Read the row itself: quantity, gross and comment must agree in the database,
+        // so an export or an audit reads the same story the screen shows.
+        entityManager.flush();
+        var row = jdbcTemplate.queryForMap(
+                "select amount, quantity, comment from expense_line "
+                        + "where generated_kind = 'PER_DIEM_FULL' and travel_id = "
+                        + "(select id from travel where report_id = ?)", id);
+        assertThat((BigDecimal) row.get("amount")).isEqualByComparingTo("54.00");
+        assertThat((BigDecimal) row.get("quantity")).isEqualByComparingTo("1.00");
+        assertThat((String) row.get("comment")).isEqualTo(
+                "Per diem allowance (full day): 1 × €54.00 = €54.00 "
+                        + "— overridden from 2 days: personal day");
+
+        // …and the override itself round-trips as a keyed child of the trip, its
+        // reason trimmed, with the subtotals following the effective figures.
+        var loaded = service.findMine(id);
+        var override = loaded.travels().getFirst().quantityOverrides()
+                .get(GeneratedLineKind.PER_DIEM_FULL);
+        assertThat(override.quantity()).isEqualByComparingTo("1.00");
+        assertThat(override.reason()).isEqualTo("personal day");
+        assertThat(loaded.perDiemTotal()).isEqualByComparingTo("79.00"); // 54 + 25
+        assertThat(loaded.total()).isEqualByComparingTo("79.00");
+        // The loaded row still knows what the rules said.
+        var full = loaded.travels().getFirst()
+                .generatedLine(GeneratedLineKind.PER_DIEM_FULL).orElseThrow();
+        assertThat(full.isOverridden()).isTrue();
+        assertThat(full.calculatedQuantity()).isEqualByComparingTo("2.00");
+    }
+
+    @Test
+    void anOverrideCanRescaleAnEarnedLineButNeverConjureOne() {
+        // A not-eligible trip earning only a meal allowance: overriding the per-diem
+        // it was never awarded must do nothing, or the report would carry BOTH a
+        // per-diem and a meal allowance — which the Finnish rule forbids.
+        var trip = domesticTravel(null, DEP, DEP.plusHours(11), ZERO, true, ZERO, true)
+                .withQuantityOverride(GeneratedLineKind.PER_DIEM_FULL,
+                        new QuantityOverride(new BigDecimal("3"), "give me the days"))
+                .withQuantityOverride(GeneratedLineKind.MEAL,
+                        new QuantityOverride(new BigDecimal("2"), "two meals taken"));
+
+        var id = service.create(dtoWithTravels(LocalDate.of(2026, 7, 10), List.of(trip)));
+
+        var loaded = service.findMine(id);
+        // No per-diem was conjured…
+        assertThat(loaded.travels().getFirst()
+                .generatedLine(GeneratedLineKind.PER_DIEM_FULL)).isEmpty();
+        assertThat(loaded.perDiemTotal()).isEqualByComparingTo("0.00");
+        // …while the meal allowance the trip DID earn rescaled: 2 × €13.50.
+        assertThat(loaded.mealTotal()).isEqualByComparingTo("27.00");
+        assertThat(loaded.total()).isEqualByComparingTo("27.00");
+    }
+
+    @Test
+    void aForeignTripsPerDiemIsOverridableThroughTheFullDayKind() {
+        // 31 h in Germany → 2 allowance days × €71.00, generated as PER_DIEM_FULL
+        // (asserted, not assumed) — so a foreign trip inherits the override.
+        var calculated = service.previewTravel(
+                foreignTravel(null, DEP, DEP.plusHours(31), "Germany", false));
+        assertThat(calculated.generatedLine(GeneratedLineKind.PER_DIEM_FULL))
+                .isPresent();
+        assertThat(calculated.generatedLine(GeneratedLineKind.PER_DIEM_PARTIAL))
+                .isEmpty();
+
+        var id = service.create(dtoWithTravels(LocalDate.of(2026, 7, 10), List.of(
+                foreignTravel(null, DEP, DEP.plusHours(31), "Germany", false)
+                        .withQuantityOverride(GeneratedLineKind.PER_DIEM_FULL,
+                                new QuantityOverride(BigDecimal.ONE,
+                                        "only one day was business")))));
+
+        var loaded = service.findMine(id);
+        // The country rate is untouched; only the day count moved.
+        var full = loaded.travels().getFirst()
+                .generatedLine(GeneratedLineKind.PER_DIEM_FULL).orElseThrow();
+        assertThat(full.unitPrice()).isEqualByComparingTo("71.00");
+        assertThat(full.quantity()).isEqualByComparingTo("1.00");
+        assertThat(loaded.perDiemTotal()).isEqualByComparingTo("71.00");
+    }
+
+    @Test
+    void anOverrideForKilometreIsRejectedByTheDomainNotSilentlyIgnored() {
+        var trip = domesticTravel(null, DEP, DEP.plusHours(11), new BigDecimal("120"),
+                false, ZERO, false)
+                .withQuantityOverride(GeneratedLineKind.KILOMETRE,
+                        new QuantityOverride(new BigDecimal("50"), "drove less"));
+
+        assertThatThrownBy(() -> service.create(
+                dtoWithTravels(LocalDate.of(2026, 7, 10), List.of(trip))))
+                .isInstanceOf(DomainRuleException.class)
+                .hasMessageContaining("Kilometre allowance");
+
+        assertThat(service.listMine()).isEmpty();
+    }
+
+    @Test
+    void anOverrideSurvivesATripEditAndIsClearedByResetToCalculated() {
+        var id = service.create(dtoWithTravels(LocalDate.of(2026, 7, 10), List.of(
+                domesticTravel(null, DEP, DEP.plusHours(55), false, false)
+                        .withQuantityOverride(GeneratedLineKind.PER_DIEM_FULL,
+                                new QuantityOverride(BigDecimal.ONE, "personal day")))));
+        var loaded = service.findMine(id);
+        var trip = loaded.travels().getFirst();
+
+        // Editing an unrelated trip input keeps the correction in force (clearing it
+        // when the calculated count moves is issue #133).
+        var edited = domesticTravel(trip.id(), DEP, DEP.plusHours(55), false, false)
+                .withQuantityOverrides(trip.quantityOverrides());
+        service.update(id, dtoWithTravels(id, LocalDate.of(2026, 7, 11),
+                loaded.version(), List.of(edited)), loaded.version());
+        var afterEdit = service.findMine(id);
+        assertThat(afterEdit.perDiemTotal()).isEqualByComparingTo("79.00");
+
+        // Reset to calculated drops the override outright, without touching the trip.
+        var reset = domesticTravel(trip.id(), DEP, DEP.plusHours(55), false, false);
+        service.update(id, dtoWithTravels(id, LocalDate.of(2026, 7, 11),
+                afterEdit.version(), List.of(reset)), afterEdit.version());
+
+        var afterReset = service.findMine(id);
+        assertThat(afterReset.travels().getFirst().quantityOverrides()).isEmpty();
+        assertThat(afterReset.perDiemTotal()).isEqualByComparingTo("133.00");
+        assertThat(afterReset.travels().getFirst()
+                .generatedLine(GeneratedLineKind.PER_DIEM_FULL).orElseThrow()
+                .isOverridden()).isFalse();
     }
 
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);

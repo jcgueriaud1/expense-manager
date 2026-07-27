@@ -2,10 +2,13 @@ package com.vaadin.expensemanager.report.service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import com.vaadin.expensemanager.report.domain.GeneratedLineKind;
+import com.vaadin.expensemanager.report.domain.QuantityOverride;
 
 /**
  * Immutable working copy of one trip for the detail view (ADR-0003, ADR-0019).
@@ -19,6 +22,11 @@ import com.vaadin.expensemanager.report.domain.GeneratedLineKind;
  * generated line also carries its persistent id and any attached receipt, so the
  * detail view can list them under the trip and let a receipt be attached to any of
  * them (the amount and comment stay read-only, Phase 4.3).
+ *
+ * <p>{@link #quantityOverrides} are trip inputs too (glossary: Quantity Override,
+ * ADR-0024): the user's corrected <em>count</em> per generated-line kind, with a
+ * mandatory reason. The client sends the count; the service applies it after the
+ * calculator has run, so the money in {@link #generatedLines} stays the server's.
  *
  * <p>{@link #id} is the reconciliation key (ADR-0019): {@code null} for a
  * not-yet-persisted trip the service will insert, non-null for one it will match
@@ -38,18 +46,22 @@ import com.vaadin.expensemanager.report.domain.GeneratedLineKind;
  * @param kilometres              kilometres driven (for the kilometre allowance)
  * @param payMealAllowance        whether the trip pays a meal allowance
  * @param parkingFees             parking fees paid (a VAT-bearing expense)
+ * @param quantityOverrides       the trip's Quantity Overrides by kind (never null)
  * @param generatedLines          the server-computed lines this trip earns (never null)
  */
 public record TravelDto(Long id, LocalDateTime departureAt, LocalDateTime returnAt,
         String destinations, String purpose, String country,
         boolean notEligibleForAllowance, boolean freeLunch, boolean chargeToCustomer,
         BigDecimal kilometres, boolean payMealAllowance, BigDecimal parkingFees,
+        Map<GeneratedLineKind, QuantityOverride> quantityOverrides,
         List<GeneratedLineView> generatedLines) {
 
     /** The sentinel country a domestic (Finnish) trip is costed against. */
     public static final String DOMESTIC_COUNTRY = "Finland";
 
     public TravelDto {
+        quantityOverrides = quantityOverrides == null ? Map.of()
+                : Map.copyOf(quantityOverrides);
         generatedLines = generatedLines == null ? List.of() : List.copyOf(generatedLines);
     }
 
@@ -65,7 +77,7 @@ public record TravelDto(Long id, LocalDateTime departureAt, LocalDateTime return
             BigDecimal kilometres, boolean payMealAllowance, BigDecimal parkingFees) {
         return new TravelDto(id, departureAt, returnAt, destinations, purpose, country,
                 notEligibleForAllowance, freeLunch, chargeToCustomer, kilometres,
-                payMealAllowance, parkingFees, List.of());
+                payMealAllowance, parkingFees, Map.of(), List.of());
     }
 
     /**
@@ -85,7 +97,58 @@ public record TravelDto(Long id, LocalDateTime departureAt, LocalDateTime return
     public TravelDto withGeneratedLines(List<GeneratedLineView> generatedLines) {
         return new TravelDto(id, departureAt, returnAt, destinations, purpose, country,
                 notEligibleForAllowance, freeLunch, chargeToCustomer, kilometres,
-                payMealAllowance, parkingFees, generatedLines);
+                payMealAllowance, parkingFees, quantityOverrides, generatedLines);
+    }
+
+    /**
+     * This trip with its Quantity Overrides replaced (ADR-0024). The generated lines
+     * are <em>not</em> recomputed here — the client never computes money, so the
+     * caller re-previews through the service to get the effective figures.
+     */
+    public TravelDto withQuantityOverrides(
+            Map<GeneratedLineKind, QuantityOverride> overrides) {
+        return new TravelDto(id, departureAt, returnAt, destinations, purpose, country,
+                notEligibleForAllowance, freeLunch, chargeToCustomer, kilometres,
+                payMealAllowance, parkingFees, overrides, generatedLines);
+    }
+
+    /** This trip with one kind's Quantity Override set (replacing any prior one). */
+    public TravelDto withQuantityOverride(GeneratedLineKind kind,
+            QuantityOverride override) {
+        var overrides = mutableOverrides();
+        overrides.put(kind, override);
+        return withQuantityOverrides(overrides);
+    }
+
+    /** This trip with one kind's Quantity Override removed ("Reset to calculated"). */
+    public TravelDto withoutQuantityOverride(GeneratedLineKind kind) {
+        if (!quantityOverrides.containsKey(kind)) {
+            return this;
+        }
+        var overrides = mutableOverrides();
+        overrides.remove(kind);
+        return withQuantityOverrides(overrides);
+    }
+
+    /**
+     * A mutable copy of the override map. Built key-first rather than through
+     * {@code new EnumMap<>(map)}, whose {@code Map} overload rejects an empty
+     * non-{@code EnumMap} source — and this record's map is an immutable copy.
+     */
+    private Map<GeneratedLineKind, QuantityOverride> mutableOverrides() {
+        var copy = new EnumMap<GeneratedLineKind, QuantityOverride>(
+                GeneratedLineKind.class);
+        copy.putAll(quantityOverrides);
+        return copy;
+    }
+
+    /**
+     * This trip with <strong>every</strong> Quantity Override stripped — the copy a
+     * caller previews to see what the trip inputs alone produce, i.e. the calculated
+     * baseline (ADR-0024). One call, no second service method.
+     */
+    public TravelDto withoutQuantityOverrides() {
+        return quantityOverrides.isEmpty() ? this : withQuantityOverrides(Map.of());
     }
 
     /** The generated line of a given kind, if the trip earned one. */

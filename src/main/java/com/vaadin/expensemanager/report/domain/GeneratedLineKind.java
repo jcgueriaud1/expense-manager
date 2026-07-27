@@ -57,4 +57,43 @@ public enum GeneratedLineKind {
     public boolean isPerDiem() {
         return this == PER_DIEM_FULL || this == PER_DIEM_PARTIAL;
     }
+
+    /**
+     * Whether this kind accepts a {@link QuantityOverride} (ADR-0024). The test is
+     * not <em>"is it calculated?"</em> — all five are — but <em>"can the trip inputs
+     * already express the answer?"</em>: {@link #KILOMETRE}'s quantity <strong>is</strong>
+     * {@code Travel.kilometres} and {@link #PARKING}'s amount <strong>is</strong>
+     * {@code Travel.parkingFees}, so those keep a single home on the trip and are
+     * edited there. The per-diem and meal kinds are reachable only through statutory
+     * rules and a checkbox, so they get an override.
+     */
+    public boolean isOverridable() {
+        return this == PER_DIEM_FULL || this == PER_DIEM_PARTIAL || this == MEAL;
+    }
+
+    /**
+     * The human name of this kind, shared by the report row and the persisted line
+     * comment an override composes (ADR-0024) — one spelling, so the screen and the
+     * database tell the same story. The two per-diem kinds name the day they price
+     * (issue #124).
+     */
+    public String label() {
+        return switch (this) {
+            case PER_DIEM_FULL -> "Per diem allowance (full day)";
+            case PER_DIEM_PARTIAL -> "Per diem allowance (partial day)";
+            case KILOMETRE -> "Kilometre allowance";
+            case MEAL -> "Meal allowance";
+            case PARKING -> "Parking";
+        };
+    }
+
+    /**
+     * The noun an override's count is measured in, singular or plural to match
+     * {@code count} — "3 days", "1 meal". Only the {@linkplain #isOverridable()
+     * overridable} kinds are ever asked; the rest fall back to a neutral "×".
+     */
+    public String countNoun(long count) {
+        String singular = isPerDiem() ? "day" : this == MEAL ? "meal" : "×";
+        return count == 1 ? singular : singular + "s";
+    }
 }

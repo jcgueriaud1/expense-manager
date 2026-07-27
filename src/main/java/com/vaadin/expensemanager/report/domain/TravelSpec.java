@@ -3,6 +3,7 @@ package com.vaadin.expensemanager.report.domain;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * A resolved trip instruction for whole-aggregate reconciliation (ADR-0019),
@@ -17,6 +18,12 @@ import java.util.List;
  * matches on {@link #id} (non-null → update the existing trip, {@code null} →
  * insert), regenerates the linked lines by kind, and orphan-removes any trip (and
  * its lines) absent from the list.
+ *
+ * <p>{@link #quantityOverrides} rides along as a trip <em>input</em> (ADR-0024): by
+ * the time a spec reaches the aggregate the service has already substituted the
+ * overridden count into {@link #generatedLines}, so {@code ExpenseReport} reconciles
+ * exactly as before and knows nothing about overrides. The trip persists them so the
+ * next save re-applies them to the freshly recomputed figures.
  *
  * <p>Keeping the calculator and reference lookups in the service (not the domain)
  * is what lets the aggregate stay free of Spring and repositories while still
@@ -34,15 +41,19 @@ import java.util.List;
  * @param kilometres               kilometres driven (for the kilometre allowance)
  * @param payMealAllowance         whether the trip pays a meal allowance
  * @param parkingFees              parking fees paid (a VAT-bearing expense)
+ * @param quantityOverrides        the trip's Quantity Overrides by kind (may be empty)
  * @param generatedLines          the read-only lines this trip should own (may be empty)
  */
 public record TravelSpec(Long id, LocalDateTime departureAt, LocalDateTime returnAt,
         String destinations, String purpose, String country,
         boolean notEligibleForAllowance, boolean freeLunch, boolean chargeToCustomer,
         BigDecimal kilometres, boolean payMealAllowance, BigDecimal parkingFees,
+        Map<GeneratedLineKind, QuantityOverride> quantityOverrides,
         List<GeneratedLineSpec> generatedLines) {
 
     public TravelSpec {
+        quantityOverrides = quantityOverrides == null ? Map.of()
+                : Map.copyOf(quantityOverrides);
         generatedLines = generatedLines == null ? List.of() : List.copyOf(generatedLines);
     }
 

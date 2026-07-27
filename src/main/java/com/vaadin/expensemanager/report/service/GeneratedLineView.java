@@ -27,6 +27,12 @@ import com.vaadin.expensemanager.report.domain.LineAmounts;
  * {@code qty × unit = gross} breakdown from these two, and every total sums the
  * derived {@link #amount()}, so a preview and a persisted line can never disagree.
  *
+ * <p>When the user has corrected the count (glossary: Quantity Override, ADR-0024)
+ * the {@link #quantity} here is the <strong>effective</strong> one and
+ * {@link #overrideReason} / {@link #calculatedQuantity} carry the reason and the
+ * statutory baseline, so the row can show an "Overridden" badge and "what the rules
+ * said" without parsing the {@link #comment} string.
+ *
  * @param kind               which generated line this is (routes it in the totals)
  * @param expenseTypeName    the expense type the line is filed under (for display)
  * @param unitPrice          gross unit price (each), EUR scale 2 (recomputed, read-only)
@@ -38,11 +44,15 @@ import com.vaadin.expensemanager.report.domain.LineAmounts;
  * @param receiptFilename    attached receipt's filename, or {@code null} if none
  * @param receiptContentType attached receipt's sniffed MIME type, or {@code null}
  * @param receiptSizeBytes   attached receipt's byte length, or {@code null} if none
+ * @param overrideReason     why the count was overridden, or {@code null} if it wasn't
+ * @param calculatedQuantity the count the calculator produced, or {@code null} if
+ *                           the line is not overridden (or the baseline is unknown)
  */
 public record GeneratedLineView(GeneratedLineKind kind, String expenseTypeName,
         BigDecimal unitPrice, BigDecimal quantity, BigDecimal vatRatePercent,
         String comment, Long lineId, Long receiptId, String receiptFilename,
-        String receiptContentType, Long receiptSizeBytes) {
+        String receiptContentType, Long receiptSizeBytes, String overrideReason,
+        BigDecimal calculatedQuantity) {
 
     /** A flat (quantity-1) generated line with no receipt — per-diem, meal, parking. */
     public static GeneratedLineView of(GeneratedLineKind kind, String expenseTypeName,
@@ -56,7 +66,7 @@ public record GeneratedLineView(GeneratedLineKind kind, String expenseTypeName,
             BigDecimal unitPrice, BigDecimal quantity, BigDecimal vatRatePercent,
             String comment, Long lineId) {
         return new GeneratedLineView(kind, expenseTypeName, unitPrice, quantity,
-                vatRatePercent, comment, lineId, null, null, null, null);
+                vatRatePercent, comment, lineId, null, null, null, null, null, null);
     }
 
     /** The gross — unit price × quantity, via the domain's single multiplier (ADR-0023). */
@@ -74,7 +84,40 @@ public record GeneratedLineView(GeneratedLineKind kind, String expenseTypeName,
             String receiptContentType, Long receiptSizeBytes) {
         return new GeneratedLineView(kind, expenseTypeName, unitPrice, quantity,
                 vatRatePercent, comment, lineId, receiptId, receiptFilename,
-                receiptContentType, receiptSizeBytes);
+                receiptContentType, receiptSizeBytes, overrideReason, calculatedQuantity);
+    }
+
+    /**
+     * This line marked as carrying a {@linkplain
+     * com.vaadin.expensemanager.report.domain.QuantityOverride Quantity Override}
+     * (ADR-0024) — the reason the user gave and the count the calculator produced.
+     * The {@link #quantity} is already the effective (overridden) one; this adds the
+     * two facts the row needs to render a real badge and a real baseline rather than
+     * parsing {@link #comment}.
+     *
+     * @param calculatedQuantity the statutory baseline, or {@code null} when it could
+     *                           not be recomputed (the badge and reason still show)
+     */
+    public GeneratedLineView withOverride(String overrideReason,
+            BigDecimal calculatedQuantity) {
+        return new GeneratedLineView(kind, expenseTypeName, unitPrice, quantity,
+                vatRatePercent, comment, lineId, receiptId, receiptFilename,
+                receiptContentType, receiptSizeBytes, overrideReason, calculatedQuantity);
+    }
+
+    /** Whether the user replaced this line's calculated count (ADR-0024). */
+    public boolean isOverridden() {
+        return overrideReason != null;
+    }
+
+    /**
+     * The gross the calculator would have produced — {@code unit price × calculated
+     * quantity} — for the row's "calculated" baseline; {@code null} when the baseline
+     * is unknown or the line is not overridden.
+     */
+    public BigDecimal calculatedAmount() {
+        return calculatedQuantity == null ? null
+                : LineAmounts.grossOf(unitPrice, calculatedQuantity);
     }
 
     /** This line with any receipt summary cleared (optimistic removal). */

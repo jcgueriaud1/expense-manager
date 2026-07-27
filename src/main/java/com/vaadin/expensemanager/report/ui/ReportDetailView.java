@@ -16,6 +16,7 @@ import com.vaadin.expensemanager.reference.ReferenceDataService;
 import com.vaadin.expensemanager.reference.VatRateDto;
 import com.vaadin.expensemanager.report.domain.GeneratedLineKind;
 import com.vaadin.expensemanager.report.domain.LineAmounts;
+import com.vaadin.expensemanager.report.domain.QuantityOverride;
 import com.vaadin.expensemanager.report.domain.ReportStatus;
 import com.vaadin.expensemanager.report.service.ExpenseLineDto;
 import com.vaadin.expensemanager.report.service.ExpenseReportService;
@@ -26,6 +27,8 @@ import com.vaadin.expensemanager.report.service.ReportDetailDto;
 import com.vaadin.expensemanager.report.service.StatusChangeDto;
 import com.vaadin.expensemanager.report.service.TravelDto;
 import com.vaadin.flow.component.Component;
+import com.vaadin.flow.component.badge.Badge;
+import com.vaadin.flow.component.badge.BadgeVariant;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.datepicker.DatePicker;
@@ -1023,16 +1026,35 @@ public class ReportDetailView extends VerticalLayout
      * One read-only generated-line row nested under a trip: its label, computed
      * amount, and read-only explanation, plus the receipt it carries and (while
      * editable) an attach/edit-receipt affordance (Phase 4.3).
+     *
+     * <p>A line whose count the user corrected (glossary: Quantity Override,
+     * ADR-0024) reads differently: an "Overridden" badge beside the label, the reason
+     * given, and the statutory baseline the calculator produced, in place of the
+     * composed comment — which restates all three and would only repeat the row. The
+     * amount and the {@code qty × unit} breakdown are already the effective ones.
      */
     private Component generatedLineRow(ValueSignal<TravelDto> entry,
             GeneratedLineView line) {
         var name = new Span(ReportViewSupport.generatedLineLabel(line.kind()));
         name.addClassName("line-name");
-        var comment = new Span(line.comment() == null ? "" : line.comment());
-        comment.addClassName("muted-xs");
-        var texts = new VerticalLayout(name, comment);
+        var heading = new HorizontalLayout(name);
+        heading.setPadding(false);
+        heading.setSpacing("var(--vaadin-gap-s)");
+        heading.setAlignItems(FlexComponent.Alignment.CENTER);
+        heading.addClassName("travel-line-heading");
+        var texts = new VerticalLayout(heading);
         texts.setPadding(false);
         texts.setSpacing(false);
+        if (line.isOverridden()) {
+            // Text, never colour alone (ADR-0020) — the badge carries its own label.
+            var badge = new Badge("Overridden");
+            badge.addThemeVariants(BadgeVariant.SMALL, BadgeVariant.WARNING);
+            heading.add(badge);
+            texts.add(mutedXs("Reason: " + line.overrideReason()));
+            calculatedBaseline(line).ifPresent(baseline -> texts.add(mutedXs(baseline)));
+        } else {
+            texts.add(mutedXs(line.comment() == null ? "" : line.comment()));
+        }
 
         var amount = new Span(formatEur(line.amount()));
         amount.addClassName("line-amount");
@@ -1077,9 +1099,88 @@ public class ReportDetailView extends VerticalLayout
             attach.getElement().setAttribute("aria-label",
                     (line.hasReceipt() ? "Edit receipt: " : "Add receipt: ")
                             + ReportViewSupport.generatedLineLabel(line.kind()));
-            row.add(attach);
+            var actions = new HorizontalLayout(attach);
+            actions.setPadding(false);
+            actions.setSpacing("var(--vaadin-gap-xs)");
+            actions.setAlignItems(FlexComponent.Alignment.CENTER);
+            actions.addClassName("travel-line-actions");
+            // Only the per-diem and meal kinds are correctable: the kilometre
+            // distance and the parking fee are trip inputs with a single home, so
+            // those numbers are changed on the trip (ADR-0024).
+            if (line.kind().isOverridable()) {
+                actions.add(overrideAction(entry, line));
+                if (line.isOverridden()) {
+                    actions.add(resetAction(entry, line));
+                }
+            }
+            row.add(actions);
         }
         return row;
+    }
+
+    /** Opens the Quantity Override editor for one generated line (ADR-0024). */
+    private Button overrideAction(ValueSignal<TravelDto> entry, GeneratedLineView line) {
+        var button = new Button(line.isOverridden() ? "Edit override" : "Override");
+        button.addThemeVariants(ButtonVariant.TERTIARY, ButtonVariant.SMALL);
+        button.addClickListener(event -> new GeneratedLineOverrideDialog(line,
+                override -> applyOverride(entry, line.kind(), override)).open());
+        button.getElement().setAttribute("aria-label",
+                (line.isOverridden() ? "Edit override: " : "Override count: ")
+                        + ReportViewSupport.generatedLineLabel(line.kind()));
+        return button;
+    }
+
+    /**
+     * Removes the line's override outright, returning it to the statutory figure —
+     * without touching the trip (ADR-0024, "Reset to calculated").
+     */
+    private Button resetAction(ValueSignal<TravelDto> entry, GeneratedLineView line) {
+        var button = new Button("Reset to calculated");
+        button.addThemeVariants(ButtonVariant.TERTIARY, ButtonVariant.SMALL);
+        button.addClickListener(event -> applyOverride(entry, line.kind(), null));
+        button.getElement().setAttribute("aria-label", "Reset to calculated: "
+                + ReportViewSupport.generatedLineLabel(line.kind()));
+        return button;
+    }
+
+    /**
+     * Sets or clears one kind's Quantity Override on the working trip and re-costs it
+     * <strong>server-side</strong> (the client never computes money), so the row's
+     * amount, the per-diem subtotal and the report total follow immediately — before
+     * the report is saved. Receipts already attached are carried across by kind, as
+     * on the trip-edit path.
+     */
+    private void applyOverride(ValueSignal<TravelDto> entry, GeneratedLineKind kind,
+            QuantityOverride override) {
+        clearErrors();
+        var before = entry.peek();
+        var corrected = override == null ? before.withoutQuantityOverride(kind)
+                : before.withQuantityOverride(kind, override);
+        try {
+            entry.set(mergeReceipts(before, service.previewTravel(corrected)));
+        } catch (RuntimeException ex) {
+            surface(ex);
+        }
+    }
+
+    /** A muted extra line under a generated row's label. */
+    private static Span mutedXs(String text) {
+        var span = new Span(text);
+        span.addClassName("muted-xs");
+        return span;
+    }
+
+    /**
+     * "Calculated: 3 × €54.00 = €162.00" — what the rules said, beside what the user
+     * claimed. Empty when the baseline could not be recomputed for a loaded report
+     * (the badge and reason still show).
+     */
+    private static java.util.Optional<String> calculatedBaseline(GeneratedLineView line) {
+        if (line.calculatedQuantity() == null) {
+            return java.util.Optional.empty();
+        }
+        return java.util.Optional.of("Calculated: "
+                + quantityBreakdown(line.calculatedQuantity(), line.unitPrice()));
     }
 
     /** "destinations, country" for a trip card — the trip's where-line. */

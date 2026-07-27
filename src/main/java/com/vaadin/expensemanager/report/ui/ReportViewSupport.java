@@ -82,15 +82,13 @@ public final class ReportViewSupport {
      * A friendly label for a generated (travel-owned) line kind (Phase 4.3). The two
      * per-diem kinds name the day they price — the card then reads
      * "days × per-day rate = gross" (issue #124).
+     *
+     * <p>The spelling lives on the kind itself, because the comment a Quantity
+     * Override persists uses the same one (ADR-0024): the screen and the database
+     * must not name the same line differently.
      */
     static String generatedLineLabel(GeneratedLineKind kind) {
-        return switch (kind) {
-            case PER_DIEM_FULL -> "Per diem allowance (full day)";
-            case PER_DIEM_PARTIAL -> "Per diem allowance (partial day)";
-            case KILOMETRE -> "Kilometre allowance";
-            case MEAL -> "Meal allowance";
-            case PARKING -> "Parking";
-        };
+        return kind.label();
     }
 
     /**
