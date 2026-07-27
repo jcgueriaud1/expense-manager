@@ -29,5 +29,6 @@ Status values: `Accepted`, `Superseded by ADR-XXXX`, `Deprecated`.
 | [0021](0021-receipt-entity-upload-serving.md) | Receipt: separate entity, buffered upload, summary-only DTO | Accepted |
 | [0022](0022-form-models-top-level.md) | Binder form-backing models are top-level classes, not view inner classes | Accepted |
 | [0023](0023-expense-line-quantity.md) | Expense-line quantity: `amount` becomes a unit price, gross derived | Accepted |
+| [0024](0024-generated-line-quantity-override.md) | Generated lines corrected by overriding the quantity, never the amount | Accepted |
 
 See also: [../glossary.md](../glossary.md) · [../plan.md](../plan.md) · [../findings.md](../findings.md)
