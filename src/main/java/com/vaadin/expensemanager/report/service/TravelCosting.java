@@ -48,6 +48,14 @@ import org.springframework.stereotype.Component;
  * would otherwise sit beside a meal allowance with nothing to catch it. Both belts
  * are deliberate; removing either silently enables conjuring.
  *
+ * <p><strong>Suppression is the same gate read the other way.</strong> An override of
+ * {@code 0} needs no branch here (issue #132): the overridden spec fails
+ * {@link GeneratedLineSpec#isEarned()} on its <em>quantity</em>, so the kind is
+ * omitted from this list exactly as an unearned rule is, and the aggregate
+ * orphan-removes the line it had. The consequence the user must consent to — the
+ * cascaded deletion of that line's receipt — is handled where the click happens, not
+ * here.
+ *
  * <p>{@link AllowanceCalculator} stays pure and untouched (ADR-0024): it computes
  * what the rules award and has no opinion about corrections. The correction, and the
  * comment that documents it, are composed here.
@@ -207,6 +215,9 @@ public class TravelCosting {
      * when the rules awarded nothing ({@code !isEarned()}): an override rescales an
      * earned line, it never conjures one, so overriding a per-diem the trip is not
      * eligible for does nothing — and cannot break the per-diem/meal interlock.
+     *
+     * <p>A count of {@code 0} is returned as an unearned spec, which {@link #addSpec}
+     * then drops: suppression is this method's ordinary output, not a special case.
      */
     private static GeneratedLineSpec applyOverride(GeneratedLineSpec calculated,
             QuantityOverride override) {

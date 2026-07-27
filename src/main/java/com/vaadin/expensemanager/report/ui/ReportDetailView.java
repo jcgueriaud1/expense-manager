@@ -985,6 +985,8 @@ public class ReportDetailView extends VerticalLayout
             generatedList.removeAll();
             trip.generatedLines()
                     .forEach(line -> generatedList.add(generatedLineRow(entry, line)));
+            suppressedKinds(trip)
+                    .forEach(kind -> generatedList.add(suppressedLineRow(entry, kind)));
         });
 
         var group = new VerticalLayout(card, generatedList);
@@ -1110,9 +1112,79 @@ public class ReportDetailView extends VerticalLayout
             if (line.kind().isOverridable()) {
                 actions.add(overrideAction(entry, line));
                 if (line.isOverridden()) {
-                    actions.add(resetAction(entry, line));
+                    actions.add(resetAction(entry, line.kind()));
                 }
             }
+            row.add(actions);
+        }
+        return row;
+    }
+
+    /**
+     * The kinds this trip's owner dropped with a zero-count override (issue #132), in
+     * declaration order. They own no generated line — the earned-line gate removed it —
+     * so they are read off the trip's <em>overrides</em>, which is what makes them
+     * survive a save and reload just as well as a live preview. A kind whose line the
+     * trip stopped earning anyway is included too: the override is still in force, and
+     * resetting it is still the way out.
+     */
+    private static List<GeneratedLineKind> suppressedKinds(TravelDto trip) {
+        return trip.quantityOverrides().entrySet().stream()
+                .filter(entry -> entry.getValue().isSuppression())
+                .map(Map.Entry::getKey)
+                .filter(kind -> trip.generatedLine(kind).isEmpty())
+                .sorted()
+                .toList();
+    }
+
+    /**
+     * The placeholder a suppressed kind leaves behind: what was dropped, why, and — while
+     * the report is editable — the way back. Without it a zero override would become
+     * unreachable the instant it took effect, since the row it was made on is exactly
+     * what it removed.
+     *
+     * <p>It shows no amount and no receipt affordance, because there is no line: it
+     * contributes nothing to the per-diem subtotal or the report total, and nothing can
+     * be attached to it. The only action is {@code Reset to calculated}, which restores
+     * the line at its statutory count.
+     */
+    private Component suppressedLineRow(ValueSignal<TravelDto> entry,
+            GeneratedLineKind kind) {
+        var name = new Span(ReportViewSupport.generatedLineLabel(kind));
+        name.addClassName("line-name");
+        // Text, never colour alone (ADR-0020) — the badge carries its own label.
+        var badge = new Badge("Removed");
+        badge.addThemeVariants(BadgeVariant.SMALL, BadgeVariant.CONTRAST);
+        var heading = new HorizontalLayout(name, badge);
+        heading.setPadding(false);
+        heading.setSpacing("var(--vaadin-gap-s)");
+        heading.setAlignItems(FlexComponent.Alignment.CENTER);
+        heading.addClassName("travel-line-heading");
+
+        var texts = new VerticalLayout(heading);
+        texts.setPadding(false);
+        texts.setSpacing(false);
+        var override = entry.peek().quantityOverrides().get(kind);
+        texts.add(mutedXs("Removed from the report. Reason: " + override.reason()));
+
+        var body = new HorizontalLayout(texts);
+        body.setWidthFull();
+        body.setAlignItems(FlexComponent.Alignment.CENTER);
+        body.expand(texts);
+
+        var row = new HorizontalLayout(body);
+        row.setWidthFull();
+        row.setAlignItems(FlexComponent.Alignment.CENTER);
+        row.expand(body);
+        row.addClassName("line-card");
+        row.addClassName("travel-line-row");
+        row.addClassName("travel-line-removed");
+        if (editable) {
+            var actions = new HorizontalLayout(resetAction(entry, kind));
+            actions.setPadding(false);
+            actions.setSpacing("var(--vaadin-gap-xs)");
+            actions.setAlignItems(FlexComponent.Alignment.CENTER);
+            actions.addClassName("travel-line-actions");
             row.add(actions);
         }
         return row;
@@ -1131,16 +1203,34 @@ public class ReportDetailView extends VerticalLayout
     }
 
     /**
-     * Removes the line's override outright, returning it to the statutory figure —
-     * without touching the trip (ADR-0024, "Reset to calculated").
+     * Removes the kind's override outright, returning it to the statutory figure —
+     * without touching the trip (ADR-0024, "Reset to calculated"). On a suppressed kind
+     * this is what brings the line back, at its calculated count.
      */
-    private Button resetAction(ValueSignal<TravelDto> entry, GeneratedLineView line) {
+    private Button resetAction(ValueSignal<TravelDto> entry, GeneratedLineKind kind) {
         var button = new Button("Reset to calculated");
         button.addThemeVariants(ButtonVariant.TERTIARY, ButtonVariant.SMALL);
-        button.addClickListener(event -> applyOverride(entry, line.kind(), null));
+        button.addClickListener(event -> applyOverride(entry, kind, null));
         button.getElement().setAttribute("aria-label", "Reset to calculated: "
-                + ReportViewSupport.generatedLineLabel(line.kind()));
+                + ReportViewSupport.generatedLineLabel(kind));
         return button;
+    }
+
+    /**
+     * Sets or clears one kind's Quantity Override on the working trip — asking first
+     * when a count of {@code 0} would destroy a receipt (issue #132), then
+     * {@linkplain #commitOverride committing}.
+     */
+    private void applyOverride(ValueSignal<TravelDto> entry, GeneratedLineKind kind,
+            QuantityOverride override) {
+        if (override != null && override.isSuppression()) {
+            String doomed = attachedReceiptFilename(entry, kind);
+            if (doomed != null) {
+                confirmSuppression(entry, kind, override, doomed);
+                return;
+            }
+        }
+        commitOverride(entry, kind, override);
     }
 
     /**
@@ -1149,18 +1239,75 @@ public class ReportDetailView extends VerticalLayout
      * amount, the per-diem subtotal and the report total follow immediately — before
      * the report is saved. Receipts already attached are carried across by kind, as
      * on the trip-edit path.
+     *
+     * <p>A suppressing override ({@code 0}) leaves no line for a buffered receipt to
+     * be attached to, so that buffer entry is dropped — otherwise a stale
+     * {@link GeneratedLineRef} would reach the service on save, naming a kind the
+     * trip no longer generates.
      */
-    private void applyOverride(ValueSignal<TravelDto> entry, GeneratedLineKind kind,
+    private void commitOverride(ValueSignal<TravelDto> entry, GeneratedLineKind kind,
             QuantityOverride override) {
         clearErrors();
         var before = entry.peek();
         var corrected = override == null ? before.withoutQuantityOverride(kind)
                 : before.withQuantityOverride(kind, override);
         try {
-            entry.set(mergeReceipts(before, service.previewTravel(corrected)));
+            var recosted = service.previewTravel(corrected);
+            if (override != null && override.isSuppression()) {
+                pendingTravelReceipts.remove(new TravelReceiptKey(entry, kind));
+            }
+            entry.set(mergeReceipts(before, recosted));
         } catch (RuntimeException ex) {
             surface(ex);
         }
+    }
+
+    /**
+     * The name of the file a suppression would destroy, or {@code null} if the line
+     * carries none. The line's own view is the authority: a buffered attachment shows
+     * on it the moment it is uploaded, and a buffered <em>removal</em> clears it — so a
+     * receipt already staged for deletion is correctly not worth warning about twice.
+     */
+    private static String attachedReceiptFilename(ValueSignal<TravelDto> entry,
+            GeneratedLineKind kind) {
+        return entry.peek().generatedLine(kind)
+                .filter(GeneratedLineView::hasReceipt)
+                .map(GeneratedLineView::receiptFilename)
+                .orElse(null);
+    }
+
+    /**
+     * Asks before a zero override destroys a receipt (ADR-0024). {@code V6__receipts.sql}
+     * declares {@code expense_line_id ... on delete cascade} because
+     * {@code ExpenseLine} holds no back-reference to its receipt, so dropping the line
+     * takes the uploaded file with it — irrecoverably, and invisibly from anywhere
+     * above the database. The dialog therefore <strong>names the file</strong> so the
+     * user knows exactly what they are giving up; cancelling keeps both the line and
+     * its receipt.
+     */
+    private void confirmSuppression(ValueSignal<TravelDto> entry,
+            GeneratedLineKind kind, QuantityOverride override, String filename) {
+        var dialog = new Dialog();
+        dialog.setHeaderTitle("Remove " + kind.label() + "?");
+        // Capped to a readable measure, like the override dialog: unconstrained, this
+        // paragraph renders as one ~100-character line on a desktop viewport, which is
+        // the worst possible shape for the one sentence the user must actually read.
+        dialog.setWidth("30rem");
+        dialog.setMaxWidth("100%");
+        // The body names the line as well as the file, so it stands on its own — a
+        // dialog title is not always what a screen reader reads out first.
+        dialog.add(new Paragraph("A count of 0 removes the " + kind.label()
+                + " line from the report. The receipt attached to it, " + filename
+                + ", is deleted with the line and cannot be recovered."));
+
+        var confirm = new Button("Remove line and receipt", event -> {
+            dialog.close();
+            commitOverride(entry, kind, override);
+        });
+        confirm.addThemeVariants(ButtonVariant.ERROR, ButtonVariant.PRIMARY);
+        var cancel = new Button("Cancel", event -> dialog.close());
+        dialog.getFooter().add(cancel, confirm);
+        dialog.open();
     }
 
     /** A muted extra line under a generated row's label. */

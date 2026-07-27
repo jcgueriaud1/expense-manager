@@ -1778,3 +1778,65 @@ Deployment/Observability · UX-spec
   `browser_fill_form` skip only the failing field instead of aborting the batch).
 - Owner / next step: documented in `docs/manual-verification.md`'s Playwright
   pattern; no product change.
+
+### F-055 — A Vaadin `DateTimePicker` can't be driven by Playwright at all without hand-dispatching `value-changed`
+- Date: 2026-07-27
+- Area: Verification
+- Severity: Medium
+- Task being attempted: visually verifying issue #132 — filling the two
+  `DateTimePicker`s in `TravelEditorDialog` so the trip earns a partial-day per-diem
+  to suppress.
+- Expected vs actual: three plausible approaches all fail *silently*, which is the
+  expensive part — the client shows the typed date and time, so the dialog looks
+  filled, and only the server-side error summary ("Departure date & time is
+  required") reveals that nothing arrived. (1) `browser_fill_form` /
+  `page.fill()` on the inner `vaadin-date-picker input` + `vaadin-time-picker input`
+  updates the visible text but never commits to the composite. (2) Setting
+  `picker.value = '2026-07-10T09:00'` from `browser_evaluate` sets the property and
+  updates both sub-fields, but Flow's server binding never fires. (3) Dispatching
+  `input` + `change` on the inner inputs commits a `TextField` fine (that *is* enough
+  for `vaadin-text-field`) but still not the picker.
+- Workaround used: set `.value` on the `vaadin-date-time-picker` **and** dispatch
+  both a `CustomEvent('value-changed', {detail: {value}})` and a `change`, bubbling
+  and composed. Dispatching only `value-changed` was not enough — the pair is what
+  works, and I confirmed it by having it fail the first time I dropped the `change`.
+- Evidence: this ticket's verification run — three rounds of "Save trip" rejected
+  with all four required-field errors, each round narrowing which dispatch was
+  missing; the event pair worked first try afterwards.
+- Impact: this is the single most expensive step in visually verifying anything
+  trip-related, and it is *not* discoverable — the UI lies about being filled. Worth
+  a line in the manual-verification Playwright pattern beside F-054's ComboBox note.
+- Suggested Vaadin/product improvement: same shape as F-054 — a Playwright MCP that
+  knows Vaadin fields (or a documented `setValue` escape hatch on the web component)
+  would remove a whole class of silent failures.
+- Owner / next step: documented in `docs/manual-verification.md`'s Playwright
+  pattern; no product change.
+
+### F-056 — "Seed, don't click" doesn't cover trips: `LocalReportSeeder` seeds no `Travel`
+- Date: 2026-07-27
+- Area: Verification
+- Severity: Medium
+- Task being attempted: visually verifying issue #132, whose entire subject is a
+  travel-generated line — so the fixture needed is "a DRAFT report with a trip that
+  earns a partial-day per-diem" and "a trip that earns a meal allowance carrying a
+  receipt".
+- Expected vs actual: `docs/manual-verification.md` promises the seeder lands you
+  "directly on the screen under test — never click through create → add line → save".
+  Actual: every seeded report has one €100 manual line and **no trip**, so anything
+  in Phase 4 (per-diem, kilometre, meal, parking, receipts on generated lines, and
+  now the Quantity Override) starts with the trip dialog — ~15 interactions per
+  fixture, and it is exactly the dialog F-055 makes hardest to drive.
+- Workaround used: built both trips by hand through `TravelEditorDialog`, put them on
+  one report to pay the login/navigation cost once, and deleted the report from the
+  local DB afterwards.
+- Evidence: `LocalReportSeeder` has no reference to `Travel`/`TravelDto`; this run
+  spent roughly two thirds of its Playwright calls on fixture setup — the precise
+  cost the lever exists to remove (issue #68).
+- Impact: the cheap-verification lever now misses the phase the project is actually
+  building in, so the "~12 calls" target in `manual-verification.md` is unreachable
+  for any travel ticket.
+- Suggested Vaadin/product improvement: none — this is ours.
+- Owner / next step: worth a small ticket — add two travel fixtures to
+  `LocalReportSeeder` (a 55 h domestic trip earning full + partial days, and a
+  not-eligible trip earning a meal allowance with a receipt) and label them like the
+  existing ones. Not done here: it is a change to a seeder outside #132's scope.

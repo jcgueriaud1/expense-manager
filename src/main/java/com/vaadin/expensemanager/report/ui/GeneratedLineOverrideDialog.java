@@ -39,6 +39,12 @@ import static com.vaadin.expensemanager.report.ui.ReportViewSupport.formatQuanti
  * server. The field enforces integrality at the widget as well; the domain enforces
  * it again on save.
  *
+ * <p><strong>A count of {@code 0} is a valid claim</strong>: it drops the line from the
+ * report (issue #132) — the correction "keep the two full days, lose the partial
+ * leftover". This dialog does not warn about it, because whether that destroys an
+ * attached receipt is knowledge only the view has (persisted <em>and</em> buffered
+ * receipts); the view confirms before committing.
+ *
  * <p>Like {@code TravelLineReceiptDialog}, the committed value travels back to the
  * view, which re-previews the trip server-side so the row's amount and the report
  * totals reflect the correction immediately (the money is never computed here).
@@ -66,11 +72,15 @@ final class GeneratedLineOverrideDialog extends Dialog {
         count.setRequiredIndicatorVisible(true);
         // A count of discrete days or meals: whole numbers only, never below the
         // floor. The domain re-checks both, plus the per-kind cap.
-        count.setMin(1);
+        count.setMin(0);
         count.setStepButtonsVisible(true);
         count.setValue(line.quantity().intValue());
-        count.setHelperText(line.kind().isPerDiem()
-                ? "Whole days only." : "Whole meals only.");
+        // Zero is a legitimate claim, not an error, so the field says what it does
+        // — the destructive part (a receipt goes with the line) is confirmed by the
+        // view, which is the only place that knows whether one is attached.
+        count.setHelperText((line.kind().isPerDiem()
+                ? "Whole days only. " : "Whole meals only. ")
+                + "0 removes this line from the report.");
 
         reason.setRequiredIndicatorVisible(true);
         reason.setMaxLength(500);

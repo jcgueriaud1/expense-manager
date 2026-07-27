@@ -70,6 +70,18 @@ Keep runs small:
   takes the whole batch down with it (F-054). Drive each ComboBox with two clicks
   instead: its `input` (`#input-vaadin-combo-box-<n>`), then
   `vaadin-combo-box-item:has-text("…")` in the overlay.
+- **A `DateTimePicker` needs its own event pair, and fails silently without it**
+  (F-055). Neither `browser_fill_form` on the inner date/time inputs nor setting
+  `picker.value` commits to the server — the dialog *looks* filled and only the
+  error summary says otherwise. From `browser_evaluate`, set `.value` on the
+  `vaadin-date-time-picker` and dispatch **both**
+  `new CustomEvent('value-changed', {detail: {value}, bubbles: true, composed: true})`
+  **and** a bubbling `change`. (A plain `vaadin-text-field` does commit from an
+  `input` + `change` pair on its inner `input`.)
+- **Trips are not seeded** (F-056), so anything Phase 4 — per-diem, kilometre, meal,
+  parking, generated-line receipts, Quantity Override — still costs a pass through
+  `TravelEditorDialog`. Put every trip a run needs on **one** report so the login,
+  navigation and save costs are paid once.
 - **Screenshot only unique visual states** — layout, colour, status badges,
   callouts. Don't re-drive flows the browserless tests (pyramid layer 3) already
   cover behaviourally; those assertions belong there, not in a browser run.
