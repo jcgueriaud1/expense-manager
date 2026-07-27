@@ -107,10 +107,19 @@ the domain sharpens.
   unchanged. The **free-meal halving** halves the **unit price** of those lines
   (the per-diem is halved when a free meal was provided), keeping quantity an
   honest day count. **Foreign** uses a country-rate lookup (`days × country
-  rate`) or a manual override.
+  rate`), generated as a full-day line. Either kind's day count may carry a
+  **Quantity Override**.
 - **Kilometre Compensation** — allowance for driving, rate × kilometres.
-- **Manual Override** — an operator-entered allowance adjustment with a mandatory
-  explanation, used when auto-calculation doesn't fit.
+- **Quantity Override** — a user-entered replacement for the **Quantity** of a
+  travel-generated allowance line, carrying a **mandatory reason**, used when the
+  auto-calculation doesn't fit the trip. Only the *count* is overridable: the unit
+  price stays statutory and server-computed, so the client never sends money
+  (ADR-0024). Available on the per-diem lines (full and partial, domestic and
+  foreign) and the meal line only — the kilometre distance and the parking fee are
+  edited on the **Travel Calculator** itself. Whole numbers; `0` suppresses the
+  line; an override can never create a line the rules did not earn (that is
+  manual-line territory). Cleared, after confirmation, when a trip edit changes the
+  calculated count.
 - **Travel Calculator** — trip-level inputs (dates/times, route, purpose,
   free-meal/km/parking) that auto-generate expense lines. Referenced from the
   ProCountor flow; the foreign-trip default-to-Finnish-per-diem weakness is a

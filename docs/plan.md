@@ -129,7 +129,8 @@ Goal: trip inputs generate allowance lines; rates are editable config.
   per-diem by country; per-year; seeded from Verohallinto 2026 (ADR-0005).
 - **4.2 Allowance calculator** — pure stateless domain service: domestic
   per-diem with free-meal halving; km compensation; foreign country-rate
-  lookup; manual override with explanation (ADR-0006).
+  lookup (ADR-0006). Corrections ride a **Quantity Override** on the generated
+  line — the count, never the amount, with a mandatory reason (ADR-0024).
 - **4.3 Trip/travel-calculator UI** — inputs → generated lines; do better than
   ProCountor's foreign-trip default (glossary: Travel Calculator).
 - **4.4 Admin rate editing** — settings screen to edit rates per year.
