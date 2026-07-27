@@ -9,6 +9,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import com.vaadin.expensemanager.base.AuditedEntity;
@@ -516,27 +517,30 @@ public class ExpenseReport extends AuditedEntity {
     }
 
     /**
-     * The tax-free per-diem allowance subtotal (Phase 4.3): the sum of the
-     * generated per-diem lines' gross; {@code 0.00} when no trip earned one.
+     * The tax-free per-diem allowance subtotal (Phase 4.3): the sum of the generated
+     * per-diem lines' gross — <strong>both</strong> per-diem kinds, since a trip's
+     * per-diem is split into a full-day and a partial-day line (issue #124);
+     * {@code 0.00} when no trip earned one.
      */
     public BigDecimal perDiemTotal() {
-        return allowanceTotal(GeneratedLineKind.PER_DIEM);
+        return allowanceTotal(GeneratedLineKind::isPerDiem);
     }
 
     /** The tax-free kilometre allowance subtotal (Phase 4.3); {@code 0.00} when none. */
     public BigDecimal kilometreTotal() {
-        return allowanceTotal(GeneratedLineKind.KILOMETRE);
+        return allowanceTotal(kind -> kind == GeneratedLineKind.KILOMETRE);
     }
 
     /** The tax-free meal allowance subtotal (Phase 4.3); {@code 0.00} when none. */
     public BigDecimal mealTotal() {
-        return allowanceTotal(GeneratedLineKind.MEAL);
+        return allowanceTotal(kind -> kind == GeneratedLineKind.MEAL);
     }
 
-    /** The summed gross of the generated lines of one tax-free allowance kind. */
-    private BigDecimal allowanceTotal(GeneratedLineKind kind) {
+    /** The summed gross of the generated lines belonging to one subtotal row. */
+    private BigDecimal allowanceTotal(Predicate<GeneratedLineKind> matching) {
         return lines.stream()
-                .filter(line -> line.getGeneratedKind() == kind)
+                .filter(line -> line.getGeneratedKind() != null
+                        && matching.test(line.getGeneratedKind()))
                 .map(ExpenseLine::gross)
                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }

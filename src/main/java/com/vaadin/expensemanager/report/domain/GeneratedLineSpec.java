@@ -17,16 +17,17 @@ import com.vaadin.expensemanager.reference.VatRate;
  *
  * <p>A generated line carries the same <strong>unit price × quantity</strong>
  * shape as a manual one (ADR-0023): the {@linkplain #gross() gross} is
- * {@code unitPrice × quantity}, never stored. The kilometre line is the multiple —
- * {@code quantity = kilometres}, {@code unitPrice = €/km rate} — while the
- * per-diem, meal, and parking lines are flat and use {@link #flat} to carry their
- * computed amount at quantity {@code 1}. Both parts are normalized to money scale
- * here, so the {@link #gross()} a preview shows is exactly the gross the persisted
- * line derives.
+ * {@code unitPrice × quantity}, never stored. The kilometre and per-diem lines are
+ * the real multiples — {@code quantity = kilometres}, {@code unitPrice = €/km rate};
+ * {@code quantity = days}, {@code unitPrice = per-day rate} — while the meal and
+ * parking lines are flat and use {@link #flat} to carry their computed amount at
+ * quantity {@code 1}. Both parts are normalized to money scale here, so the
+ * {@link #gross()} a preview shows is exactly the gross the persisted line derives.
  *
  * <p>A spec is only present for a kind that produced something — a trip that
- * earned no per-diem, drove no kilometres, paid no meal allowance, or had no
- * parking fee simply omits that kind, so any prior line of it is removed. The
+ * earned no per-diem (or no partial day), drove no kilometres, paid no meal
+ * allowance, or had no parking fee simply omits that kind, so any prior line of it
+ * is removed. The
  * {@link #unitPrice} is therefore always non-zero and the {@link #quantity}
  * strictly positive (the aggregate/{@link ExpenseLine} reject anything else).
  *
@@ -46,9 +47,9 @@ public record GeneratedLineSpec(GeneratedLineKind kind, ExpenseType expenseType,
     }
 
     /**
-     * A flat generated line — per-diem, meal, or parking (ADR-0023): the
-     * calculator's computed {@code amount} is the unit price and the quantity is
-     * {@code 1}, so these keep producing exactly the euros they always did.
+     * A flat generated line — meal or parking (ADR-0023): the calculator's computed
+     * {@code amount} is the unit price and the quantity is {@code 1}, so these keep
+     * producing exactly the euros they always did.
      */
     public static GeneratedLineSpec flat(GeneratedLineKind kind, ExpenseType expenseType,
             VatRate vatRate, BigDecimal amount, String comment) {

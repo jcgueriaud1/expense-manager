@@ -7,8 +7,8 @@ import java.math.BigDecimal;
  * parking (Phase 4.3, ADR-0006). Neither is a multiple, so both generate a
  * quantity-1 line whose unit price <em>is</em> this amount (ADR-0023); the
  * kilometre rule, which genuinely multiplies, has its own
- * {@link KilometreAllowance}, and the richer domestic per-diem its own
- * {@link DomesticPerDiemResult} (it also reports full/partial day counts).
+ * {@link KilometreAllowance}, and each per-diem its {@link PerDiemComponent}
+ * ({@code days × per-day rate}).
  *
  * <p>The {@link #amount} is EUR at scale 2 (ADR-0010) — {@code 0.00} when the rule
  * produced nothing (meal not requested, parking fee = 0). The

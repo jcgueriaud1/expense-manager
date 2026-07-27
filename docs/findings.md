@@ -1747,3 +1747,34 @@ Deployment/Observability · UX-spec
   doesn't throw and abort the DOM patch.
 - Owner / next step: no product action; raise the dev-toolbar overlay-stacking error
   upstream if it recurs.
+
+### F-054 — Playwright MCP `browser_fill_form` can't fill a Vaadin ComboBox (it expects a native `<select>`)
+- Date: 2026-07-27
+- Area: Verification
+- Severity: Low
+- Task being attempted: visually verifying issue #124 — filling the
+  `TravelEditorDialog` (dates, texts, and the "Destination country" ComboBox) in one
+  `browser_fill_form` call, the batching the `visual-verification` skill recommends.
+- Expected vs actual: expected a `type: "combobox"` field to select an option like a
+  human does. Actual: the call fails outright with `Error: Element is not a <select>
+  element` — the MCP maps `combobox` to Playwright's `selectOption`, which only
+  drives native `<select>`; a `vaadin-combo-box` exposes an `<input role="combobox">`.
+  The failure aborts the **whole** batch, so the other (perfectly fillable) fields in
+  the same call are lost. Setting `comboBox.value` from `browser_evaluate` doesn't
+  work either — the web component's items are server-fed, so the assignment reads
+  back as `""` and the server never sees a value.
+- Workaround used: fill every non-ComboBox field in one `browser_fill_form`, then
+  drive each ComboBox with two clicks — `#input-vaadin-combo-box-<n>` (found via a
+  one-line `browser_evaluate` over `document.querySelectorAll('vaadin-combo-box')`,
+  since the accessibility-tree `ref` goes stale after the form fill) and then
+  `vaadin-combo-box-item:has-text("…")` in the overlay.
+- Evidence: this ticket's verification run — `browser_fill_form` on
+  `vaadin-combo-box[label="Destination country"]` → "Element is not a `<select>`
+  element"; the click-input-then-click-item pair worked first try.
+- Impact: one extra call per ComboBox, and a batch that must be split around them —
+  worth knowing before writing the "one big fill_form" call the skill suggests.
+- Suggested Vaadin/product improvement: teach the Playwright MCP's `combobox` field
+  type to fall back to click-input-then-pick-option for ARIA comboboxes (or have
+  `browser_fill_form` skip only the failing field instead of aborting the batch).
+- Owner / next step: documented in `docs/manual-verification.md`'s Playwright
+  pattern; no product change.

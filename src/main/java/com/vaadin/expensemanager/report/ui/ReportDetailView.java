@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 
 import com.vaadin.expensemanager.approval.service.ApprovalService;
 import com.vaadin.expensemanager.base.DomainRuleException;
@@ -1217,22 +1218,29 @@ public class ReportDetailView extends VerticalLayout
                 .reduce(manual, LineAmounts::add);
     }
 
+    /** Both per-diem lines share the subtotal — full days and the partial day (#124). */
     private BigDecimal currentPerDiem() {
-        return sumKind(GeneratedLineKind.PER_DIEM);
+        return sumKinds(GeneratedLineKind::isPerDiem);
     }
 
     private BigDecimal currentKilometre() {
-        return sumKind(GeneratedLineKind.KILOMETRE);
+        return sumKinds(kind -> kind == GeneratedLineKind.KILOMETRE);
     }
 
     private BigDecimal currentMeal() {
-        return sumKind(GeneratedLineKind.MEAL);
+        return sumKinds(kind -> kind == GeneratedLineKind.MEAL);
     }
 
-    /** Sums one generated-line kind's amount live across the working trips (Phase 4.3). */
-    private BigDecimal sumKind(GeneratedLineKind kind) {
+    /**
+     * Sums one subtotal row's generated lines live across the working trips (Phase
+     * 4.3) — the same derived {@code unit × quantity} gross the persisted lines
+     * report, so the live figure and the saved one agree (ADR-0023).
+     */
+    private BigDecimal sumKinds(Predicate<GeneratedLineKind> matching) {
         return travels.get().stream().map(ValueSignal::get)
-                .map(t -> t.amountOf(kind))
+                .flatMap(t -> t.generatedLines().stream())
+                .filter(line -> matching.test(line.kind()))
+                .map(GeneratedLineView::amount)
                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 

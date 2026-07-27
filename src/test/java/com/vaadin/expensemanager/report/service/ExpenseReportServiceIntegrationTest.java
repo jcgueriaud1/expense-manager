@@ -1,6 +1,7 @@
 package com.vaadin.expensemanager.report.service;
 
 import java.math.BigDecimal;
+import java.sql.Connection;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -31,6 +32,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -77,6 +81,10 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private VatRateRepository vatRateRepository;
+
+    /** Raw SQL access, for asserting/replaying the generated-kind migration (V13). */
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Autowired
     private ReceiptRepository receiptRepository;
@@ -751,9 +759,9 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
         var preview = service.previewTravel(
                 domesticTravel(null, DEP, DEP.plusHours(11), false, false));
 
-        assertThat(preview.amountOf(GeneratedLineKind.PER_DIEM))
+        assertThat(preview.amountOf(GeneratedLineKind.PER_DIEM_FULL))
                 .isEqualByComparingTo("54.00");
-        assertThat(preview.generatedLine(GeneratedLineKind.PER_DIEM).orElseThrow()
+        assertThat(preview.generatedLine(GeneratedLineKind.PER_DIEM_FULL).orElseThrow()
                 .comment()).contains("full day");
         // Nothing was persisted by a preview.
         assertThat(service.listMine()).isEmpty();
@@ -771,7 +779,7 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
         var trip = loaded.travels().getFirst();
         assertThat(trip.destinations()).isEqualTo("Helsinki");
         assertThat(trip.country()).isEqualTo("Finland");
-        assertThat(trip.amountOf(GeneratedLineKind.PER_DIEM))
+        assertThat(trip.amountOf(GeneratedLineKind.PER_DIEM_FULL))
                 .isEqualByComparingTo("54.00");
         // The per-diem is broken out of Net/VAT and into its own subtotal.
         assertThat(loaded.perDiemTotal()).isEqualByComparingTo("54.00");
@@ -793,7 +801,7 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
 
         var reloaded = service.findMine(id);
         assertThat(reloaded.travels()).hasSize(1);
-        assertThat(reloaded.travels().getFirst().amountOf(GeneratedLineKind.PER_DIEM))
+        assertThat(reloaded.travels().getFirst().amountOf(GeneratedLineKind.PER_DIEM_FULL))
                 .isEqualByComparingTo("27.00");
         assertThat(reloaded.perDiemTotal()).isEqualByComparingTo("27.00");
     }
@@ -866,7 +874,7 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
                 DEP.plusHours(11), new BigDecimal("120"), true, new BigDecimal("12.00"),
                 true));
 
-        assertThat(preview.amountOf(GeneratedLineKind.PER_DIEM))
+        assertThat(preview.amountOf(GeneratedLineKind.PER_DIEM_FULL))
                 .isEqualByComparingTo("0.00");
         assertThat(preview.amountOf(GeneratedLineKind.KILOMETRE))
                 .isEqualByComparingTo("66.00");
@@ -888,7 +896,7 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
                 DEP.plusHours(11), new BigDecimal("120"), true, new BigDecimal("12.00"),
                 false));
 
-        assertThat(preview.amountOf(GeneratedLineKind.PER_DIEM))
+        assertThat(preview.amountOf(GeneratedLineKind.PER_DIEM_FULL))
                 .isEqualByComparingTo("54.00");
         assertThat(preview.amountOf(GeneratedLineKind.MEAL))
                 .isEqualByComparingTo("0.00");
@@ -957,7 +965,7 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
 
         // The other kinds stay flat: the per-diem is one unit at its full amount.
         var perDiem = loaded.travels().getFirst()
-                .generatedLine(GeneratedLineKind.PER_DIEM).orElseThrow();
+                .generatedLine(GeneratedLineKind.PER_DIEM_FULL).orElseThrow();
         assertThat(perDiem.quantity()).isEqualByComparingTo("1");
         assertThat(perDiem.unitPrice()).isEqualByComparingTo("54.00");
     }
@@ -1018,11 +1026,11 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
                 dtoWithTravels(LocalDate.of(2026, 7, 10), List.of(
                         domesticTravel(null, DEP, DEP.plusHours(11), false, false))),
                 Map.of(),
-                Map.of(new GeneratedLineRef(0, GeneratedLineKind.PER_DIEM),
+                Map.of(new GeneratedLineRef(0, GeneratedLineKind.PER_DIEM_FULL),
                         new ReceiptUpload(JPEG, "perdiem.jpg")));
 
         var perDiem = service.findMine(id).travels().getFirst()
-                .generatedLine(GeneratedLineKind.PER_DIEM).orElseThrow();
+                .generatedLine(GeneratedLineKind.PER_DIEM_FULL).orElseThrow();
         assertThat(perDiem.hasReceipt()).isTrue();
         assertThat(perDiem.receiptId()).isNotNull();
         assertThat(perDiem.receiptFilename()).isEqualTo("perdiem.jpg");
@@ -1036,7 +1044,7 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
                 dtoWithTravels(LocalDate.of(2026, 7, 10), List.of(
                         domesticTravel(null, DEP, DEP.plusHours(11), false, false))),
                 Map.of(),
-                Map.of(new GeneratedLineRef(0, GeneratedLineKind.PER_DIEM),
+                Map.of(new GeneratedLineRef(0, GeneratedLineKind.PER_DIEM_FULL),
                         new ReceiptUpload(JPEG, "perdiem.jpg")));
         var loaded = service.findMine(id);
         var tripId = loaded.travels().getFirst().id();
@@ -1049,7 +1057,7 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
                 loaded.version());
 
         var perDiem = service.findMine(id).travels().getFirst()
-                .generatedLine(GeneratedLineKind.PER_DIEM).orElseThrow();
+                .generatedLine(GeneratedLineKind.PER_DIEM_FULL).orElseThrow();
         assertThat(perDiem.amount()).isEqualByComparingTo("27.00");
         assertThat(perDiem.receiptFilename()).isEqualTo("perdiem.jpg");
     }
@@ -1086,6 +1094,157 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
         assertThat(receiptRepository.findByExpenseLineId(parkingLineId)).isEmpty();
     }
 
+    // --- The split per-diem: PER_DIEM_FULL + PER_DIEM_PARTIAL (issue #124) ---
+
+    @Test
+    void aTripEarningAPartialDaySplitsIntoTwoPerDiemLines() {
+        // 31 h = one whole 24 h period + a 7 h leftover (over the strict 6 h threshold)
+        // → a full-day line (1 × €54.00) and a partial-day line (1 × €25.00), each an
+        // honest days × per-day rate (ADR-0023).
+        var id = service.create(dtoWithTravels(LocalDate.of(2026, 7, 10),
+                List.of(domesticTravel(null, DEP, DEP.plusHours(31), false, false))));
+
+        var trip = service.findMine(id).travels().getFirst();
+        var full = trip.generatedLine(GeneratedLineKind.PER_DIEM_FULL).orElseThrow();
+        assertThat(full.quantity()).isEqualByComparingTo("1");
+        assertThat(full.unitPrice()).isEqualByComparingTo("54.00");
+        assertThat(full.comment()).contains("full day");
+        var partial = trip.generatedLine(GeneratedLineKind.PER_DIEM_PARTIAL).orElseThrow();
+        assertThat(partial.quantity()).isEqualByComparingTo("1");
+        assertThat(partial.unitPrice()).isEqualByComparingTo("25.00");
+        assertThat(partial.comment()).contains("partial day");
+        // Both are 0 %-VAT tax-free lines sharing the one per-diem subtotal.
+        assertThat(full.vatRatePercent()).isEqualByComparingTo("0.00");
+        assertThat(partial.vatRatePercent()).isEqualByComparingTo("0.00");
+        assertThat(service.findMine(id).perDiemTotal()).isEqualByComparingTo("79.00");
+        assertThat(service.findMine(id).netTotal()).isEqualByComparingTo("0.00");
+        assertThat(service.findMine(id).total()).isEqualByComparingTo("79.00");
+    }
+
+    @Test
+    void multiDayPerDiemLinesCarryTheDayCountsAsQuantities() {
+        // 55 h → 2 full days + 1 partial: 2 × €54.00 + 1 × €25.00 = €133.00.
+        var id = service.create(dtoWithTravels(LocalDate.of(2026, 7, 10),
+                List.of(domesticTravel(null, DEP, DEP.plusHours(55), false, false))));
+
+        var trip = service.findMine(id).travels().getFirst();
+        assertThat(trip.generatedLine(GeneratedLineKind.PER_DIEM_FULL).orElseThrow()
+                .quantity()).isEqualByComparingTo("2");
+        assertThat(trip.amountOf(GeneratedLineKind.PER_DIEM_FULL))
+                .isEqualByComparingTo("108.00");
+        assertThat(trip.amountOf(GeneratedLineKind.PER_DIEM_PARTIAL))
+                .isEqualByComparingTo("25.00");
+        assertThat(service.findMine(id).perDiemTotal()).isEqualByComparingTo("133.00");
+    }
+
+    @Test
+    void theSplitKeepsTheDayMixAndEurosOfRepresentativeTrips() {
+        // The AC's three representative trips, previewed: the mix per trip and the
+        // total euros are exactly what the single-line per-diem produced.
+        var full24h = service.previewTravel(
+                domesticTravel(null, DEP, DEP.plusHours(24), false, false));
+        assertThat(full24h.generatedLine(GeneratedLineKind.PER_DIEM_FULL)).isPresent();
+        assertThat(full24h.generatedLine(GeneratedLineKind.PER_DIEM_PARTIAL)).isEmpty();
+        assertThat(full24h.amountOf(GeneratedLineKind.PER_DIEM_FULL))
+                .isEqualByComparingTo("54.00");
+
+        // A day-plus trip (the AC's "30 h" case; 31 h clears the strict 6 h leftover
+        // threshold) → a full-day line plus a partial-day line, €79.00 all told.
+        var dayPlus = service.previewTravel(
+                domesticTravel(null, DEP, DEP.plusHours(31), false, false));
+        assertThat(dayPlus.generatedLine(GeneratedLineKind.PER_DIEM_FULL)).isPresent();
+        assertThat(dayPlus.generatedLine(GeneratedLineKind.PER_DIEM_PARTIAL)).isPresent();
+        assertThat(dayPlus.amountOf(GeneratedLineKind.PER_DIEM_FULL)
+                .add(dayPlus.amountOf(GeneratedLineKind.PER_DIEM_PARTIAL)))
+                .isEqualByComparingTo("79.00");
+
+        // Under the 6 h partial threshold: neither kind is generated.
+        var tooShort = service.previewTravel(
+                domesticTravel(null, DEP, DEP.plusHours(5), false, false));
+        assertThat(tooShort.generatedLines()).isEmpty();
+    }
+
+    @Test
+    void aFreeMealHalvesTheUnitPriceOfBothPerDiemLinesAndKeepsTheDaysHonest() {
+        // ADR-0023: halving rides the unit price. 55 h with a free lunch → 2 days at
+        // €27.00 + 1 partial at €12.50 = €66.50 (the pre-split €133.00 / 2).
+        var id = service.create(dtoWithTravels(LocalDate.of(2026, 7, 10),
+                List.of(domesticTravel(null, DEP, DEP.plusHours(55), false, true))));
+
+        var trip = service.findMine(id).travels().getFirst();
+        var full = trip.generatedLine(GeneratedLineKind.PER_DIEM_FULL).orElseThrow();
+        assertThat(full.quantity()).isEqualByComparingTo("2");
+        assertThat(full.unitPrice()).isEqualByComparingTo("27.00");
+        var partial = trip.generatedLine(GeneratedLineKind.PER_DIEM_PARTIAL).orElseThrow();
+        assertThat(partial.quantity()).isEqualByComparingTo("1");
+        assertThat(partial.unitPrice()).isEqualByComparingTo("12.50");
+        assertThat(service.findMine(id).perDiemTotal()).isEqualByComparingTo("66.50");
+    }
+
+    @Test
+    void reCostingATripReconcilesBothPerDiemKindsWithoutDuplicating() {
+        var id = service.create(dtoWithTravels(LocalDate.of(2026, 7, 10),
+                List.of(domesticTravel(null, DEP, DEP.plusHours(31), false, false))));
+        var loaded = service.findMine(id);
+        var trip = loaded.travels().getFirst();
+        Long fullLineId = trip.generatedLine(GeneratedLineKind.PER_DIEM_FULL)
+                .orElseThrow().lineId();
+
+        // Shorten the trip to a whole 24 h: the full-day line is re-costed in place
+        // (same id) and the partial-day line it no longer earns is removed.
+        service.update(id, dtoWithTravels(id, LocalDate.of(2026, 7, 10), loaded.version(),
+                List.of(domesticTravel(trip.id(), DEP, DEP.plusHours(24), false, false))),
+                loaded.version());
+
+        var reloaded = service.findMine(id);
+        var reTrip = reloaded.travels().getFirst();
+        assertThat(reTrip.generatedLine(GeneratedLineKind.PER_DIEM_FULL).orElseThrow()
+                .lineId()).isEqualTo(fullLineId);
+        assertThat(reTrip.generatedLine(GeneratedLineKind.PER_DIEM_PARTIAL)).isEmpty();
+        assertThat(reTrip.generatedLines()).hasSize(1);
+        assertThat(reloaded.perDiemTotal()).isEqualByComparingTo("54.00");
+        // Exactly one generated line survives on the aggregate — nothing stale.
+        assertThat(reportRepository.findById(id).orElseThrow().getLines()).hasSize(1);
+    }
+
+    @Test
+    void theMigrationReclassifiesALegacyPerDiemRowToTheFullDayKind() {
+        var id = service.create(dtoWithTravels(LocalDate.of(2026, 7, 10),
+                List.of(domesticTravel(null, DEP, DEP.plusHours(11), false, false))));
+        Long lineId = service.findMine(id).travels().getFirst()
+                .generatedLine(GeneratedLineKind.PER_DIEM_FULL).orElseThrow().lineId();
+        // Put the row back into its pre-split shape (a V12-era `PER_DIEM` value), which
+        // no longer maps to any enum constant.
+        jdbcTemplate.update(
+                "update expense_line set generated_kind = 'PER_DIEM' where id = ?", lineId);
+        assertThat(generatedKindOf(lineId)).isEqualTo("PER_DIEM");
+
+        // Re-run the real V13 script — the statement Flyway applies on a live database.
+        jdbcTemplate.execute((Connection connection) -> {
+            ScriptUtils.executeSqlScript(connection,
+                    new ClassPathResource("db/migration/V13__per_diem_full_partial.sql"));
+            return null;
+        });
+
+        assertThat(generatedKindOf(lineId)).isEqualTo("PER_DIEM_FULL");
+        // The reclassified line loads as a full-day per-diem with its euros unchanged —
+        // still the stored amount at quantity 1, until a travel edit re-splits it.
+        entityManager.clear();
+        var reloaded = service.findMine(id);
+        var perDiem = reloaded.travels().getFirst()
+                .generatedLine(GeneratedLineKind.PER_DIEM_FULL).orElseThrow();
+        assertThat(perDiem.quantity()).isEqualByComparingTo("1");
+        assertThat(perDiem.unitPrice()).isEqualByComparingTo("54.00");
+        assertThat(reloaded.perDiemTotal()).isEqualByComparingTo("54.00");
+    }
+
+    /** The persisted discriminator of one expense line, as raw SQL sees it. */
+    private String generatedKindOf(Long lineId) {
+        return jdbcTemplate.queryForObject(
+                "select generated_kind from expense_line where id = ?", String.class,
+                lineId);
+    }
+
     // --- Foreign per-diem via the destination-country picker (Phase 4.2) ---
 
     @Test
@@ -1104,9 +1263,9 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
         var preview = service.previewTravel(
                 foreignTravel(null, DEP, DEP.plusHours(11), "Germany", false));
 
-        assertThat(preview.amountOf(GeneratedLineKind.PER_DIEM))
+        assertThat(preview.amountOf(GeneratedLineKind.PER_DIEM_FULL))
                 .isEqualByComparingTo("71.00");
-        assertThat(preview.generatedLine(GeneratedLineKind.PER_DIEM).orElseThrow()
+        assertThat(preview.generatedLine(GeneratedLineKind.PER_DIEM_FULL).orElseThrow()
                 .comment()).contains("Germany");
         assertThat(service.listMine()).isEmpty();
     }
@@ -1120,7 +1279,7 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
         var loaded = service.findMine(id);
         var trip = loaded.travels().getFirst();
         assertThat(trip.country()).isEqualTo("Germany");
-        assertThat(trip.amountOf(GeneratedLineKind.PER_DIEM))
+        assertThat(trip.amountOf(GeneratedLineKind.PER_DIEM_FULL))
                 .isEqualByComparingTo("142.00");
         assertThat(loaded.perDiemTotal()).isEqualByComparingTo("142.00");
         assertThat(loaded.total()).isEqualByComparingTo("142.00");
@@ -1144,7 +1303,7 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
         // Same 11 h trip, domestic → €54.00 (the Finnish rate), proving the branch.
         var preview = service.previewTravel(
                 domesticTravel(null, DEP, DEP.plusHours(11), false, false));
-        assertThat(preview.amountOf(GeneratedLineKind.PER_DIEM))
+        assertThat(preview.amountOf(GeneratedLineKind.PER_DIEM_FULL))
                 .isEqualByComparingTo("54.00");
     }
 

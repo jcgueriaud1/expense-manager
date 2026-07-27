@@ -19,13 +19,17 @@ import java.time.LocalDateTime;
  *   <li>a leftover longer than the full-day threshold (default 10 h) earns an
  *       extra full day, longer than the partial-day threshold (default 6 h) a
  *       <em>partial</em> day, and anything shorter earns nothing;</li>
- *   <li>a free meal (lunch) <strong>halves</strong> the whole per-diem
- *       (glossary: free-meal halving);</li>
+ *   <li>a free meal (lunch) <strong>halves</strong> the per-diem — applied to each
+ *       component's per-day rate, never to the day count (glossary: free-meal
+ *       halving, ADR-0023);</li>
  *   <li>a trip flagged not eligible earns <strong>no</strong> per-diem.</li>
  * </ul>
- * The thresholds and amounts come from the trip-year {@link DomesticPerDiemDto}
- * rate (Slice 1). A return that is not strictly after departure is rejected —
- * the caller surfaces the message (ADR-0020).
+ * The result is the two {@link PerDiemComponent}s — full days at the full rate,
+ * the leftover at the partial rate — which become the {@code PER_DIEM_FULL} and
+ * {@code PER_DIEM_PARTIAL} generated lines (issue #124). The thresholds and amounts
+ * come from the trip-year {@link DomesticPerDiemDto} rate (Slice 1). A return that
+ * is not strictly after departure is rejected — the caller surfaces the message
+ * (ADR-0020).
  *
  * <p><strong>The other three trip outputs (Phase 4.3).</strong> A trip may also
  * earn a {@linkplain #kilometreAllowance kilometre allowance} (km × the year's
@@ -35,8 +39,9 @@ import java.time.LocalDateTime;
  * face value). Each is its own rule so it can be unit-tested in isolation and
  * skipped when it produced nothing (km = 0, meal not requested, fee = 0). The
  * kilometre rule returns its two <em>factors</em> ({@link KilometreAllowance}) so
- * its generated line can carry {@code km × €/km} rather than a lump (ADR-0023);
- * the two flat rules return a plain {@link AllowanceAmount}.
+ * its generated line can carry {@code km × €/km} rather than a lump (ADR-0023) —
+ * as do the per-diem rules ({@link PerDiemComponent}); the two flat rules return a
+ * plain {@link AllowanceAmount}.
  *
  * <p>Amounts are server-authoritative: this runs on inputs the client sent, and
  * the client never sends money. Kept as a plain instance (not a bean) so a unit
@@ -44,18 +49,20 @@ import java.time.LocalDateTime;
  */
 public final class AllowanceCalculator {
 
-    private static final BigDecimal TWO = new BigDecimal("2");
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);
 
     /**
-     * Computes the domestic per-diem for a trip.
+     * Computes the domestic per-diem for a trip as its two {@code days × per-day
+     * rate} components (ADR-0023): the whole 24-hour periods at the full-day rate
+     * and the leftover at the partial-day rate. A free meal halves each component's
+     * <em>rate</em>, leaving the day counts honest.
      *
      * @param departure   trip departure date-and-time (required)
      * @param returnAt    trip return date-and-time (required, strictly after
      *                    {@code departure})
      * @param notEligible whether the trip is flagged not eligible for a daily
      *                    allowance (earns nothing)
-     * @param freeLunch   whether a free meal was provided (halves the per-diem)
+     * @param freeLunch   whether a free meal was provided (halves the per-day rates)
      * @param rate        the trip-year domestic per-diem rate (required)
      * @throws IllegalArgumentException if an argument is {@code null} or the
      *                                  return is not after the departure
@@ -75,26 +82,34 @@ public final class AllowanceCalculator {
                     "Return must be after the departure");
         }
         if (notEligible) {
-            return new DomesticPerDiemResult(zero(), 0, 0,
-                    "Trip not eligible for daily allowance — no per-diem.");
+            return DomesticPerDiemResult.none();
         }
 
         AllowanceDays days = allowanceDays(departure, returnAt, rate.fullDayMinHours(),
                 rate.partialDayMinHours());
-        long fullCount = days.fullDays();
-        int partialDays = days.partialDays();
+        return new DomesticPerDiemResult(
+                component((int) days.fullDays(), rate.fullDayAmount(), "full day",
+                        freeLunch),
+                component(days.partialDays(), rate.partialDayAmount(), "partial day",
+                        freeLunch));
+    }
 
-        BigDecimal gross = rate.fullDayAmount().multiply(BigDecimal.valueOf(fullCount))
-                .add(rate.partialDayAmount().multiply(BigDecimal.valueOf(partialDays)));
-
-        BigDecimal amount = freeLunch
-                ? gross.divide(TWO, 2, RoundingMode.HALF_UP)
-                : gross.setScale(2, RoundingMode.HALF_UP);
-
-        String explanation = explain(fullCount, partialDays, rate, gross, amount,
-                freeLunch);
-        return new DomesticPerDiemResult(amount, (int) fullCount, partialDays,
-                explanation);
+    /**
+     * One domestic per-diem component: the days valued at {@code rate}, halved for a
+     * free meal on the <em>unit price</em> (ADR-0023), with its own line explanation.
+     * Zero days earn nothing, so no line is generated for that component.
+     */
+    private static PerDiemComponent component(int days, BigDecimal rate,
+            String dayLabel, boolean freeLunch) {
+        if (days <= 0) {
+            return PerDiemComponent.none();
+        }
+        PerDiemComponent earned = PerDiemComponent.of(days, rate);
+        if (freeLunch) {
+            earned = earned.halved();
+        }
+        return earned.withExplanation(
+                explainDomestic(earned, dayLabel, rate, freeLunch));
     }
 
     /**
@@ -113,7 +128,10 @@ public final class AllowanceCalculator {
      *
      * <p>A {@code null} rate is rejected — the caller looks the country's rate up for
      * the trip year and must surface a missing one as a clear failure (never a
-     * silent Finnish default, ADR-0020).
+     * silent Finnish default, ADR-0020). The result is a single
+     * {@link PerDiemComponent} — {@code days × country rate} — generated as a
+     * {@code PER_DIEM_FULL} line, since every foreign day counts at the full rate
+     * (ADR-0023).
      *
      * @param departure         trip departure date-and-time (required)
      * @param returnAt          trip return date-and-time (required, after departure)
@@ -124,7 +142,7 @@ public final class AllowanceCalculator {
      * @throws IllegalArgumentException if an argument is {@code null} or the return
      *                                  is not after the departure
      */
-    public ForeignPerDiemResult foreignPerDiem(LocalDateTime departure,
+    public PerDiemComponent foreignPerDiem(LocalDateTime departure,
             LocalDateTime returnAt, boolean notEligible, ForeignPerDiemDto rate,
             int fullDayMinHours, int partialDayMinHours) {
         if (departure == null || returnAt == null) {
@@ -140,21 +158,17 @@ public final class AllowanceCalculator {
                     "Return must be after the departure");
         }
         if (notEligible) {
-            return new ForeignPerDiemResult(zero(), 0,
-                    "Trip not eligible for daily allowance — no per-diem.");
+            return PerDiemComponent.none();
         }
 
         int dayCount = allowanceDays(departure, returnAt, fullDayMinHours,
                 partialDayMinHours).total();
         if (dayCount == 0) {
-            return new ForeignPerDiemResult(zero(), 0,
-                    "Trip too short for a per-diem — no allowance.");
+            return PerDiemComponent.none();
         }
-        BigDecimal amount = rate.amount().multiply(BigDecimal.valueOf(dayCount))
-                .setScale(2, RoundingMode.HALF_UP);
-        String explanation = "Foreign per-diem (" + rate.country() + "): " + dayCount
-                + " × " + eur(rate.amount()) + " = " + eur(amount);
-        return new ForeignPerDiemResult(amount, dayCount, explanation);
+        var earned = PerDiemComponent.of(dayCount, rate.amount());
+        return earned.withExplanation("Foreign per-diem (" + rate.country() + "): "
+                + dayCount + " × " + eur(earned.perDay()) + " = " + eur(earned.amount()));
     }
 
     /**
@@ -282,40 +296,24 @@ public final class AllowanceCalculator {
         return kilometres.stripTrailingZeros().toPlainString();
     }
 
-    private static String explain(long fullCount, int partialDays,
-            DomesticPerDiemDto rate, BigDecimal gross, BigDecimal amount,
-            boolean freeLunch) {
-        if (fullCount == 0 && partialDays == 0) {
-            return "Trip too short for a per-diem — no allowance.";
-        }
-        var parts = new StringBuilder("Domestic per-diem: ");
-        boolean first = true;
-        if (fullCount > 0) {
-            parts.append(fullCount).append(" × full day (")
-                    .append(eur(rate.fullDayAmount())).append(')');
-            first = false;
-        }
-        if (partialDays > 0) {
-            if (!first) {
-                parts.append(" + ");
-            }
-            parts.append(partialDays).append(" × partial day (")
-                    .append(eur(rate.partialDayAmount())).append(')');
-        }
+    /**
+     * The line comment for one domestic per-diem component: "Domestic per-diem: 2 ×
+     * full day (€54.00) = €108.00", naming the free-meal halving on the per-day rate
+     * when it applied — so the approval UI can see why the unit price is half the
+     * statutory rate without recomputing.
+     */
+    private static String explainDomestic(PerDiemComponent earned, String dayLabel,
+            BigDecimal rate, boolean freeLunch) {
+        var parts = new StringBuilder("Domestic per-diem: ").append(earned.days())
+                .append(" × ").append(dayLabel).append(" (");
         if (freeLunch) {
-            parts.append(" = ").append(eur(gross))
-                    .append(", halved for free meal → ").append(eur(amount));
-        } else {
-            parts.append(" = ").append(eur(amount));
+            parts.append(eur(rate)).append(" halved for free meal → ");
         }
-        return parts.toString();
+        return parts.append(eur(earned.perDay())).append(") = ")
+                .append(eur(earned.amount())).toString();
     }
 
     private static String eur(BigDecimal amount) {
         return "€" + amount.setScale(2, RoundingMode.HALF_UP).toPlainString();
-    }
-
-    private static BigDecimal zero() {
-        return BigDecimal.ZERO.setScale(2);
     }
 }

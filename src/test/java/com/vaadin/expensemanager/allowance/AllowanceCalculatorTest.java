@@ -99,7 +99,8 @@ class AllowanceCalculatorTest {
         // One full + one partial = €79.00, halved to €39.50.
         var result = perDiem(START.plusHours(31), true);
         assertThat(result.amount()).isEqualByComparingTo("39.50");
-        assertThat(result.explanation()).contains("halved for free meal");
+        assertThat(result.full().explanation()).contains("halved for free meal");
+        assertThat(result.partial().explanation()).contains("halved for free meal");
     }
 
     @Test
@@ -108,7 +109,9 @@ class AllowanceCalculatorTest {
                 false, RATE);
         assertThat(result.amount()).isEqualByComparingTo("0.00");
         assertThat(result.hasAllowance()).isFalse();
-        assertThat(result.explanation()).contains("not eligible");
+        // Neither component is earned, so neither per-diem line is generated.
+        assertThat(result.full().isEarned()).isFalse();
+        assertThat(result.partial().isEarned()).isFalse();
     }
 
     @Test
@@ -135,10 +138,96 @@ class AllowanceCalculatorTest {
     }
 
     @Test
-    void explanationDescribesTheBreakdown() {
+    void eachComponentExplainsItsOwnDaysTimesRate() {
+        // Issue #124: each per-diem line carries its own comment, so the approval UI
+        // reads "1 × full day (€54.00) = €54.00" per line rather than one lump.
         var result = perDiem(START.plusHours(31), false);
-        assertThat(result.explanation())
-                .contains("1 × full day", "1 × partial day", "€79.00");
+        assertThat(result.full().explanation())
+                .contains("1 × full day", "€54.00").doesNotContain("partial");
+        assertThat(result.partial().explanation())
+                .contains("1 × partial day", "€25.00").doesNotContain("full");
+    }
+
+    // --- Per-diem split into full/partial components (issue #124, ADR-0023) ---
+
+    @Test
+    void thePerDiemCarriesFullAndPartialDaysAsSeparateDaysTimesRateComponents() {
+        // 2 × 24 h + 7 h leftover → 2 full days + 1 partial day. Each component is a
+        // real quantity × unit price, and the euros are their sum: 2×54 + 1×25 = €133.
+        var result = calculator.domesticPerDiem(START, START.plusHours(55), false, false,
+                RATE);
+
+        assertThat(result.full().days()).isEqualTo(2);
+        assertThat(result.full().perDay()).isEqualByComparingTo("54.00");
+        assertThat(result.full().quantity()).isEqualByComparingTo("2");
+        assertThat(result.full().amount()).isEqualByComparingTo("108.00");
+        assertThat(result.partial().days()).isEqualTo(1);
+        assertThat(result.partial().perDay()).isEqualByComparingTo("25.00");
+        assertThat(result.partial().amount()).isEqualByComparingTo("25.00");
+        assertThat(result.amount()).isEqualByComparingTo("133.00");
+    }
+
+    @Test
+    void aFullDayOnlyTripEarnsNoPartialComponent() {
+        // 24 h → one full day, no leftover: the partial component earns nothing, so no
+        // partial-day line is generated.
+        var result = perDiem(START.plusHours(24), false);
+
+        assertThat(result.full().isEarned()).isTrue();
+        assertThat(result.full().days()).isEqualTo(1);
+        assertThat(result.partial().isEarned()).isFalse();
+        assertThat(result.partial().days()).isZero();
+        assertThat(result.partial().amount()).isEqualByComparingTo("0.00");
+    }
+
+    @Test
+    void aPartialOnlyTripEarnsNoFullComponent() {
+        // 8 h → partial only; the full component earns nothing.
+        var result = perDiem(START.plusHours(8), false);
+
+        assertThat(result.full().isEarned()).isFalse();
+        assertThat(result.partial().isEarned()).isTrue();
+        assertThat(result.partial().perDay()).isEqualByComparingTo("25.00");
+    }
+
+    @Test
+    void freeMealHalvesTheUnitPriceAndLeavesTheDayCountsHonest() {
+        // ADR-0023: halving belongs on the unit price, never on the quantity — the day
+        // counts are the statutory record. 2 full + 1 partial, halved rates.
+        var result = calculator.domesticPerDiem(START, START.plusHours(55), false, true,
+                RATE);
+
+        assertThat(result.full().days()).isEqualTo(2);
+        assertThat(result.full().perDay()).isEqualByComparingTo("27.00");
+        assertThat(result.full().amount()).isEqualByComparingTo("54.00");
+        assertThat(result.partial().days()).isEqualTo(1);
+        assertThat(result.partial().perDay()).isEqualByComparingTo("12.50");
+        assertThat(result.amount()).isEqualByComparingTo("66.50");
+    }
+
+    @Test
+    void aHalvedOddCentRateRoundsHalfUpPerLine() {
+        // Each line rounds independently, HALF_UP at scale 2 (ADR-0023's accepted
+        // per-line rounding): €53.01 / 2 = €26.505 → €26.51 as the unit price, so two
+        // full days come to €53.02 rather than the pre-split €53.01.
+        var oddRate = new DomesticPerDiemDto(1L, 2026, new BigDecimal("53.01"),
+                new BigDecimal("25.01"), 10, 6);
+        var result = calculator.domesticPerDiem(START, START.plusHours(48), false, true,
+                oddRate);
+
+        assertThat(result.full().perDay()).isEqualByComparingTo("26.51");
+        assertThat(result.full().amount()).isEqualByComparingTo("53.02");
+        assertThat(result.amount()).isEqualByComparingTo("53.02");
+    }
+
+    @Test
+    void aTooShortTripEarnsNeitherComponent() {
+        var result = perDiem(START.plusHours(5), false);
+
+        assertThat(result.full().isEarned()).isFalse();
+        assertThat(result.partial().isEarned()).isFalse();
+        assertThat(result.full().explanation()).isNull();
+        assertThat(result.partial().explanation()).isNull();
     }
 
     // --- Kilometre allowance (Phase 4.3) ---
@@ -237,7 +326,7 @@ class AllowanceCalculatorTest {
     private static final ForeignPerDiemDto GERMANY =
             new ForeignPerDiemDto(1L, 2026, "Germany", new BigDecimal("71.00"));
 
-    private ForeignPerDiemResult foreign(LocalDateTime returnAt, boolean notEligible) {
+    private PerDiemComponent foreign(LocalDateTime returnAt, boolean notEligible) {
         return calculator.foreignPerDiem(START, returnAt, notEligible, GERMANY, 10, 6);
     }
 
@@ -246,16 +335,29 @@ class AllowanceCalculatorTest {
         // 24 h + 7 h leftover (> 6 h) → 2 allowance days × €71.00 = €142.00.
         var result = foreign(START.plusHours(31), false);
         assertThat(result.amount()).isEqualByComparingTo("142.00");
-        assertThat(result.dayCount()).isEqualTo(2);
-        assertThat(result.hasAllowance()).isTrue();
+        assertThat(result.days()).isEqualTo(2);
+        assertThat(result.isEarned()).isTrue();
         assertThat(result.explanation()).contains("Germany", "2 ×", "€71.00", "€142.00");
+    }
+
+    @Test
+    void foreignPerDiemCarriesTheDaysAndCountryRateAsSeparateFactors() {
+        // ADR-0023: the foreign per-diem line persists quantity = days, unit price =
+        // the country rate — a single full-day-kind line, since every foreign day
+        // counts at the full rate.
+        var result = foreign(START.plusHours(31), false);
+
+        assertThat(result.days()).isEqualTo(2);
+        assertThat(result.quantity()).isEqualByComparingTo("2");
+        assertThat(result.perDay()).isEqualByComparingTo("71.00");
+        assertThat(result.amount()).isEqualByComparingTo("142.00");
     }
 
     @Test
     void foreignPerDiemLeftoverOverTenHoursCountsAsAnotherFullDay() {
         // 24 h + 11 h leftover (> 10 h) → 2 allowance days × €71.00 = €142.00.
         var result = foreign(START.plusHours(35), false);
-        assertThat(result.dayCount()).isEqualTo(2);
+        assertThat(result.days()).isEqualTo(2);
         assertThat(result.amount()).isEqualByComparingTo("142.00");
     }
 
@@ -263,7 +365,7 @@ class AllowanceCalculatorTest {
     void foreignPerDiemPartialLeftoverCountsAtTheFullCountryRate() {
         // 8 h (> 6 h, ≤ 10 h) → 1 day at the full country rate (no partial fraction).
         var result = foreign(START.plusHours(8), false);
-        assertThat(result.dayCount()).isEqualTo(1);
+        assertThat(result.days()).isEqualTo(1);
         assertThat(result.amount()).isEqualByComparingTo("71.00");
     }
 
@@ -271,16 +373,15 @@ class AllowanceCalculatorTest {
     void foreignSubSixHourTripEarnsNothing() {
         var result = foreign(START.plusHours(5), false);
         assertThat(result.amount()).isEqualByComparingTo("0.00");
-        assertThat(result.hasAllowance()).isFalse();
-        assertThat(result.explanation()).contains("too short");
+        assertThat(result.isEarned()).isFalse();
+        assertThat(result.days()).isZero();
     }
 
     @Test
     void foreignNotEligibleEarnsNothing() {
         var result = foreign(START.plusHours(48), true);
         assertThat(result.amount()).isEqualByComparingTo("0.00");
-        assertThat(result.hasAllowance()).isFalse();
-        assertThat(result.explanation()).contains("not eligible");
+        assertThat(result.isEarned()).isFalse();
     }
 
     @Test

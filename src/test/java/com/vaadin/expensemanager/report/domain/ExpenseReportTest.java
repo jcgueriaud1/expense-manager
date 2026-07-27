@@ -630,7 +630,7 @@ class ExpenseReportTest {
         var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
 
         report.reconcileTravels(List.of(travelSpecWith(null, List.of(
-                generated(GeneratedLineKind.PER_DIEM, TRAVEL_TYPE, RATE_0, "54.00"),
+                generated(GeneratedLineKind.PER_DIEM_FULL, TRAVEL_TYPE, RATE_0, "54.00"),
                 generated(GeneratedLineKind.KILOMETRE, KM_TYPE, RATE_0, "70.80"),
                 generated(GeneratedLineKind.MEAL, MEAL_TYPE, RATE_0, "13.50"),
                 generated(GeneratedLineKind.PARKING, PARKING_TYPE, RATE_255, "12.00")))));
@@ -647,8 +647,9 @@ class ExpenseReportTest {
         assertThat(report.total()).isEqualByComparingTo("150.30");
         // Generated lines trail in kind (declaration) order.
         assertThat(report.getLines().stream().map(ExpenseLine::getGeneratedKind).toList())
-                .containsExactly(GeneratedLineKind.PER_DIEM, GeneratedLineKind.KILOMETRE,
-                        GeneratedLineKind.MEAL, GeneratedLineKind.PARKING);
+                .containsExactly(GeneratedLineKind.PER_DIEM_FULL,
+                        GeneratedLineKind.KILOMETRE, GeneratedLineKind.MEAL,
+                        GeneratedLineKind.PARKING);
     }
 
     @Test
@@ -659,7 +660,7 @@ class ExpenseReportTest {
         // = €0.55/km. The flat kinds stay at quantity 1 with their amount as the unit
         // price, so their euros are untouched.
         report.reconcileTravels(List.of(travelSpecWith(null, List.of(
-                generated(GeneratedLineKind.PER_DIEM, TRAVEL_TYPE, RATE_0, "54.00"),
+                generated(GeneratedLineKind.PER_DIEM_FULL, TRAVEL_TYPE, RATE_0, "54.00"),
                 generated(GeneratedLineKind.KILOMETRE, KM_TYPE, RATE_0, "0.55", "12.5"),
                 generated(GeneratedLineKind.MEAL, MEAL_TYPE, RATE_0, "13.50"),
                 generated(GeneratedLineKind.PARKING, PARKING_TYPE, RATE_255, "12.00")))));
@@ -706,20 +707,101 @@ class ExpenseReportTest {
     void editingATripDropsOnlyTheKindsItNoLongerEarns() {
         var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
         report.reconcileTravels(List.of(travelSpecWith(null, List.of(
-                generated(GeneratedLineKind.PER_DIEM, TRAVEL_TYPE, RATE_0, "54.00"),
+                generated(GeneratedLineKind.PER_DIEM_FULL, TRAVEL_TYPE, RATE_0, "54.00"),
                 generated(GeneratedLineKind.KILOMETRE, KM_TYPE, RATE_0, "70.80")))));
         setId(report.getTravels().getFirst());
         var id = report.getTravels().getFirst().getId();
 
         // Re-cost: per-diem changes, kilometre drops, parking appears.
         report.reconcileTravels(List.of(travelSpecWith(id, List.of(
-                generated(GeneratedLineKind.PER_DIEM, TRAVEL_TYPE, RATE_0, "27.00"),
+                generated(GeneratedLineKind.PER_DIEM_FULL, TRAVEL_TYPE, RATE_0, "27.00"),
                 generated(GeneratedLineKind.PARKING, PARKING_TYPE, RATE_255, "12.00")))));
 
         assertThat(report.getLines()).hasSize(2);
         assertThat(report.perDiemTotal()).isEqualByComparingTo("27.00");
         assertThat(report.kilometreTotal()).isEqualByComparingTo("0.00");
         assertThat(report.netTotal()).isEqualByComparingTo("9.56");
+    }
+
+    // --- The split per-diem: two kinds, one subtotal (issue #124, ADR-0023) ---
+
+    @Test
+    void bothPerDiemKindsGenerateTheirOwnLineAndShareTheSubtotal() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+
+        // A day-plus trip: 1 full day (€54.00) + 1 partial day (€25.00) — two honest
+        // days × rate lines whose gross sums into the single per-diem subtotal.
+        report.reconcileTravels(List.of(travelSpecWith(null, List.of(
+                generated(GeneratedLineKind.PER_DIEM_FULL, TRAVEL_TYPE, RATE_0, "54.00", "1"),
+                generated(GeneratedLineKind.PER_DIEM_PARTIAL, TRAVEL_TYPE, RATE_0, "25.00",
+                        "1")))));
+
+        assertThat(report.getLines()).hasSize(2);
+        assertThat(report.getLines().stream().map(ExpenseLine::getGeneratedKind))
+                .containsExactly(GeneratedLineKind.PER_DIEM_FULL,
+                        GeneratedLineKind.PER_DIEM_PARTIAL);
+        assertThat(report.perDiemTotal()).isEqualByComparingTo("79.00");
+        // Both are tax-free: nothing leaks into Net/VAT, and the total is the subtotal.
+        assertThat(report.netTotal()).isEqualByComparingTo("0.00");
+        assertThat(report.vatTotal()).isEqualByComparingTo("0.00");
+        assertThat(report.total()).isEqualByComparingTo("79.00");
+    }
+
+    @Test
+    void multiDayPerDiemLinesCarryTheDayCountAsTheirQuantity() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+
+        // 2 full days × €54.00 + 1 partial × €25.00 = €133.00, as quantity × unit.
+        report.reconcileTravels(List.of(travelSpecWith(null, List.of(
+                generated(GeneratedLineKind.PER_DIEM_FULL, TRAVEL_TYPE, RATE_0, "54.00", "2"),
+                generated(GeneratedLineKind.PER_DIEM_PARTIAL, TRAVEL_TYPE, RATE_0, "25.00",
+                        "1")))));
+
+        var full = generatedLine(report, GeneratedLineKind.PER_DIEM_FULL);
+        assertThat(full.getQuantity()).isEqualByComparingTo("2");
+        assertThat(full.getAmount()).isEqualByComparingTo("54.00");
+        assertThat(full.gross()).isEqualByComparingTo("108.00");
+        assertThat(report.perDiemTotal()).isEqualByComparingTo("133.00");
+    }
+
+    @Test
+    void reCostingReconcilesBothPerDiemKindsWithoutLeavingAStaleLine() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+        report.reconcileTravels(List.of(travelSpecWith(null, List.of(
+                generated(GeneratedLineKind.PER_DIEM_FULL, TRAVEL_TYPE, RATE_0, "54.00", "1"),
+                generated(GeneratedLineKind.PER_DIEM_PARTIAL, TRAVEL_TYPE, RATE_0, "25.00",
+                        "1")))));
+        setId(report.getTravels().getFirst());
+        var id = report.getTravels().getFirst().getId();
+        var fullBefore = generatedLine(report, GeneratedLineKind.PER_DIEM_FULL);
+
+        // Shorten the trip to a whole 24 h: the full-day line is re-costed in place and
+        // the partial-day line — no longer earned — is dropped, not left stale.
+        report.reconcileTravels(List.of(travelSpecWith(id, List.of(
+                generated(GeneratedLineKind.PER_DIEM_FULL, TRAVEL_TYPE, RATE_0, "54.00",
+                        "1")))));
+
+        assertThat(report.getLines()).hasSize(1);
+        assertThat(report.getLines().getFirst()).isSameAs(fullBefore);
+        assertThat(report.perDiemTotal()).isEqualByComparingTo("54.00");
+    }
+
+    @Test
+    void aFreeMealHalvesTheUnitPriceOfBothPerDiemLines() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+
+        // ADR-0023: halving rides the unit price, so the quantities stay honest day
+        // counts — 2 full days at €27.00 + 1 partial at €12.50 = €66.50.
+        report.reconcileTravels(List.of(travelSpecWith(null, List.of(
+                generated(GeneratedLineKind.PER_DIEM_FULL, TRAVEL_TYPE, RATE_0, "27.00", "2"),
+                generated(GeneratedLineKind.PER_DIEM_PARTIAL, TRAVEL_TYPE, RATE_0, "12.50",
+                        "1")))));
+
+        assertThat(generatedLine(report, GeneratedLineKind.PER_DIEM_FULL).getQuantity())
+                .isEqualByComparingTo("2");
+        assertThat(generatedLine(report, GeneratedLineKind.PER_DIEM_PARTIAL).getQuantity())
+                .isEqualByComparingTo("1");
+        assertThat(report.perDiemTotal()).isEqualByComparingTo("66.50");
     }
 
     @Test
@@ -758,7 +840,7 @@ class ExpenseReportTest {
     private static TravelSpec travelSpec(Long id, String perDiem, String explanation) {
         var lines = new ArrayList<GeneratedLineSpec>();
         if (new BigDecimal(perDiem).signum() != 0) {
-            lines.add(GeneratedLineSpec.flat(GeneratedLineKind.PER_DIEM, TRAVEL_TYPE,
+            lines.add(GeneratedLineSpec.flat(GeneratedLineKind.PER_DIEM_FULL, TRAVEL_TYPE,
                     RATE_0, new BigDecimal(perDiem), explanation));
         }
         return travelSpecWith(id, lines);
@@ -781,6 +863,14 @@ class ExpenseReportTest {
             VatRate rate, String unitPrice, String quantity) {
         return new GeneratedLineSpec(kind, type, rate, new BigDecimal(unitPrice),
                 new BigDecimal(quantity), kind + " line");
+    }
+
+    /** The report's single generated line of one kind (fails if the trip earned none). */
+    private static ExpenseLine generatedLine(ExpenseReport report,
+            GeneratedLineKind kind) {
+        return report.getLines().stream()
+                .filter(line -> line.getGeneratedKind() == kind)
+                .findFirst().orElseThrow();
     }
 
     /** Reflectively stamps a generated id on a transient travel, to model persistence. */
