@@ -22,10 +22,23 @@ import com.vaadin.expensemanager.reference.VatRate;
  *
  * @param id          the existing line id to update, or {@code null} to insert
  * @param expenseType the resolved expense type (required)
- * @param amount      the gross amount (required, non-zero; negatives allowed)
+ * @param amount      the gross <em>unit price</em>, each (required, non-zero;
+ *                    negatives allowed for credits — ADR-0023)
+ * @param quantity    the line quantity (required, strictly {@code > 0}); the line
+ *                    gross is {@code amount × quantity}
  * @param vatRate     the resolved VAT rate (required)
  * @param comment     optional free-text note
  */
 public record ExpenseLineSpec(Long id, ExpenseType expenseType, BigDecimal amount,
-        VatRate vatRate, String comment) {
+        BigDecimal quantity, VatRate vatRate, String comment) {
+
+    /**
+     * A single-unit line spec — quantity {@code 1}, so the unit price <em>is</em>
+     * the gross. The shape every caller that predates quantity wants (ADR-0023).
+     */
+    public static ExpenseLineSpec of(Long id, ExpenseType expenseType,
+            BigDecimal amount, VatRate vatRate, String comment) {
+        return new ExpenseLineSpec(id, expenseType, amount, BigDecimal.ONE, vatRate,
+                comment);
+    }
 }

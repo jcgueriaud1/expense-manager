@@ -151,7 +151,7 @@ class ApprovalOptimisticLockIntegrationTest {
                 .getFirst();
         var rate = vatRateRepository.findAllByOrderByDisplayOrderAscIdAsc().getFirst();
         var report = new ExpenseReport(owner, LocalDate.of(2026, 7, 10), "conflict test");
-        report.reconcileLines(List.of(new ExpenseLineSpec(null, type,
+        report.reconcileLines(List.of(ExpenseLineSpec.of(null, type,
                 new BigDecimal("100.00"), rate, null)));
         report.submit(owner, Instant.parse("2026-07-12T09:00:00Z"));
         var id = reportRepository.save(report).getId();

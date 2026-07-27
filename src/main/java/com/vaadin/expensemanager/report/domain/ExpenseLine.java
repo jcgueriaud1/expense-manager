@@ -24,18 +24,21 @@ import jakarta.persistence.Table;
  * A single expense on a report (glossary: Expense Line) — part of the
  * {@link ExpenseReport} aggregate, never a root of its own (ADR-0006).
  *
- * <p>Carries a required {@link #expenseType}, a gross {@link #amount} (required
- * and <strong>non-zero</strong>; negatives are allowed for credits/corrections),
- * a required {@link #vatRate} that <em>defaults from the chosen type but is
- * overridable</em> (ADR-0018), and an optional {@link #comment}. There is
- * deliberately <strong>no business date and no description</strong> (glossary,
- * Phase 2.3 spec).
+ * <p>Carries a required {@link #expenseType}, a gross <strong>unit price</strong>
+ * {@link #amount} (required and <strong>non-zero</strong>; negatives are allowed
+ * for credits/corrections), a {@link #quantity} (required, strictly {@code > 0},
+ * default {@code 1}), a required {@link #vatRate} that <em>defaults from the
+ * chosen type but is overridable</em> (ADR-0018), and an optional
+ * {@link #comment}. There is deliberately <strong>no business date and no
+ * description</strong> (glossary, Phase 2.3 spec).
  *
- * <p>The net and VAT figures are <strong>derived, never stored</strong>
- * (ADR-0010): the amount is the gross and {@link #amounts()} works net/VAT
- * backward from it via {@link LineAmounts#of}. The VAT rate is referenced (not
- * copied): a rate the admin later deactivates is retained, so a historical line
- * keeps its filed rate (ADR-0018).
+ * <p>The gross, net and VAT figures are <strong>derived, never stored</strong>
+ * (ADR-0010, ADR-0023): the gross is {@code amount × quantity} (HALF_UP scale 2)
+ * and {@link #amounts()} works net/VAT backward from <em>that</em> via
+ * {@link LineAmounts#ofLine}. A quantity-1 line therefore behaves exactly as
+ * before this shape existed. The VAT rate is referenced (not copied): a rate the
+ * admin later deactivates is retained, so a historical line keeps its filed rate
+ * (ADR-0018).
  *
  * <p>A line may be <strong>manual</strong> (user-entered, {@link #travel}
  * {@code null}) or <strong>generated</strong> — a read-only per-diem line linked
@@ -65,8 +68,17 @@ public class ExpenseLine extends AuditedEntity {
     @JoinColumn(name = "vat_rate_id", nullable = false)
     private VatRate vatRate;
 
+    /** The gross unit price (each) — see {@link #gross()} (ADR-0023). */
     @Column(name = "amount", nullable = false, precision = 19, scale = 2)
     private BigDecimal amount;
+
+    /**
+     * How many units the line covers (glossary: Quantity) — strictly positive,
+     * {@code 1} for a plain single-item line and for every generated line in this
+     * slice (ADR-0023).
+     */
+    @Column(name = "quantity", nullable = false, precision = 19, scale = 2)
+    private BigDecimal quantity;
 
     @Column(name = "comment")
     private String comment;
@@ -94,11 +106,12 @@ public class ExpenseLine extends AuditedEntity {
     protected ExpenseLine() {
     }
 
-    ExpenseLine(ExpenseType expenseType, BigDecimal amount, VatRate vatRate,
-            String comment) {
+    ExpenseLine(ExpenseType expenseType, BigDecimal amount, BigDecimal quantity,
+            VatRate vatRate, String comment) {
         this.expenseType = requireType(expenseType);
         this.vatRate = requireRate(vatRate);
         this.amount = requireNonZeroAmount(amount);
+        this.quantity = requirePositiveQuantity(quantity);
         this.comment = normalize(comment);
     }
 
@@ -106,29 +119,36 @@ public class ExpenseLine extends AuditedEntity {
      * Creates a read-only generated line of the given {@code kind} linked to
      * {@code travel} (Phase 4.2/4.3). The amount must be non-zero — the aggregate
      * only generates a line when the rule produced something.
+     *
+     * <p>Generated lines are pinned to <strong>quantity 1</strong> in this slice
+     * (issue #122): the calculator's full computed gross becomes the unit price, so
+     * travel per-diem/kilometre/meal/parking keep producing identical euros. Real
+     * generated-line quantities (km, days) land with ADR-0023's follow-up tickets.
      */
     static ExpenseLine generated(Travel travel, GeneratedLineKind kind,
             ExpenseType expenseType, BigDecimal amount, VatRate vatRate,
             String comment) {
-        var line = new ExpenseLine(expenseType, amount, vatRate, comment);
+        var line = new ExpenseLine(expenseType, amount, BigDecimal.ONE, vatRate,
+                comment);
         line.travel = travel;
         line.generatedKind = requireKind(kind);
         return line;
     }
 
     /** Applies edited values to an existing line (aggregate reconciliation seam). */
-    void update(ExpenseType expenseType, BigDecimal amount, VatRate vatRate,
-            String comment) {
+    void update(ExpenseType expenseType, BigDecimal amount, BigDecimal quantity,
+            VatRate vatRate, String comment) {
         this.expenseType = requireType(expenseType);
         this.vatRate = requireRate(vatRate);
         this.amount = requireNonZeroAmount(amount);
+        this.quantity = requirePositiveQuantity(quantity);
         this.comment = normalize(comment);
     }
 
     /** Regenerates this line's figures from its (re-costed) travel. */
     void updateGenerated(Travel travel, GeneratedLineKind kind, ExpenseType expenseType,
             BigDecimal amount, VatRate vatRate, String comment) {
-        update(expenseType, amount, vatRate, comment);
+        update(expenseType, amount, BigDecimal.ONE, vatRate, comment);
         this.travel = travel;
         this.generatedKind = requireKind(kind);
     }
@@ -157,14 +177,14 @@ public class ExpenseLine extends AuditedEntity {
         return generatedKind == null || !generatedKind.isTaxFreeAllowance();
     }
 
-    /** The derived net/VAT/gross figures of this line (ADR-0010). */
+    /** The derived net/VAT/gross figures of this line (ADR-0010, ADR-0023). */
     public LineAmounts amounts() {
-        return LineAmounts.of(amount, vatRate.getValue());
+        return LineAmounts.ofLine(amount, quantity, vatRate.getValue());
     }
 
-    /** The gross amount as entered, scale 2. */
+    /** The derived gross — unit price × quantity, HALF_UP scale 2 (ADR-0023). */
     public BigDecimal gross() {
-        return amount.setScale(2, RoundingMode.HALF_UP);
+        return LineAmounts.grossOf(amount, quantity);
     }
 
     /** The derived net amount (gross excluding VAT), scale 2. */
@@ -189,8 +209,14 @@ public class ExpenseLine extends AuditedEntity {
         return vatRate;
     }
 
+    /** The gross unit price (each), scale 2 (ADR-0023). */
     public BigDecimal getAmount() {
         return amount;
+    }
+
+    /** The line quantity, scale 2 and strictly positive (ADR-0023). */
+    public BigDecimal getQuantity() {
+        return quantity;
     }
 
     public String getComment() {
@@ -225,6 +251,24 @@ public class ExpenseLine extends AuditedEntity {
         BigDecimal scaled = amount.setScale(2, RoundingMode.HALF_UP);
         if (scaled.signum() == 0) {
             throw new DomainRuleException("Amount must not be zero");
+        }
+        return scaled;
+    }
+
+    /**
+     * Quantity is required and <strong>strictly positive</strong> (ADR-0023) —
+     * zero would make the gross zero and a negative one would express a credit
+     * twice over; credits ride a negative unit price instead. Rounded HALF_UP to
+     * scale 2 first, so a sub-cent quantity that rounds to zero is rejected rather
+     * than silently zeroing the line.
+     */
+    private static BigDecimal requirePositiveQuantity(BigDecimal quantity) {
+        if (quantity == null) {
+            throw new DomainRuleException("Quantity is required");
+        }
+        BigDecimal scaled = quantity.setScale(2, RoundingMode.HALF_UP);
+        if (scaled.signum() <= 0) {
+            throw new DomainRuleException("Quantity must be greater than zero");
         }
         return scaled;
     }

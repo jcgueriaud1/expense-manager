@@ -178,7 +178,7 @@ class ExpenseReportOptimisticLockIntegrationTest {
         var type = expenseTypeRepository
                 .findByActiveTrueOrderByDisplayOrderAscIdAsc().getFirst();
         var report = new ExpenseReport(owner, LocalDate.of(2026, 7, 10), "needs work");
-        report.reconcileLines(List.of(new ExpenseLineSpec(null, type,
+        report.reconcileLines(List.of(ExpenseLineSpec.of(null, type,
                 new BigDecimal("100.00"), firstRate(), "hotel")));
         var admin = userRepository.findByEmail("admin@vaadin.com").orElseThrow();
         report.submit(owner, Instant.parse("2026-07-11T09:00:00Z"));

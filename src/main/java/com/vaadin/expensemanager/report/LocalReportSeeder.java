@@ -142,7 +142,7 @@ public class LocalReportSeeder implements ApplicationRunner {
 
     private ExpenseReport newReportWithLine(User owner, LocalDate date, String info) {
         var report = new ExpenseReport(owner, date, info);
-        report.reconcileLines(List.of(new ExpenseLineSpec(null, firstType(),
+        report.reconcileLines(List.of(ExpenseLineSpec.of(null, firstType(),
                 new BigDecimal("100.00"), firstRate(), null)));
         return report;
     }

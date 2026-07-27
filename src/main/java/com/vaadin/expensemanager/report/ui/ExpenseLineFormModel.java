@@ -19,7 +19,10 @@ final class ExpenseLineFormModel {
 
     private ExpenseTypeDto expenseType;
     private VatRateDto vatRate;
+    /** The gross unit price, each (ADR-0023). */
     private BigDecimal amount;
+    /** How many units, strictly positive; {@code 1} unless the user changes it. */
+    private BigDecimal quantity = BigDecimal.ONE;
     private String comment;
 
     ExpenseTypeDto getExpenseType() {
@@ -44,6 +47,14 @@ final class ExpenseLineFormModel {
 
     void setAmount(BigDecimal amount) {
         this.amount = amount;
+    }
+
+    BigDecimal getQuantity() {
+        return quantity;
+    }
+
+    void setQuantity(BigDecimal quantity) {
+        this.quantity = quantity;
     }
 
     String getComment() {

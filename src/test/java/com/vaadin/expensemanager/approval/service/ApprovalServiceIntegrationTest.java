@@ -283,7 +283,7 @@ class ApprovalServiceIntegrationTest extends AbstractIntegrationTest {
             Instant at) {
         var owner = userRepository.findByEmail(email).orElseThrow();
         var report = new ExpenseReport(owner, date, info);
-        report.reconcileLines(List.of(new ExpenseLineSpec(null, firstType(),
+        report.reconcileLines(List.of(ExpenseLineSpec.of(null, firstType(),
                 new BigDecimal("100.00"), firstRate(), null)));
         report.submit(owner, at);
         return reportRepository.save(report).getId();
@@ -294,7 +294,7 @@ class ApprovalServiceIntegrationTest extends AbstractIntegrationTest {
         var owner = userRepository.findByEmail(email).orElseThrow();
         var admin = userRepository.findByEmail(ADMIN_EMAIL).orElseThrow();
         var report = new ExpenseReport(owner, date, info);
-        report.reconcileLines(List.of(new ExpenseLineSpec(null, firstType(),
+        report.reconcileLines(List.of(ExpenseLineSpec.of(null, firstType(),
                 new BigDecimal("100.00"), firstRate(), null)));
         report.submit(owner, Instant.parse("2026-07-10T09:00:00Z"));
         report.approve(admin, at);
@@ -307,7 +307,7 @@ class ApprovalServiceIntegrationTest extends AbstractIntegrationTest {
         var owner = userRepository.findByEmail(email).orElseThrow();
         var admin = userRepository.findByEmail(ADMIN_EMAIL).orElseThrow();
         var report = new ExpenseReport(owner, date, info);
-        report.reconcileLines(List.of(new ExpenseLineSpec(null, firstType(),
+        report.reconcileLines(List.of(ExpenseLineSpec.of(null, firstType(),
                 new BigDecimal("100.00"), firstRate(), null)));
         report.submit(owner, Instant.parse("2026-07-10T09:00:00Z"));
         report.reject(admin, reason, at);
@@ -317,7 +317,7 @@ class ApprovalServiceIntegrationTest extends AbstractIntegrationTest {
     private Long seedDraft(String email, LocalDate date, String info) {
         var owner = userRepository.findByEmail(email).orElseThrow();
         var report = new ExpenseReport(owner, date, info);
-        report.reconcileLines(List.of(new ExpenseLineSpec(null, firstType(),
+        report.reconcileLines(List.of(ExpenseLineSpec.of(null, firstType(),
                 new BigDecimal("100.00"), firstRate(), null)));
         return reportRepository.save(report).getId();
     }

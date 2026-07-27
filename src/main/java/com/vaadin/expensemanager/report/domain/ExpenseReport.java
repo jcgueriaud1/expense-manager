@@ -321,7 +321,8 @@ public class ExpenseReport extends AuditedEntity {
      *
      * <p>Editable only while the report is a {@code DRAFT}/{@code REJECTED}
      * (ADR-0006); a locked report rejects the change. Per-line invariants
-     * (required type/rate, non-zero amount) are enforced by {@link ExpenseLine}.
+     * (required type/rate, non-zero unit price, strictly positive quantity) are
+     * enforced by {@link ExpenseLine}.
      *
      * @throws IllegalStateException    if the report is not editable
      * @throws IllegalArgumentException if a spec references a manual line id not on
@@ -341,12 +342,12 @@ public class ExpenseReport extends AuditedEntity {
                     throw new IllegalArgumentException(
                             "No line with id " + spec.id() + " on report " + id);
                 }
-                line.update(spec.expenseType(), spec.amount(), spec.vatRate(),
-                        spec.comment());
+                line.update(spec.expenseType(), spec.amount(), spec.quantity(),
+                        spec.vatRate(), spec.comment());
                 desired.add(line);
             } else {
                 desired.add(new ExpenseLine(spec.expenseType(), spec.amount(),
-                        spec.vatRate(), spec.comment()));
+                        spec.quantity(), spec.vatRate(), spec.comment()));
             }
         }
         // Orphan-remove manual lines absent from the desired set (identity match —

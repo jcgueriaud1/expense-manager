@@ -24,6 +24,8 @@ import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.notification.NotificationVariant;
+import com.vaadin.flow.component.orderedlayout.FlexComponent;
+import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.textfield.BigDecimalField;
 import com.vaadin.flow.component.textfield.TextField;
@@ -33,7 +35,9 @@ import com.vaadin.flow.server.streams.DownloadHandler;
 import com.vaadin.flow.server.streams.DownloadResponse;
 import com.vaadin.flow.server.streams.UploadHandler;
 
+import static com.vaadin.expensemanager.report.ui.ReportViewSupport.formatEur;
 import static com.vaadin.expensemanager.report.ui.ReportViewSupport.formatPercent;
+import static com.vaadin.expensemanager.report.ui.ReportViewSupport.lineGross;
 
 /**
  * The focused modal editor for one expense line (variant C, issue #24), now
@@ -41,9 +45,10 @@ import static com.vaadin.expensemanager.report.ui.ReportViewSupport.formatPercen
  *
  * <p>Editing a card opens this dialog over the report; adding a line opens it
  * empty. It binds an {@link ExpenseLineFormModel} with Binder + field validation
- * (ADR-0015): a missing type, missing/zero amount, or missing VAT rate surfaces
- * in a top-of-dialog error summary behind an <strong>always-enabled</strong>
- * Save (never a disabled button, ADR-0020). Choosing an expense type pre-fills
+ * (ADR-0015): a missing type, missing/zero unit price, a missing/non-positive
+ * quantity, or a missing VAT rate surfaces in a top-of-dialog error summary behind
+ * an <strong>always-enabled</strong> Save (never a disabled button, ADR-0020).
+ * Choosing an expense type pre-fills
  * that type's default VAT rate, which the user can still override — done with a
  * value-change listener guarded by {@code isFromClient()}, since Binder can't
  * express a cross-field default declaratively (finding F-004).
@@ -61,6 +66,12 @@ import static com.vaadin.expensemanager.report.ui.ReportViewSupport.formatPercen
  * <p>New lines offer only <em>active</em> types/rates; when editing a historical
  * line whose type or rate has since been deactivated, that option is injected
  * into its ComboBox so the line still displays and round-trips (ADR-0018).
+ *
+ * <p><strong>Unit price × quantity (ADR-0023).</strong> The money field is the
+ * gross price of <em>one</em> item and the quantity (default {@code 1}) multiplies
+ * it; a read-only "Line total" row shows the product live off the two fields (not
+ * the bean, which is only written on save), so the user sees what the line will
+ * book before committing it.
  */
 final class LineEditorDialog extends Dialog {
 
@@ -118,8 +129,16 @@ final class LineEditorDialog extends Dialog {
         vatField.setItemLabelGenerator(rate -> formatPercent(rate.value()));
         vatField.setRequiredIndicatorVisible(true);
 
-        var amountField = new BigDecimalField("Gross amount (paid)");
+        // Unit price × quantity (ADR-0023). The money field is the price of *one*
+        // item; the read-only total below shows what the line will actually book.
+        var amountField = new BigDecimalField("Unit price (gross, each)");
         amountField.setRequiredIndicatorVisible(true);
+
+        var quantityField = new BigDecimalField("Quantity");
+        quantityField.setRequiredIndicatorVisible(true);
+
+        var lineTotal = new Span();
+        lineTotal.addClassName("line-total-value");
 
         var commentField = new TextField("Comment");
         commentField.setMaxLength(500);
@@ -148,6 +167,12 @@ final class LineEditorDialog extends Dialog {
                 .withValidator(amount -> amount == null || amount.signum() != 0,
                         "Amount must not be zero")
                 .bind(ExpenseLineFormModel::getAmount, ExpenseLineFormModel::setAmount);
+        binder.forField(quantityField)
+                .asRequired("Quantity is required")
+                .withValidator(quantity -> quantity == null || quantity.signum() > 0,
+                        "Quantity must be greater than zero")
+                .bind(ExpenseLineFormModel::getQuantity,
+                        ExpenseLineFormModel::setQuantity);
         binder.forField(commentField)
                 .bind(ExpenseLineFormModel::getComment, ExpenseLineFormModel::setComment);
 
@@ -157,18 +182,42 @@ final class LineEditorDialog extends Dialog {
             model.setVatRate(findById(rateItems, existing.vatRateId(),
                     VatRateDto::id));
             model.setAmount(existing.amount());
+            model.setQuantity(existing.quantity());
             model.setComment(existing.comment());
         }
         binder.readBean(model);
 
-        var form = new FormLayout(typeField, amountField, vatField, commentField);
+        // The line total is derived, so it follows the fields rather than the bean:
+        // any bound field's change refreshes it, including the readBean above.
+        Runnable refreshLineTotal = () -> lineTotal.setText(
+                formatEur(lineGross(amountField.getValue(), quantityField.getValue())));
+        binder.addValueChangeListener(event -> refreshLineTotal.run());
+        refreshLineTotal.run();
+
+        var form = new FormLayout(typeField, amountField, quantityField);
         form.setResponsiveSteps(new FormLayout.ResponsiveStep("0", 1));
+        // Derived output, not an input: rendered as a summary row (like the report's
+        // totals bar) rather than a form item, so it never reads as an empty field.
+        form.add(lineTotalRow(lineTotal));
+        form.add(vatField, commentField);
         add(errorSummary, form, receiptSection());
 
         var save = new Button("Save expense", event -> save(onSave));
         save.addThemeVariants(ButtonVariant.PRIMARY);
         var cancel = new Button("Cancel", event -> close());
         getFooter().add(cancel, save);
+    }
+
+    /** The "Line total" summary row — unit price × quantity, live (ADR-0023). */
+    private static HorizontalLayout lineTotalRow(Span value) {
+        var label = new Span("Line total");
+        label.addClassName("line-total-label");
+        var row = new HorizontalLayout(label, value);
+        row.setWidthFull();
+        row.setAlignItems(FlexComponent.Alignment.BASELINE);
+        row.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
+        row.addClassName("line-total-row");
+        return row;
     }
 
     /** The always-enabled receipt attach/replace/remove control (ADR-0021). */
@@ -306,7 +355,7 @@ final class LineEditorDialog extends Dialog {
         var rate = model.getVatRate();
         var base = ExpenseLineDto.of(existing == null ? null : existing.id(),
                 type.id(), type.name(), rate.id(), rate.value(),
-                model.getAmount(), model.getComment());
+                model.getAmount(), model.getQuantity(), model.getComment());
         onSave.accept(withReceiptSummary(base), receiptCommand());
         close();
     }
