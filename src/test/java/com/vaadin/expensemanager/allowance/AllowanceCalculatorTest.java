@@ -157,17 +157,35 @@ class AllowanceCalculatorTest {
     }
 
     @Test
+    void kilometreAllowanceCarriesTheDistanceAndRateAsSeparateFactors() {
+        // ADR-0023: the generated line persists quantity = km, unit price = €/km, so
+        // the calculator hands back both factors rather than a pre-multiplied lump.
+        var result = calculator.kilometreAllowance(new BigDecimal("120"), KM_RATE);
+
+        assertThat(result.kilometres()).isEqualByComparingTo("120");
+        assertThat(result.ratePerKm()).isEqualByComparingTo("0.550");
+        // The euros stay the product of exactly those two.
+        assertThat(result.amount()).isEqualByComparingTo("66.00");
+    }
+
+    @Test
     void fractionalKilometresRoundToTheNearestCent() {
-        // 12.5 km × €0.55 = €6.875 → €6.88 (HALF_UP).
+        // 12.5 km × €0.55 = €6.875 → €6.88 (HALF_UP) — the fractional-distance case
+        // the km-as-quantity shape exists for (ADR-0023).
         var result = calculator.kilometreAllowance(new BigDecimal("12.5"), KM_RATE);
         assertThat(result.amount()).isEqualByComparingTo("6.88");
-        assertThat(result.explanation()).contains("12.5 km");
+        assertThat(result.kilometres()).isEqualByComparingTo("12.5");
+        assertThat(result.ratePerKm()).isEqualByComparingTo("0.550");
+        assertThat(result.explanation()).contains("12.5 km", "€6.88");
     }
 
     @Test
     void zeroOrNullKilometresEarnNothingAndNeedNoRate() {
-        assertThat(calculator.kilometreAllowance(BigDecimal.ZERO, null).hasAmount())
-                .isFalse();
+        var none = calculator.kilometreAllowance(BigDecimal.ZERO, null);
+        assertThat(none.hasAmount()).isFalse();
+        // No distance, no rate consulted — so nothing for the caller to generate.
+        assertThat(none.kilometres()).isEqualByComparingTo("0.00");
+        assertThat(none.ratePerKm()).isEqualByComparingTo("0.00");
         assertThat(calculator.kilometreAllowance(null, null).amount())
                 .isEqualByComparingTo("0.00");
     }

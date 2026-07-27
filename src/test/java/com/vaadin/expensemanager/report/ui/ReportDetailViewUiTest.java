@@ -759,6 +759,51 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
     }
 
     @Test
+    void theKilometreLineCardShowsTheKmTimesRateBreakdown() {
+        // 12.5 km × the seeded 2026 rate (€0.550/km) = €6.88 — the km line reads like
+        // a multi-unit manual card (ADR-0023), and the euros are unchanged.
+        var id = seedReportWithFullTravel(LocalDate.of(2026, 7, 10), DEP,
+                DEP.plusHours(11), new BigDecimal("12.5"), false, BigDecimal.ZERO);
+        navigate(ReportDetailView.class, id);
+
+        var shown = getCurrentView().getElement().getTextRecursively();
+        assertThat(shown).contains("12.5 × €0.55 = €6.88");
+        // The flat per-diem line on the same trip carries no breakdown (quantity 1).
+        assertThat(shown).contains("€54.00").doesNotContain("1 × €54.00");
+
+        // Totals are untouched: the km subtotal is the product, the grand total sums.
+        var loaded = service.findMine(id);
+        assertThat(loaded.kilometreTotal()).isEqualByComparingTo("6.88");
+        assertThat(loaded.perDiemTotal()).isEqualByComparingTo("54.00");
+        assertThat(loaded.total()).isEqualByComparingTo("60.88");
+        assertThat(loaded.netTotal()).isEqualByComparingTo("0.00");
+        assertThat(loaded.vatTotal()).isEqualByComparingTo("0.00");
+    }
+
+    @Test
+    void reCostingATripUpdatesItsKilometreCardWithoutLeavingAStaleOne() {
+        var id = seedReportWithFullTravel(LocalDate.of(2026, 7, 10), DEP,
+                DEP.plusHours(11), new BigDecimal("12.5"), false, BigDecimal.ZERO);
+        navigate(ReportDetailView.class, id);
+
+        // Re-cost the trip through its editor: 12.5 km → 120 km.
+        findButton().withText("Edit").click();
+        findBigDecimalField().withLabel("Kilometre allowance (km)")
+                .setValue(new BigDecimal("120"));
+        findButton().withText("Save trip").click();
+
+        var shown = getCurrentView().getElement().getTextRecursively();
+        assertThat(shown).contains("120 × €0.55 = €66.00")
+                .doesNotContain("12.5 × €0.55");
+
+        findButton().withText("Save").click();
+
+        var loaded = service.findMine(id);
+        assertThat(loaded.kilometreTotal()).isEqualByComparingTo("66.00");
+        assertThat(loaded.travels().getFirst().generatedLines()).hasSize(2);
+    }
+
+    @Test
     void aTripWithoutKmOrMealHidesThoseSubtotalRows() {
         var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(11));
         navigate(ReportDetailView.class, id);

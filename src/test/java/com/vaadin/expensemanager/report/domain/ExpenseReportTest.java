@@ -652,6 +652,57 @@ class ExpenseReportTest {
     }
 
     @Test
+    void theKilometreLineIsGeneratedAsDistanceTimesRate() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+
+        // ADR-0023: km is the one generated multiple — quantity = 12.5 km, unit price
+        // = €0.55/km. The flat kinds stay at quantity 1 with their amount as the unit
+        // price, so their euros are untouched.
+        report.reconcileTravels(List.of(travelSpecWith(null, List.of(
+                generated(GeneratedLineKind.PER_DIEM, TRAVEL_TYPE, RATE_0, "54.00"),
+                generated(GeneratedLineKind.KILOMETRE, KM_TYPE, RATE_0, "0.55", "12.5"),
+                generated(GeneratedLineKind.MEAL, MEAL_TYPE, RATE_0, "13.50"),
+                generated(GeneratedLineKind.PARKING, PARKING_TYPE, RATE_255, "12.00")))));
+
+        var km = report.getLines().stream()
+                .filter(line -> line.getGeneratedKind() == GeneratedLineKind.KILOMETRE)
+                .findFirst().orElseThrow();
+        assertThat(km.getQuantity()).isEqualByComparingTo("12.50");
+        assertThat(km.getAmount()).isEqualByComparingTo("0.55");
+        // 12.5 × 0.55 = 6.875 → €6.88 (HALF_UP), and that is what the subtotal sums.
+        assertThat(km.gross()).isEqualByComparingTo("6.88");
+        assertThat(report.kilometreTotal()).isEqualByComparingTo("6.88");
+
+        // Every other generated line is still a flat quantity-1 line.
+        assertThat(report.getLines().stream()
+                .filter(line -> line.getGeneratedKind() != GeneratedLineKind.KILOMETRE)
+                .map(ExpenseLine::getQuantity))
+                .allSatisfy(q -> assertThat(q).isEqualByComparingTo("1"));
+        assertThat(report.perDiemTotal()).isEqualByComparingTo("54.00");
+        assertThat(report.mealTotal()).isEqualByComparingTo("13.50");
+    }
+
+    @Test
+    void reCostingReplacesTheKilometreLineInPlace() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+        report.reconcileTravels(List.of(travelSpecWith(null, List.of(
+                generated(GeneratedLineKind.KILOMETRE, KM_TYPE, RATE_0, "0.55", "12.5")))));
+        setId(report.getTravels().getFirst());
+        var id = report.getTravels().getFirst().getId();
+        var before = report.getLines().getFirst();
+
+        // Same trip, more kilometres: the one existing line is regenerated, never
+        // duplicated or left stale.
+        report.reconcileTravels(List.of(travelSpecWith(id, List.of(
+                generated(GeneratedLineKind.KILOMETRE, KM_TYPE, RATE_0, "0.55", "120")))));
+
+        assertThat(report.getLines()).hasSize(1);
+        assertThat(report.getLines().getFirst()).isSameAs(before);
+        assertThat(before.getQuantity()).isEqualByComparingTo("120.00");
+        assertThat(report.kilometreTotal()).isEqualByComparingTo("66.00");
+    }
+
+    @Test
     void editingATripDropsOnlyTheKindsItNoLongerEarns() {
         var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
         report.reconcileTravels(List.of(travelSpecWith(null, List.of(
@@ -707,7 +758,7 @@ class ExpenseReportTest {
     private static TravelSpec travelSpec(Long id, String perDiem, String explanation) {
         var lines = new ArrayList<GeneratedLineSpec>();
         if (new BigDecimal(perDiem).signum() != 0) {
-            lines.add(new GeneratedLineSpec(GeneratedLineKind.PER_DIEM, TRAVEL_TYPE,
+            lines.add(GeneratedLineSpec.flat(GeneratedLineKind.PER_DIEM, TRAVEL_TYPE,
                     RATE_0, new BigDecimal(perDiem), explanation));
         }
         return travelSpecWith(id, lines);
@@ -721,8 +772,15 @@ class ExpenseReportTest {
 
     private static GeneratedLineSpec generated(GeneratedLineKind kind, ExpenseType type,
             VatRate rate, String amount) {
-        return new GeneratedLineSpec(kind, type, rate, new BigDecimal(amount),
+        return GeneratedLineSpec.flat(kind, type, rate, new BigDecimal(amount),
                 kind + " line");
+    }
+
+    /** A generated spec that is a real multiple — the kilometre shape (ADR-0023). */
+    private static GeneratedLineSpec generated(GeneratedLineKind kind, ExpenseType type,
+            VatRate rate, String unitPrice, String quantity) {
+        return new GeneratedLineSpec(kind, type, rate, new BigDecimal(unitPrice),
+                new BigDecimal(quantity), kind + " line");
     }
 
     /** Reflectively stamps a generated id on a transient travel, to model persistence. */

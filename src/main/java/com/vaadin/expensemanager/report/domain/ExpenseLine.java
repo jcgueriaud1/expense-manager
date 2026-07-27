@@ -74,8 +74,9 @@ public class ExpenseLine extends AuditedEntity {
 
     /**
      * How many units the line covers (glossary: Quantity) — strictly positive,
-     * {@code 1} for a plain single-item line and for every generated line in this
-     * slice (ADR-0023).
+     * {@code 1} for a plain single-item line and for the flat generated lines
+     * (per-diem, meal, parking); the kilometres driven for a generated kilometre
+     * line (ADR-0023).
      */
     @Column(name = "quantity", nullable = false, precision = 19, scale = 2)
     private BigDecimal quantity;
@@ -117,19 +118,20 @@ public class ExpenseLine extends AuditedEntity {
 
     /**
      * Creates a read-only generated line of the given {@code kind} linked to
-     * {@code travel} (Phase 4.2/4.3). The amount must be non-zero — the aggregate
-     * only generates a line when the rule produced something.
+     * {@code travel} (Phase 4.2/4.3). The unit price must be non-zero and the
+     * quantity positive — the aggregate only generates a line when the rule produced
+     * something.
      *
-     * <p>Generated lines are pinned to <strong>quantity 1</strong> in this slice
-     * (issue #122): the calculator's full computed gross becomes the unit price, so
-     * travel per-diem/kilometre/meal/parking keep producing identical euros. Real
-     * generated-line quantities (km, days) land with ADR-0023's follow-up tickets.
+     * <p>A generated line carries the same unit price × quantity shape as a manual
+     * one (ADR-0023): the kilometre line is a real multiple
+     * ({@code quantity = kilometres}, {@code unitPrice = €/km rate}), while the
+     * per-diem, meal, and parking lines are flat and arrive at quantity {@code 1}
+     * with their computed amount as the unit price.
      */
     static ExpenseLine generated(Travel travel, GeneratedLineKind kind,
-            ExpenseType expenseType, BigDecimal amount, VatRate vatRate,
-            String comment) {
-        var line = new ExpenseLine(expenseType, amount, BigDecimal.ONE, vatRate,
-                comment);
+            ExpenseType expenseType, BigDecimal unitPrice, BigDecimal quantity,
+            VatRate vatRate, String comment) {
+        var line = new ExpenseLine(expenseType, unitPrice, quantity, vatRate, comment);
         line.travel = travel;
         line.generatedKind = requireKind(kind);
         return line;
@@ -147,8 +149,8 @@ public class ExpenseLine extends AuditedEntity {
 
     /** Regenerates this line's figures from its (re-costed) travel. */
     void updateGenerated(Travel travel, GeneratedLineKind kind, ExpenseType expenseType,
-            BigDecimal amount, VatRate vatRate, String comment) {
-        update(expenseType, amount, BigDecimal.ONE, vatRate, comment);
+            BigDecimal unitPrice, BigDecimal quantity, VatRate vatRate, String comment) {
+        update(expenseType, unitPrice, quantity, vatRate, comment);
         this.travel = travel;
         this.generatedKind = requireKind(kind);
     }

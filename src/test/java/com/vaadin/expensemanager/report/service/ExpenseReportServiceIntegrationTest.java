@@ -931,6 +931,64 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void theGeneratedKilometreLineRoundTripsAsDistanceTimesRate() {
+        // ADR-0023: a fractional distance is exactly why km is the quantity — 12.5 km
+        // × the seeded 2026 rate (€0.550/km) = €6.875 → €6.88, the same euros as
+        // before the shape changed.
+        var id = service.create(dtoWithTravels(LocalDate.of(2026, 7, 10),
+                List.of(domesticTravel(null, DEP, DEP.plusHours(11),
+                        new BigDecimal("12.5"), false, ZERO, false))));
+
+        var loaded = service.findMine(id);
+        var km = loaded.travels().getFirst()
+                .generatedLine(GeneratedLineKind.KILOMETRE).orElseThrow();
+        assertThat(km.quantity()).isEqualByComparingTo("12.50");
+        assertThat(km.unitPrice()).isEqualByComparingTo("0.55");
+        assertThat(km.amount()).isEqualByComparingTo("6.88");
+        assertThat(loaded.kilometreTotal()).isEqualByComparingTo("6.88");
+
+        // The persisted line carries the two factors, not a pre-multiplied lump.
+        var persisted = reportRepository.findById(id).orElseThrow().getLines().stream()
+                .filter(line -> line.getGeneratedKind() == GeneratedLineKind.KILOMETRE)
+                .findFirst().orElseThrow();
+        assertThat(persisted.getQuantity()).isEqualByComparingTo("12.50");
+        assertThat(persisted.getAmount()).isEqualByComparingTo("0.55");
+        assertThat(persisted.gross()).isEqualByComparingTo("6.88");
+
+        // The other kinds stay flat: the per-diem is one unit at its full amount.
+        var perDiem = loaded.travels().getFirst()
+                .generatedLine(GeneratedLineKind.PER_DIEM).orElseThrow();
+        assertThat(perDiem.quantity()).isEqualByComparingTo("1");
+        assertThat(perDiem.unitPrice()).isEqualByComparingTo("54.00");
+    }
+
+    @Test
+    void reCostingATripReplacesItsKilometreLineWithoutDuplicating() {
+        var id = service.create(dtoWithTravels(LocalDate.of(2026, 7, 10),
+                List.of(domesticTravel(null, DEP, DEP.plusHours(11),
+                        new BigDecimal("12.5"), false, ZERO, false))));
+        var loaded = service.findMine(id);
+        var trip = loaded.travels().getFirst();
+        var lineIdBefore = trip.generatedLine(GeneratedLineKind.KILOMETRE).orElseThrow()
+                .lineId();
+
+        // Same trip, 120 km instead of 12.5 — the one km line is re-costed in place.
+        service.update(id, dtoWithTravels(id, LocalDate.of(2026, 7, 10), loaded.version(),
+                List.of(domesticTravel(trip.id(), DEP, DEP.plusHours(11),
+                        new BigDecimal("120"), false, ZERO, false))), loaded.version());
+
+        var reloaded = service.findMine(id);
+        var km = reloaded.travels().getFirst()
+                .generatedLine(GeneratedLineKind.KILOMETRE).orElseThrow();
+        assertThat(km.lineId()).isEqualTo(lineIdBefore);
+        assertThat(km.quantity()).isEqualByComparingTo("120.00");
+        assertThat(km.amount()).isEqualByComparingTo("66.00");
+        assertThat(reloaded.kilometreTotal()).isEqualByComparingTo("66.00");
+        // Exactly two generated lines survive (per-diem + the single km line).
+        assertThat(reportRepository.findById(id).orElseThrow().getLines()).hasSize(2);
+    }
+
+    @Test
     void editingDropsTheKindsATripNoLongerEarns() {
         var id = service.create(dtoWithTravels(LocalDate.of(2026, 7, 10),
                 List.of(domesticTravel(null, DEP, DEP.plusHours(11),
