@@ -28,18 +28,21 @@ import jakarta.persistence.Embeddable;
  * partial-day cap of one) belong to {@link Travel}, which alone knows the map key
  * — see {@link #assertValidFor}.
  *
- * <p>The floor is {@code 1} in this slice (issue #131). Issue #132 drops it to
- * {@code 0}, which suppresses the line, together with the receipt-destruction
- * warning that behaviour requires.
+ * <p><strong>Zero is a legal count and means "drop this line"</strong> (issue #132):
+ * it is the only way to express a correction the trip inputs cannot — keeping the
+ * full days while dropping the partial leftover, or removing a meal allowance
+ * without disturbing anything else. Nothing here special-cases it: a zero count
+ * fails the existing {@link GeneratedLineSpec#isEarned()} gate on its quantity, so
+ * the spec is omitted and the aggregate orphan-removes any prior line of that kind.
+ * Because {@code receipt} cascades on line delete at the database level, suppressing
+ * a line that carries one destroys the uploaded file — which is why the UI confirms
+ * first, naming the file (ADR-0024).
+ *
+ * <p>Only negative counts are refused. There is no ceiling: any ceiling would
+ * re-derive the very rule the override exists to escape.
  */
 @Embeddable
 public class QuantityOverride {
-
-    /**
-     * The smallest count an override may claim. {@code 1} here (issue #131) —
-     * issue #132 lowers it to {@code 0} so an override can suppress its line.
-     */
-    private static final BigDecimal MINIMUM = BigDecimal.ONE;
 
     @Column(name = "quantity", nullable = false, precision = 19, scale = 2)
     private BigDecimal quantity;
@@ -52,10 +55,11 @@ public class QuantityOverride {
     }
 
     /**
-     * @param quantity the claimed count — a whole number, at least {@link #MINIMUM}
+     * @param quantity the claimed count — a whole number, {@code 0} or more, where
+     *                 {@code 0} suppresses the line
      * @param reason   why the calculated count does not fit the trip (required)
-     * @throws DomainRuleException if the count is missing, fractional or below the
-     *                             floor, or the reason is blank
+     * @throws DomainRuleException if the count is missing, fractional or negative, or
+     *                             the reason is blank
      */
     public QuantityOverride(BigDecimal quantity, String reason) {
         this.quantity = requireWholeCount(quantity);
@@ -118,9 +122,8 @@ public class QuantityOverride {
         if (value.stripTrailingZeros().scale() > 0) {
             throw new DomainRuleException("The count must be a whole number.");
         }
-        if (value.compareTo(MINIMUM) < 0) {
-            throw new DomainRuleException(
-                    "The count cannot be less than " + MINIMUM.toPlainString() + ".");
+        if (value.signum() < 0) {
+            throw new DomainRuleException("The count cannot be negative.");
         }
         return value.setScale(2, RoundingMode.UNNECESSARY);
     }

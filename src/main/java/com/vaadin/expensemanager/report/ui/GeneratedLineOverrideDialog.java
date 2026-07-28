@@ -30,6 +30,11 @@ import static com.vaadin.expensemanager.report.ui.ReportViewSupport.formatQuanti
  * The dialog shows the calculated baseline it is correcting, a whole-number count
  * field, and a <strong>mandatory</strong> reason.
  *
+ * <p>A count of {@code 0} removes the line from the report (issue #132) — the only way
+ * to say "keep the full days, drop the partial leftover". That is a plain value here;
+ * the confirm a suppression needs when the line carries a Receipt belongs to the view,
+ * which is what knows about receipts (see {@code ReportDetailView}).
+ *
  * <p>Validation follows the project rule (ADR-0020): the confirm button is
  * <strong>always enabled</strong>; a blank reason, a missing count, or a count the
  * kind's rules reject (the partial-day cap of one, the floor) surfaces in the
@@ -64,13 +69,15 @@ final class GeneratedLineOverrideDialog extends Dialog {
         addClassName("travel-line-dialog");
 
         count.setRequiredIndicatorVisible(true);
-        // A count of discrete days or meals: whole numbers only, never below the
-        // floor. The domain re-checks both, plus the per-kind cap.
-        count.setMin(1);
+        // A count of discrete days or meals: whole numbers only, never negative. The
+        // domain re-checks both, plus the per-kind cap. Zero is legal and means "drop
+        // this line" (issue #132), so the helper says so rather than leaving the user
+        // to discover it.
+        count.setMin(0);
         count.setStepButtonsVisible(true);
         count.setValue(line.quantity().intValue());
-        count.setHelperText(line.kind().isPerDiem()
-                ? "Whole days only." : "Whole meals only.");
+        count.setHelperText((line.kind().isPerDiem() ? "Whole days only."
+                : "Whole meals only.") + " Set 0 to remove this line.");
 
         reason.setRequiredIndicatorVisible(true);
         reason.setMaxLength(500);

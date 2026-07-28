@@ -11,6 +11,7 @@ import java.util.stream.Collectors;
 import com.vaadin.expensemanager.report.domain.ExpenseLine;
 import com.vaadin.expensemanager.report.domain.ExpenseReport;
 import com.vaadin.expensemanager.report.domain.GeneratedLineKind;
+import com.vaadin.expensemanager.report.domain.GeneratedLineSpec;
 import com.vaadin.expensemanager.report.domain.StatusChange;
 import com.vaadin.expensemanager.report.domain.Travel;
 
@@ -122,29 +123,47 @@ public class ReportDtoMapper {
      * Annotates each overridden generated line with the reason the user gave and the
      * count the calculator produced (ADR-0024) — the two facts the row needs to render
      * a real "Overridden" badge and a real baseline rather than parsing the comment
-     * string. This is the one seam <strong>both</strong> load paths pass through, so
-     * the owner and the approver see the same thing.
+     * string — and re-inserts a {@linkplain GeneratedLineView#isSuppressed() suppressed}
+     * row for each kind a {@code 0} override dropped (issue #132). This is the one seam
+     * <strong>both</strong> load paths pass through, so the owner and the approver see
+     * the same thing.
+     *
+     * <p>The suppressed row matters most on this path: the report carries no line for
+     * that kind, so without it a saved suppression would be invisible and its override
+     * unreachable — no row, no "Reset to calculated". The rows are rebuilt in kind
+     * order (the order they were read in), so a restored one lands where its line
+     * would.
      *
      * <p>The baseline is recomputed by costing an overrides-stripped copy of the trip.
      * That needs the trip-year rates and the allowance expense types, which a
      * long-since-saved report has no guarantee are still configured — so a failure
      * here is logged and swallowed rather than making the report unopenable: the badge
-     * and reason still render, only "what the rules said" is missing.
+     * and reason still render, only "what the rules said" is missing (and, for a
+     * suppressed kind, the row itself — there is nothing left to describe it with).
      */
     private TravelDto withOverrideDetail(TravelDto dto) {
-        Map<GeneratedLineKind, BigDecimal> baselines;
+        Map<GeneratedLineKind, GeneratedLineSpec> baselines;
         try {
-            baselines = travelCosting.calculatedQuantities(dto);
+            baselines = travelCosting.calculatedBaseline(dto);
         } catch (RuntimeException uncostable) {
             log.warn("Could not recompute the calculated baseline for travel {}; "
                     + "showing the override without it.", dto.id(), uncostable);
             baselines = Map.of();
         }
-        var annotated = new ArrayList<GeneratedLineView>(dto.generatedLines().size());
-        for (GeneratedLineView line : dto.generatedLines()) {
-            var override = dto.quantityOverrides().get(line.kind());
-            annotated.add(override == null ? line
-                    : line.withOverride(override.reason(), baselines.get(line.kind())));
+        var annotated = new ArrayList<GeneratedLineView>(
+                dto.generatedLines().size() + 1);
+        for (GeneratedLineKind kind : GeneratedLineKind.values()) {
+            var override = dto.quantityOverrides().get(kind);
+            var line = dto.generatedLine(kind).orElse(null);
+            if (line == null) {
+                TravelCosting.suppressedView(kind, override, baselines.get(kind))
+                        .ifPresent(annotated::add);
+            } else if (override == null) {
+                annotated.add(line);
+            } else {
+                annotated.add(line.withOverride(override.reason(),
+                        TravelCosting.baselineQuantity(baselines, kind)));
+            }
         }
         return dto.withGeneratedLines(annotated);
     }

@@ -249,6 +249,15 @@
     justify-content: flex-end;
 }
 
+/* A row standing for a line a 0 Quantity Override dropped (issue #132). Nothing was
+   claimed, so its €0.00 must not carry the weight of a real amount — de-emphasise it
+   and let the "Suppressed" badge and the reason do the talking (the badge is text, so
+   this is reinforcement, never the only signal — ADR-0020). */
+.travel-line-row .line-amount-suppressed {
+    font-weight: var(--aura-font-weight-regular);
+    color: var(--vaadin-text-color-secondary);
+}
+
 /* The line's label plus its "Overridden" badge. Wrapping keeps the badge from
    squeezing the label into a three-line column on a narrow row: it drops below
    the (unbroken) label instead. */

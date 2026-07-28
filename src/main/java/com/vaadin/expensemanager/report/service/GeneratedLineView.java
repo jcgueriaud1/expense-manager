@@ -31,7 +31,10 @@ import com.vaadin.expensemanager.report.domain.LineAmounts;
  * the {@link #quantity} here is the <strong>effective</strong> one and
  * {@link #overrideReason} / {@link #calculatedQuantity} carry the reason and the
  * statutory baseline, so the row can show an "Overridden" badge and "what the rules
- * said" without parsing the {@link #comment} string.
+ * said" without parsing the {@link #comment} string. A count of {@code 0} means the
+ * line was {@linkplain #isSuppressed() suppressed} — the report carries no line for
+ * it at all, and this view exists only so the correction stays visible and
+ * reversible (issue #132).
  *
  * @param kind               which generated line this is (routes it in the totals)
  * @param expenseTypeName    the expense type the line is filed under (for display)
@@ -108,6 +111,22 @@ public record GeneratedLineView(GeneratedLineKind kind, String expenseTypeName,
     /** Whether the user replaced this line's calculated count (ADR-0024). */
     public boolean isOverridden() {
         return overrideReason != null;
+    }
+
+    /**
+     * Whether this row stands for a line a {@code 0} Quantity Override
+     * <strong>dropped</strong> from the report (issue #132) rather than a line the
+     * report carries. No {@code ExpenseLine} exists for it and its
+     * {@linkplain #amount() amount} is zero, so it adds nothing to any subtotal — it
+     * is here so the correction stays visible and, above all,
+     * <em>reversible</em>: without a row there is no "Reset to calculated" to click,
+     * and a persisted override would go invisible and unreachable.
+     *
+     * <p>A suppressed row therefore carries no {@link #lineId} and no receipt (a
+     * suppression destroys the receipt it had), and offers no attach affordance.
+     */
+    public boolean isSuppressed() {
+        return isOverridden() && quantity.signum() == 0;
     }
 
     /**

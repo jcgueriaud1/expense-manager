@@ -1032,7 +1032,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
     }
 
     @Test
-    void theCountFieldTakesWholeNumbersAtOrAboveTheFloor() {
+    void theCountFieldTakesWholeNumbersDownToZeroAndSaysWhatZeroDoes() {
         // Integrality is enforced at the widget (an IntegerField) and the floor with
         // it; the domain enforces both again on save. The tester refuses to set an
         // out-of-range value, so assert the constraint that makes that so (F-021).
@@ -1042,8 +1042,11 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findButton().withAriaLabel("Override count: Per diem allowance (full day)")
                 .click();
 
+        // Issue #132: the floor is 0, and the helper says what 0 means rather than
+        // leaving the user to discover that it removes the line.
         var count = (IntegerField) findIntegerField().withLabel("Count").getComponent();
-        assertThat(count.getMin()).isEqualTo(1);
+        assertThat(count.getMin()).isEqualTo(0);
+        assertThat(count.getHelperText()).contains("0 to remove this line");
     }
 
     @Test
@@ -1144,6 +1147,177 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findIntegerField().withLabel("Count").setValue(count);
         findTextArea().withLabel("Reason for the override").setValue(reason);
         findButton().withText("Save override").click();
+    }
+
+    // --- Suppressing a line with a zero override (ADR-0024, issue #132) ---
+    //
+    // Zero removes the line from the report — the only way to keep the full days and
+    // drop the partial leftover. Because `receipt` cascades on line delete at the
+    // database level, a suppression that would destroy an uploaded file asks first and
+    // names it.
+
+    @Test
+    void aZeroCountRemovesTheLineAndTheSubtotalAndTotalFollowLive() {
+        // 55 h → 2 full days (€108.00) + 1 partial day (€25.00) = €133.00.
+        var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(55));
+        navigate(ReportDetailView.class, id);
+
+        overrideCount("Per diem allowance (partial day)", 0,
+                "the leftover day is not claimed");
+
+        // No confirm was asked for — the line carries no receipt, so nothing is at
+        // stake — and the figures drop the moment the count is set.
+        assertThat(findButton().withText("Remove line and receipt").exists()).isFalse();
+        var shown = getCurrentView().getElement().getTextRecursively();
+        assertThat(shown).contains("€108.00", "Suppressed",
+                "Reason: the leftover day is not claimed",
+                "Calculated: 1 × €25.00 = €25.00");
+
+        findButton().withText("Save").click();
+
+        var loaded = service.findMine(id);
+        assertThat(loaded.perDiemTotal()).isEqualByComparingTo("108.00");
+        assertThat(loaded.total()).isEqualByComparingTo("108.00");
+        // The row survives a reload so the correction stays reversible, but it is a
+        // row and not a line: no id, no amount.
+        var partial = loaded.travels().getFirst()
+                .generatedLine(GeneratedLineKind.PER_DIEM_PARTIAL).orElseThrow();
+        assertThat(partial.isSuppressed()).isTrue();
+        assertThat(partial.lineId()).isNull();
+    }
+
+    @Test
+    void aSuppressedRowOffersNoReceiptAffordanceButStaysCorrectableAndResettable() {
+        var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(55));
+        navigate(ReportDetailView.class, id);
+
+        overrideCount("Per diem allowance (partial day)", 0, "not claimed");
+
+        // There is no line to attach a receipt to…
+        assertThat(findButton()
+                .withAriaLabel("Add receipt: Per diem allowance (partial day)").exists())
+                .isFalse();
+        // …but the correction is still editable and, above all, undoable.
+        assertThat(findButton()
+                .withAriaLabel("Edit override: Per diem allowance (partial day)")
+                .exists()).isTrue();
+        assertThat(findButton()
+                .withAriaLabel("Reset to calculated: Per diem allowance (partial day)")
+                .exists()).isTrue();
+    }
+
+    @Test
+    void resetToCalculatedRestoresASuppressedLineAtItsStatutoryCount() {
+        var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(55));
+        navigate(ReportDetailView.class, id);
+        overrideCount("Per diem allowance (partial day)", 0, "not claimed");
+        findButton().withText("Save").click();
+
+        // Reopen the saved report: the reset must be reachable on a reload too.
+        navigate(ReportDetailView.class, id);
+        findButton()
+                .withAriaLabel("Reset to calculated: Per diem allowance (partial day)")
+                .click();
+
+        var shown = getCurrentView().getElement().getTextRecursively();
+        assertThat(shown).contains("€133.00").doesNotContain("Suppressed");
+
+        findButton().withText("Save").click();
+
+        var loaded = service.findMine(id);
+        assertThat(loaded.perDiemTotal()).isEqualByComparingTo("133.00");
+        assertThat(loaded.travels().getFirst().quantityOverrides()).isEmpty();
+        var partial = loaded.travels().getFirst()
+                .generatedLine(GeneratedLineKind.PER_DIEM_PARTIAL).orElseThrow();
+        assertThat(partial.quantity()).isEqualByComparingTo("1.00");
+        assertThat(partial.lineId()).isNotNull();
+    }
+
+    @Test
+    void suppressingALineCarryingAReceiptConfirmsFirstAndNamesTheFile() {
+        var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(55));
+        navigate(ReportDetailView.class, id);
+        // Attach a receipt to the partial-day line through its own editor.
+        findButton().withAriaLabel("Add receipt: Per diem allowance (partial day)")
+                .click();
+        findUpload().upload("leftover-day.jpg", "image/jpeg", jpegBytes());
+        findButton().withText("Save receipt").click();
+
+        overrideCount("Per diem allowance (partial day)", 0, "not claimed");
+
+        // Nothing has happened yet: the warning names the file and says it goes.
+        var warning = UI.getCurrent().getElement().getTextRecursively();
+        assertThat(warning).contains("leftover-day.jpg", "deleted");
+        assertThat(getCurrentView().getElement().getTextRecursively())
+                .contains("€133.00").doesNotContain("Suppressed");
+
+        findButton().withText("Remove line and receipt").click();
+
+        assertThat(getCurrentView().getElement().getTextRecursively())
+                .contains("€108.00", "Suppressed");
+        // The buffered, never-saved bytes went with the row (issue #132): no stale
+        // generated-line reference is left to re-attach the file the user let go.
+        assertThat(findButton().withAriaLabel("Preview receipt: leftover-day.jpg")
+                .exists()).isFalse();
+
+        findButton().withText("Save").click();
+
+        var loaded = service.findMine(id);
+        assertThat(loaded.perDiemTotal()).isEqualByComparingTo("108.00");
+        assertThat(loaded.travels().getFirst()
+                .generatedLine(GeneratedLineKind.PER_DIEM_PARTIAL).orElseThrow()
+                .hasReceipt()).isFalse();
+    }
+
+    @Test
+    void cancellingTheReceiptWarningKeepsBothTheLineAndItsReceipt() {
+        var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(55));
+        navigate(ReportDetailView.class, id);
+        findButton().withAriaLabel("Add receipt: Per diem allowance (partial day)")
+                .click();
+        findUpload().upload("leftover-day.jpg", "image/jpeg", jpegBytes());
+        findButton().withText("Save receipt").click();
+        findButton().withText("Save").click();
+
+        overrideCount("Per diem allowance (partial day)", 0, "mis-typed zero");
+        findButton().withText("Cancel").click();
+
+        // A mis-typed zero is recoverable: the line, its amount and its receipt stand.
+        var shown = getCurrentView().getElement().getTextRecursively();
+        assertThat(shown).contains("€133.00").doesNotContain("Suppressed");
+        assertThat(findButton().withAriaLabel("Preview receipt: leftover-day.jpg")
+                .exists()).isTrue();
+
+        findButton().withText("Save").click();
+
+        var loaded = service.findMine(id);
+        assertThat(loaded.perDiemTotal()).isEqualByComparingTo("133.00");
+        assertThat(loaded.travels().getFirst().quantityOverrides()).isEmpty();
+        var partial = loaded.travels().getFirst()
+                .generatedLine(GeneratedLineKind.PER_DIEM_PARTIAL).orElseThrow();
+        assertThat(partial.hasReceipt()).isTrue();
+        assertThat(partial.receiptFilename()).isEqualTo("leftover-day.jpg");
+    }
+
+    @Test
+    void suppressingALineWithNoReceiptDoesNotPrompt() {
+        // The meal allowance is where a receipt is most plausible, so prove the
+        // *absence* of the prompt on the same kind when no file is at stake.
+        var id = seedReportWithMealTravel(LocalDate.of(2026, 7, 10), DEP,
+                DEP.plusHours(11));
+        navigate(ReportDetailView.class, id);
+
+        overrideCount("Meal allowance", 0, "no meal was taken");
+
+        assertThat(findButton().withText("Remove line and receipt").exists()).isFalse();
+        findButton().withText("Save").click();
+
+        var loaded = service.findMine(id);
+        assertThat(loaded.mealTotal()).isEqualByComparingTo("0.00");
+        assertThat(loaded.total()).isEqualByComparingTo("0.00");
+        assertThat(loaded.travels().getFirst()
+                .generatedLine(GeneratedLineKind.MEAL).orElseThrow().isSuppressed())
+                .isTrue();
     }
 
     // --- Meal-allowance / eligibility checkbox coupling (issue #93) ---

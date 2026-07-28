@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import com.vaadin.expensemanager.allowance.AllowanceAmount;
 import com.vaadin.expensemanager.allowance.AllowanceCalculator;
@@ -47,6 +48,14 @@ import org.springframework.stereotype.Component;
  * preserves the per-diem/meal interlock the calculator enforces: a conjured per-diem
  * would otherwise sit beside a meal allowance with nothing to catch it. Both belts
  * are deliberate; removing either silently enables conjuring.
+ *
+ * <p><strong>A {@code 0} override suppresses its line</strong> (issue #132) through
+ * that same gate, on the other half of the check: the substituted count is zero, so
+ * the spec is not earned, the kind is absent from {@link #earnedLines}, and the
+ * aggregate orphan-removes any prior line of it — no branch of its own. The only
+ * addition suppression makes here is a <em>row</em>: {@link #suppressedView} keeps the
+ * dropped kind visible and reversible on screen without putting a line back in the
+ * report.
  *
  * <p>{@link AllowanceCalculator} stays pure and untouched (ADR-0024): it computes
  * what the rules award and has no opinion about corrections. The correction, and the
@@ -109,32 +118,98 @@ public class TravelCosting {
      */
     public TravelDto withComputedLines(TravelDto input) {
         GeneratedLineTypes types = resolveTypes();
-        var baselines = calculatedQuantities(input, types);
-        var views = earnedLines(input, types).stream()
-                .map(spec -> toView(spec, input, baselines)).toList();
-        return input.withGeneratedLines(views);
+        var baselines = calculatedBaseline(input, types);
+        return input.withGeneratedLines(
+                views(input, earnedLines(input, types), baselines));
     }
 
     /**
-     * The calculated (pre-override) quantity per kind — the statutory baseline a row
-     * shows beside an overridden figure. Empty when the trip carries no override, so
-     * an ordinary trip costs nothing extra.
+     * The calculated (pre-override) generated line per kind — the statutory baseline a
+     * row shows beside an overridden figure, and everything a
+     * {@linkplain #suppressedView suppressed row} needs to describe the line a
+     * {@code 0} override dropped. Empty when the trip carries no override, so an
+     * ordinary trip costs nothing extra.
      */
-    public Map<GeneratedLineKind, BigDecimal> calculatedQuantities(TravelDto trip) {
-        return calculatedQuantities(trip, null);
+    public Map<GeneratedLineKind, GeneratedLineSpec> calculatedBaseline(TravelDto trip) {
+        return calculatedBaseline(trip, null);
     }
 
-    private Map<GeneratedLineKind, BigDecimal> calculatedQuantities(TravelDto trip,
+    private Map<GeneratedLineKind, GeneratedLineSpec> calculatedBaseline(TravelDto trip,
             GeneratedLineTypes resolved) {
         if (trip.quantityOverrides().isEmpty()) {
             return Map.of();
         }
         GeneratedLineTypes types = resolved == null ? resolveTypes() : resolved;
-        var baselines = new EnumMap<GeneratedLineKind, BigDecimal>(
+        var baselines = new EnumMap<GeneratedLineKind, GeneratedLineSpec>(
                 GeneratedLineKind.class);
         earnedLines(trip.withoutQuantityOverrides(), types)
-                .forEach(spec -> baselines.put(spec.kind(), spec.quantity()));
+                .forEach(spec -> baselines.put(spec.kind(), spec));
         return baselines;
+    }
+
+    /** The baseline count for one kind, or {@code null} when it is not known. */
+    public static BigDecimal baselineQuantity(
+            Map<GeneratedLineKind, GeneratedLineSpec> baselines,
+            GeneratedLineKind kind) {
+        GeneratedLineSpec baseline = baselines.get(kind);
+        return baseline == null ? null : baseline.quantity();
+    }
+
+    /**
+     * The rows for a costed trip, in kind order: one per line the trip
+     * <strong>earns</strong>, plus a zero-amount {@linkplain
+     * GeneratedLineView#isSuppressed() suppressed} row for each kind a {@code 0}
+     * override dropped (issue #132).
+     *
+     * <p>The suppressed row is presentation only — the line-generating path above is
+     * untouched, the kind is simply absent from {@link #earnedLines} and the aggregate
+     * orphan-removes it. Without the row, though, a suppression would be a one-way
+     * door: no row means no "Reset to calculated" to click, and the persisted override
+     * would sit in {@code travel_override} invisible and unreachable.
+     */
+    private List<GeneratedLineView> views(TravelDto trip,
+            List<GeneratedLineSpec> earned,
+            Map<GeneratedLineKind, GeneratedLineSpec> baselines) {
+        var byKind = new EnumMap<GeneratedLineKind, GeneratedLineSpec>(
+                GeneratedLineKind.class);
+        earned.forEach(spec -> byKind.put(spec.kind(), spec));
+        var views = new ArrayList<GeneratedLineView>(earned.size() + 1);
+        for (GeneratedLineKind kind : GeneratedLineKind.values()) {
+            GeneratedLineSpec spec = byKind.get(kind);
+            if (spec != null) {
+                views.add(toView(spec, trip, baselines));
+            } else {
+                suppressedView(kind, trip.quantityOverrides().get(kind),
+                        baselines.get(kind)).ifPresent(views::add);
+            }
+        }
+        return views;
+    }
+
+    /**
+     * The row standing for a line a {@code 0} override dropped: the statutory unit
+     * price and baseline count it replaced, an effective count of {@code 0}, the user's
+     * reason, and no line id or receipt (ADR-0024, issue #132). The one seam both the
+     * preview and {@link ReportDtoMapper}'s load path use, so the owner and the
+     * approver see the same suppression.
+     *
+     * <p>Empty unless the override really suppresses <em>and</em> the calculator
+     * awarded the line in the first place: an override can never conjure one, so a
+     * zero override of a kind the rules did not award describes nothing and shows
+     * nothing. Also empty when {@code baseline} is {@code null} — the trip could not be
+     * re-costed (a long-saved report whose year's rates are gone), the same degradation
+     * the baseline figure itself has.
+     */
+    public static Optional<GeneratedLineView> suppressedView(GeneratedLineKind kind,
+            QuantityOverride override, GeneratedLineSpec baseline) {
+        if (override == null || override.quantity().signum() != 0 || baseline == null) {
+            return Optional.empty();
+        }
+        return Optional.of(GeneratedLineView
+                .of(kind, baseline.expenseType().getName(), baseline.unitPrice(),
+                        BigDecimal.ZERO.setScale(2), baseline.vatRate().getValue(),
+                        suppressedComment(baseline, override), null)
+                .withOverride(override.reason(), baseline.quantity()));
     }
 
     /**
@@ -241,6 +316,20 @@ public class TravelCosting {
                 + override.reason();
     }
 
+    /**
+     * What a suppressed row reads instead of a line comment — no {@code ExpenseLine}
+     * exists to carry one, so this is display text only (the trip dialog's preview
+     * shows it beside the €0.00). Same shape as {@link #overriddenComment}: what the
+     * rules said, then why it was dropped.
+     */
+    private static String suppressedComment(GeneratedLineSpec baseline,
+            QuantityOverride override) {
+        return baseline.kind().label() + ": removed — the calculated "
+                + count(baseline.quantity()) + " "
+                + baseline.kind().countNoun(baseline.quantity().longValue()) + " ("
+                + eur(baseline.gross()) + ") is not claimed: " + override.reason();
+    }
+
     /** A count without trailing zeros — {@code "2"}, not {@code "2.00"}. */
     private static String count(BigDecimal quantity) {
         return quantity.stripTrailingZeros().toPlainString();
@@ -274,13 +363,14 @@ public class TravelCosting {
 
     /** A preview view of an earned generated line — no id or receipt yet. */
     private static GeneratedLineView toView(GeneratedLineSpec spec, TravelDto trip,
-            Map<GeneratedLineKind, BigDecimal> baselines) {
+            Map<GeneratedLineKind, GeneratedLineSpec> baselines) {
         var view = GeneratedLineView.of(spec.kind(), spec.expenseType().getName(),
                 spec.unitPrice(), spec.quantity(), spec.vatRate().getValue(),
                 spec.comment(), null);
         var override = trip.quantityOverrides().get(spec.kind());
         return override == null ? view
-                : view.withOverride(override.reason(), baselines.get(spec.kind()));
+                : view.withOverride(override.reason(),
+                        baselineQuantity(baselines, spec.kind()));
     }
 
     /** Server-authoritative domestic per-diem for a trip's inputs (ADR-0006). */

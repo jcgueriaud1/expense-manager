@@ -67,6 +67,14 @@ public record GeneratedLineSpec(GeneratedLineKind kind, ExpenseType expenseType,
      * and a positive quantity — exactly what {@link ExpenseLine} accepts. A rule
      * that produced nothing fails this, so its kind is omitted and any prior line
      * of it is removed.
+     *
+     * <p>This one check carries both halves of the Quantity Override contract
+     * (ADR-0024) at no cost, because an unearned rule zeroes the <em>unit price</em>
+     * and not only the count: a {@code 0} override <strong>suppresses</strong> its
+     * line (issue #132) via the quantity, while an override of a kind the rules never
+     * awarded still fails on the unit price, so an override can never
+     * <strong>conjure</strong> a line. Carrying a non-zero unit price for an unearned
+     * rule would silently enable conjuring.
      */
     public boolean isEarned() {
         return unitPrice.signum() != 0 && quantity.signum() > 0;

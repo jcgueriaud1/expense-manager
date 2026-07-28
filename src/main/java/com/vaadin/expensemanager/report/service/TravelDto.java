@@ -26,7 +26,11 @@ import com.vaadin.expensemanager.report.domain.QuantityOverride;
  * <p>{@link #quantityOverrides} are trip inputs too (glossary: Quantity Override,
  * ADR-0024): the user's corrected <em>count</em> per generated-line kind, with a
  * mandatory reason. The client sends the count; the service applies it after the
- * calculator has run, so the money in {@link #generatedLines} stays the server's.
+ * calculator has run, so the money in {@link #generatedLines} stays the server's. A
+ * count of {@code 0} drops the line: {@link #generatedLines} then carries a
+ * zero-amount {@linkplain GeneratedLineView#isSuppressed() suppressed} row in its
+ * place — a row, not a line, so it adds nothing to any total but keeps the correction
+ * visible and reversible (issue #132).
  *
  * <p>{@link #id} is the reconciliation key (ADR-0019): {@code null} for a
  * not-yet-persisted trip the service will insert, non-null for one it will match

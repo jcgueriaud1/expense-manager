@@ -18,6 +18,7 @@ import com.vaadin.expensemanager.user.User;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
@@ -614,21 +615,44 @@ class ExpenseReportTest {
     // violation is a DomainRuleException like any other trip invariant (ADR-0006).
 
     @Test
-    void anOverrideNeedsAWholeCountAtOrAboveTheFloor() {
+    void anOverrideNeedsAWholeNonNegativeCount() {
         assertThatThrownBy(() -> new QuantityOverride(null, "personal day"))
                 .isInstanceOf(DomainRuleException.class)
                 .hasMessageContaining("count is required");
         assertThatThrownBy(() -> new QuantityOverride(new BigDecimal("1.5"), "half"))
                 .isInstanceOf(DomainRuleException.class)
                 .hasMessageContaining("whole number");
-        // The floor is 1 in this slice; issue #132 lowers it to 0 (suppress the line).
-        assertThatThrownBy(() -> new QuantityOverride(BigDecimal.ZERO, "drop it"))
+        // A claim below nothing is meaningless; a claim OF nothing is the suppression.
+        assertThatThrownBy(() -> new QuantityOverride(new BigDecimal("-1"), "owe me"))
                 .isInstanceOf(DomainRuleException.class)
-                .hasMessageContaining("less than 1");
+                .hasMessageContaining("negative");
 
         // A whole count at money scale round-trips.
         assertThat(new QuantityOverride(new BigDecimal("2"), "two days").quantity())
                 .isEqualByComparingTo("2.00");
+    }
+
+    @Test
+    void theCountFloorIsZeroForEveryOverridableKindSoAnyOfThemCanBeSuppressed() {
+        // Issue #132: zero is the only way to express a correction the trip inputs
+        // cannot — dropping the partial leftover, or a meal allowance on its own.
+        for (GeneratedLineKind kind : List.of(GeneratedLineKind.PER_DIEM_FULL,
+                GeneratedLineKind.PER_DIEM_PARTIAL, GeneratedLineKind.MEAL)) {
+            var suppression = QuantityOverride.of(kind, BigDecimal.ZERO, "not claimed");
+            assertThat(suppression.quantity()).as(kind.name()).isEqualByComparingTo("0.00");
+        }
+        // The partial-day cap is an upper bound only, so zero clears it too.
+        assertThatCode(() -> QuantityOverride.of(GeneratedLineKind.PER_DIEM_PARTIAL,
+                BigDecimal.ZERO, "leftover day not claimed")).doesNotThrowAnyException();
+    }
+
+    @Test
+    void aSuppressionStillNeedsItsReason() {
+        // The pair stays indivisible at the boundary the feature was added for: a line
+        // may not vanish from a report unexplained.
+        assertThatThrownBy(() -> new QuantityOverride(BigDecimal.ZERO, "  "))
+                .isInstanceOf(DomainRuleException.class)
+                .hasMessageContaining("reason");
     }
 
     @Test

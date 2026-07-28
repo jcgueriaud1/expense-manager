@@ -1778,3 +1778,55 @@ Deployment/Observability · UX-spec
   `browser_fill_form` skip only the failing field instead of aborting the batch).
 - Owner / next step: documented in `docs/manual-verification.md`'s Playwright
   pattern; no product change.
+
+### F-055 — The `vaadin-playwright-screenshot` skill declares a DramaFinder floor one release above the truth
+- Date: 2026-07-28
+- Area: Tooling / Verification
+- Severity: Low
+- Task being attempted: visually verifying issue #132 — running the skill's temp
+  `AgentVerifyIT` (extending `VisualVerificationTest`) against the locally running app.
+- Expected vs actual: the skill's prerequisite states the agent helpers
+  "ship inside DramaFinder **1.1.6 and later**" and instructs the agent to *stop* and
+  report an unsupported project if `VisualVerificationTest` won't resolve. This project
+  pins `1.1.5` (issue #112), so the honest reading is "stop, the project is too old".
+  Actual: `1.1.5` already contains `org/vaadin/addons/dramafinder/agent/VisualVerificationTest`
+  — verified with `unzip -l` on the jar — and the capture run worked unchanged. The
+  stated floor would have aborted a run that was fine, or prompted a needless
+  dependency bump.
+- Workaround used: checked the jar contents rather than trusting the stated floor,
+  and ran the skill as-is on 1.1.5.
+- Evidence: `unzip -l ~/.m2/.../dramafinder-1.1.5.jar | grep agent/VisualVerificationTest`
+  → one hit (1.1.2 and earlier → none). Four screenshots captured on 1.1.5.
+- Impact: a false stop condition on the exact version this repo pins. Cheap to check,
+  but only if you think to doubt the skill's own prerequisite.
+- Suggested improvement: correct the floor to 1.1.5 in the skill's prerequisite, or
+  drop the version claim and keep only the "if `VisualVerificationTest` won't resolve"
+  test, which is the reliable signal either way.
+- Owner / next step: reported here; no repo change needed (the pinned version works).
+
+### F-056 — A Flyway migration's own comment can't be corrected once it has been applied
+- Date: 2026-07-28
+- Area: Schema / Migrations
+- Severity: Low
+- Task being attempted: issue #132 lowered the Quantity Override count floor from `1`
+  to `0`, which makes `V14__travel_override.sql`'s inline comment ("a floor of 1 in
+  this slice — issue #132 lowers it to 0") describe the opposite of the current rule.
+- Expected vs actual: expected to be able to correct a stale SQL *comment* — no DDL,
+  no behaviour, purely documentation for whoever reads the schema history. Actual:
+  Flyway checksums the whole file, so editing even a comment makes every database that
+  already ran `V14` fail validation on the next start. The comment is effectively
+  frozen at the moment it was written, in the one file whose whole job is to explain
+  the schema to a future reader.
+- Workaround used: left `V14` untouched and documented the real rule where it can be
+  maintained — `QuantityOverride`'s Javadoc and ADR-0024. The migration's comment is
+  knowingly stale.
+- Evidence: `V14__travel_override.sql` still reads "with a floor of 1 in this slice";
+  the domain now accepts `0`. No repair-vs-checksum fight was risked.
+- Impact: a foreseeable one for any migration comment that forward-references a later
+  slice ("#132 lowers it to 0"). Such a comment is guaranteed to go stale and can
+  never be fixed.
+- Suggested improvement: keep migration comments strictly descriptive of *what this
+  migration does* and never forward-reference a future change — point at the ADR or
+  the domain type for the living rule instead.
+- Owner / next step: convention noted here; worth a line in the migration guidance if
+  one is ever written.
