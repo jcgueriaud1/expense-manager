@@ -120,6 +120,14 @@ an **overrides-stripped** copy for its calculated baseline — the same call dec
   plausible), and `ReportDetailView.pendingTravelReceipts` is pruned to match so no
   stale `GeneratedLineRef` reaches the service. The pre-existing case — a trip edit
   that drops a kind entirely — is unchanged and out of scope here.
+- **A suppressed line still needs a row** (found while implementing #132). Removing
+  the line is the point, but a kind whose row simply vanished would leave the user no
+  record of what they dropped and no way back to *Reset to calculated*. So the costing
+  returns the suppressed kinds separately — `TravelDto.suppressedLines`, rebuilt from
+  the overrides-stripped baseline on load too — and the detail view draws them after
+  the earned rows: badged "Removed", at €0.00, with the reason and the statutory count.
+  They are views only; nothing persists them and no total sums them, so the earned-line
+  gate stays the single arbiter of what a report contains.
 - **An overridden line silently re-prices when an admin edits the year's rates.**
   The override is a count and rate changes move the unit price, so decision 6 never
   fires. Correct, but it means an override can outlive a rate change unnoticed.

@@ -1778,3 +1778,40 @@ Deployment/Observability · UX-spec
   `browser_fill_form` skip only the failing field instead of aborting the batch).
 - Owner / next step: documented in `docs/manual-verification.md`'s Playwright
   pattern; no product change.
+
+### F-055 — A Vaadin `Dialog` opened from inside an open `Dialog` is added under the active modal, out of reach of the browserless tester
+- Date: 2026-07-28
+- Area: Vaadin / Testing
+- Severity: Medium
+- Task being attempted: issue #132 — asking the user to confirm before a zero Quantity
+  Override removes a generated line that carries a Receipt. The first implementation
+  raised the confirm from inside `GeneratedLineOverrideDialog.submit()` and kept the
+  override editor open behind it, so cancelling would return the user to the count they
+  had typed.
+- Expected vs actual: expected the confirm to open on top and be findable like any
+  other dialog. Actual: the confirm never appears as a UI child. `Dialog.open()`
+  auto-adds through `UI.add()`, which routes a new child to the UI's *active modal
+  component* when there is one — so the confirm was parented to the still-open override
+  dialog. `UI.getCurrent().getElement().getTextRecursively()` returned only the outer
+  dialog's text and `findButton().withText("Remove line and delete receipt").exists()`
+  was `false`; a probe over the UI's `Dialog` children found exactly one. Nothing throws
+  and nothing is logged — the second dialog is simply unreachable, in a test and (being
+  outside the modal's focus scope) for a keyboard or screen-reader user too.
+- Workaround used: close the first dialog before opening the second — `close()` then
+  `confirmReceiptDestruction(...)`. The confirm is then a normal top-level dialog, the
+  tester finds it, and the cancel path is assertable. The cost is the typed count: a
+  cancel returns to the report, not to a still-filled editor.
+- Evidence: this ticket. `PROBE dialogs=[Calculated: 1 meal1 × €13.50 = €13.50]` — one
+  dialog attached, the outer one — while the submit probe confirmed the confirm branch
+  had run (`suppresses=true hasReceipt=true`). Related but distinct from F-053, which is
+  about the dev-toolbar swallowing the *first* overlay over a modal.
+- Impact: cost roughly half an hour of blind debugging, because the symptom (a click
+  that appears to do nothing) points at the click, the value or the condition rather
+  than at dialog parenting. It also quietly rules out the "keep the editor open behind
+  the question" pattern for any two-step destructive flow in this app.
+- Suggested Vaadin/product improvement: `Dialog.open()` should attach to the `UI`
+  rather than to the active modal component (or warn when it does the latter) — a modal
+  dialog opened from a modal dialog is a common confirm pattern, and being silently
+  parented into the component it is meant to sit above is never what the caller wants.
+- Owner / next step: none for the product; the "close, then confirm" shape is the
+  documented pattern for this codebase's destructive two-step flows.

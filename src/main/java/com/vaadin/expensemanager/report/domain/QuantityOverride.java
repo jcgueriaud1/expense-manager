@@ -28,18 +28,24 @@ import jakarta.persistence.Embeddable;
  * partial-day cap of one) belong to {@link Travel}, which alone knows the map key
  * — see {@link #assertValidFor}.
  *
- * <p>The floor is {@code 1} in this slice (issue #131). Issue #132 drops it to
- * {@code 0}, which suppresses the line, together with the receipt-destruction
- * warning that behaviour requires.
+ * <p>The floor is {@code 0} (issue #132), and zero is not a degenerate count but
+ * the point: it {@linkplain #suppresses() suppresses} the line, which is the only
+ * way to express a correction the trip inputs cannot — keep the full days but drop
+ * the leftover partial one, or remove a meal allowance without disturbing anything
+ * else. Suppression needs no special path: a zero count makes the spec
+ * {@linkplain GeneratedLineSpec#isEarned() unearned}, so the existing gate drops it
+ * and the aggregate orphan-removes the line. Because the {@code receipt} table
+ * cascades on that delete, the <em>UI</em> confirms first when the line carries one
+ * — the domain is not where an irrecoverable file deletion is negotiated.
  */
 @Embeddable
 public class QuantityOverride {
 
     /**
-     * The smallest count an override may claim. {@code 1} here (issue #131) —
-     * issue #132 lowers it to {@code 0} so an override can suppress its line.
+     * The smallest count an override may claim: {@code 0}, which suppresses the
+     * line entirely (issue #132) rather than rescaling it.
      */
-    private static final BigDecimal MINIMUM = BigDecimal.ONE;
+    private static final BigDecimal MINIMUM = BigDecimal.ZERO;
 
     @Column(name = "quantity", nullable = false, precision = 19, scale = 2)
     private BigDecimal quantity;
@@ -52,7 +58,8 @@ public class QuantityOverride {
     }
 
     /**
-     * @param quantity the claimed count — a whole number, at least {@link #MINIMUM}
+     * @param quantity the claimed count — a whole number, at least {@link #MINIMUM};
+     *                 {@code 0} suppresses the line ({@link #suppresses()})
      * @param reason   why the calculated count does not fit the trip (required)
      * @throws DomainRuleException if the count is missing, fractional or below the
      *                             floor, or the reason is blank
@@ -109,6 +116,15 @@ public class QuantityOverride {
     /** Why the calculated count does not fit the trip — non-blank, trimmed. */
     public String reason() {
         return reason;
+    }
+
+    /**
+     * Whether this override <strong>removes</strong> its line rather than rescaling
+     * it — a claimed count of zero (issue #132). The one place the "zero means gone"
+     * reading lives, so neither the costing nor the UI re-derives it from arithmetic.
+     */
+    public boolean suppresses() {
+        return quantity.signum() == 0;
     }
 
     private static BigDecimal requireWholeCount(BigDecimal value) {

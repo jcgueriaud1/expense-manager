@@ -109,32 +109,66 @@ public class TravelCosting {
      */
     public TravelDto withComputedLines(TravelDto input) {
         GeneratedLineTypes types = resolveTypes();
-        var baselines = calculatedQuantities(input, types);
+        var baselines = calculatedBaselines(input, types);
         var views = earnedLines(input, types).stream()
                 .map(spec -> toView(spec, input, baselines)).toList();
-        return input.withGeneratedLines(views);
+        return input.withGeneratedLines(views, suppressedLines(input, baselines));
     }
 
     /**
-     * The calculated (pre-override) quantity per kind — the statutory baseline a row
-     * shows beside an overridden figure. Empty when the trip carries no override, so
+     * The calculated (pre-override) spec per kind — the statutory baseline a row shows
+     * beside an overridden figure, and the whole description of a line a zero override
+     * {@linkplain QuantityOverride#suppresses() suppressed} (issue #132), which has no
+     * earned spec of its own left to read. Empty when the trip carries no override, so
      * an ordinary trip costs nothing extra.
      */
-    public Map<GeneratedLineKind, BigDecimal> calculatedQuantities(TravelDto trip) {
-        return calculatedQuantities(trip, null);
+    public Map<GeneratedLineKind, GeneratedLineSpec> calculatedBaselines(TravelDto trip) {
+        return calculatedBaselines(trip, null);
     }
 
-    private Map<GeneratedLineKind, BigDecimal> calculatedQuantities(TravelDto trip,
+    private Map<GeneratedLineKind, GeneratedLineSpec> calculatedBaselines(TravelDto trip,
             GeneratedLineTypes resolved) {
         if (trip.quantityOverrides().isEmpty()) {
             return Map.of();
         }
         GeneratedLineTypes types = resolved == null ? resolveTypes() : resolved;
-        var baselines = new EnumMap<GeneratedLineKind, BigDecimal>(
+        var baselines = new EnumMap<GeneratedLineKind, GeneratedLineSpec>(
                 GeneratedLineKind.class);
         earnedLines(trip.withoutQuantityOverrides(), types)
-                .forEach(spec -> baselines.put(spec.kind(), spec.quantity()));
+                .forEach(spec -> baselines.put(spec.kind(), spec));
         return baselines;
+    }
+
+    /**
+     * The lines a zero override <strong>removed</strong> from the report, in kind
+     * order (issue #132) — each one a view at quantity {@code 0} carrying the reason
+     * and the statutory count it replaced.
+     *
+     * <p>These are not lines: nothing persists them and no total sums them, which is
+     * exactly the point. They exist so the correction stays visible and reversible —
+     * a suppressed kind whose row simply vanished would leave the user no way back to
+     * "Reset to calculated" and no record that they had dropped anything. A kind the
+     * rules never awarded has no baseline and so no row: an override that removes
+     * nothing shows nothing.
+     */
+    public static List<GeneratedLineView> suppressedLines(TravelDto trip,
+            Map<GeneratedLineKind, GeneratedLineSpec> baselines) {
+        if (trip.quantityOverrides().isEmpty()) {
+            return List.of();
+        }
+        List<GeneratedLineView> suppressed = new ArrayList<>(1);
+        for (GeneratedLineKind kind : GeneratedLineKind.values()) {
+            QuantityOverride override = trip.quantityOverrides().get(kind);
+            GeneratedLineSpec baseline = baselines.get(kind);
+            if (override == null || !override.suppresses() || baseline == null) {
+                continue;
+            }
+            suppressed.add(GeneratedLineView
+                    .of(kind, baseline.expenseType().getName(), baseline.unitPrice(),
+                            BigDecimal.ZERO, baseline.vatRate().getValue(), null, null)
+                    .withOverride(override.reason(), baseline.quantity()));
+        }
+        return suppressed;
     }
 
     /**
@@ -207,6 +241,11 @@ public class TravelCosting {
      * when the rules awarded nothing ({@code !isEarned()}): an override rescales an
      * earned line, it never conjures one, so overriding a per-diem the trip is not
      * eligible for does nothing — and cannot break the per-diem/meal interlock.
+     *
+     * <p>A count of <strong>zero</strong> needs nothing here either (issue #132): the
+     * substituted spec is simply unearned, so {@link #addSpec} leaves it out and the
+     * aggregate orphan-removes any line of that kind — suppression is the earned-line
+     * gate doing its existing job, not a branch of its own.
      */
     private static GeneratedLineSpec applyOverride(GeneratedLineSpec calculated,
             QuantityOverride override) {
@@ -274,13 +313,19 @@ public class TravelCosting {
 
     /** A preview view of an earned generated line — no id or receipt yet. */
     private static GeneratedLineView toView(GeneratedLineSpec spec, TravelDto trip,
-            Map<GeneratedLineKind, BigDecimal> baselines) {
+            Map<GeneratedLineKind, GeneratedLineSpec> baselines) {
         var view = GeneratedLineView.of(spec.kind(), spec.expenseType().getName(),
                 spec.unitPrice(), spec.quantity(), spec.vatRate().getValue(),
                 spec.comment(), null);
         var override = trip.quantityOverrides().get(spec.kind());
         return override == null ? view
-                : view.withOverride(override.reason(), baselines.get(spec.kind()));
+                : view.withOverride(override.reason(),
+                        baselineQuantity(baselines.get(spec.kind())));
+    }
+
+    /** A baseline spec's count, or {@code null} when the baseline is unknown. */
+    static BigDecimal baselineQuantity(GeneratedLineSpec baseline) {
+        return baseline == null ? null : baseline.quantity();
     }
 
     /** Server-authoritative domestic per-diem for a trip's inputs (ADR-0006). */

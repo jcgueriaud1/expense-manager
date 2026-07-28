@@ -111,6 +111,17 @@ public record GeneratedLineView(GeneratedLineKind kind, String expenseTypeName,
     }
 
     /**
+     * Whether this view describes a line an override <strong>removed</strong> from the
+     * report — count zero (issue #132). Such a view is never a line: it is not
+     * persisted and no total sums it (its {@link #amount()} is zero anyway), it only
+     * keeps the correction visible and reversible on the detail screen. See
+     * {@link TravelDto#suppressedLines()}.
+     */
+    public boolean isSuppressed() {
+        return quantity.signum() == 0;
+    }
+
+    /**
      * The gross the calculator would have produced — {@code unit price × calculated
      * quantity} — for the row's "calculated" baseline; {@code null} when the baseline
      * is unknown or the line is not overridden.

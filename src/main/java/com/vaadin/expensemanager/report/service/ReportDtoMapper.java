@@ -1,6 +1,5 @@
 package com.vaadin.expensemanager.report.service;
 
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -11,6 +10,7 @@ import java.util.stream.Collectors;
 import com.vaadin.expensemanager.report.domain.ExpenseLine;
 import com.vaadin.expensemanager.report.domain.ExpenseReport;
 import com.vaadin.expensemanager.report.domain.GeneratedLineKind;
+import com.vaadin.expensemanager.report.domain.GeneratedLineSpec;
 import com.vaadin.expensemanager.report.domain.StatusChange;
 import com.vaadin.expensemanager.report.domain.Travel;
 
@@ -122,8 +122,12 @@ public class ReportDtoMapper {
      * Annotates each overridden generated line with the reason the user gave and the
      * count the calculator produced (ADR-0024) — the two facts the row needs to render
      * a real "Overridden" badge and a real baseline rather than parsing the comment
-     * string. This is the one seam <strong>both</strong> load paths pass through, so
-     * the owner and the approver see the same thing.
+     * string, and reconstructs the rows for the kinds a zero override
+     * {@linkplain com.vaadin.expensemanager.report.domain.QuantityOverride#suppresses()
+     * removed} (issue #132) — a suppressed kind has no persisted line to read, so its
+     * whole row comes from the recomputed baseline. This is the one seam
+     * <strong>both</strong> load paths pass through, so the owner and the approver see
+     * the same thing.
      *
      * <p>The baseline is recomputed by costing an overrides-stripped copy of the trip.
      * That needs the trip-year rates and the allowance expense types, which a
@@ -132,9 +136,9 @@ public class ReportDtoMapper {
      * and reason still render, only "what the rules said" is missing.
      */
     private TravelDto withOverrideDetail(TravelDto dto) {
-        Map<GeneratedLineKind, BigDecimal> baselines;
+        Map<GeneratedLineKind, GeneratedLineSpec> baselines;
         try {
-            baselines = travelCosting.calculatedQuantities(dto);
+            baselines = travelCosting.calculatedBaselines(dto);
         } catch (RuntimeException uncostable) {
             log.warn("Could not recompute the calculated baseline for travel {}; "
                     + "showing the override without it.", dto.id(), uncostable);
@@ -143,10 +147,11 @@ public class ReportDtoMapper {
         var annotated = new ArrayList<GeneratedLineView>(dto.generatedLines().size());
         for (GeneratedLineView line : dto.generatedLines()) {
             var override = dto.quantityOverrides().get(line.kind());
-            annotated.add(override == null ? line
-                    : line.withOverride(override.reason(), baselines.get(line.kind())));
+            annotated.add(override == null ? line : line.withOverride(override.reason(),
+                    TravelCosting.baselineQuantity(baselines.get(line.kind()))));
         }
-        return dto.withGeneratedLines(annotated);
+        return dto.withGeneratedLines(annotated,
+                TravelCosting.suppressedLines(dto, baselines));
     }
 
     private static ExpenseLineDto toLineDto(ExpenseLine line,

@@ -1480,6 +1480,159 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
                 .isOverridden()).isFalse();
     }
 
+    // --- Zero override: suppression and the receipt cascade (ADR-0024, issue #132) ---
+    //
+    // Zero removes the line, and the line's receipt goes with it — a DATABASE-level
+    // cascade (receipt.expense_line_id ... on delete cascade) that no assertion above
+    // this layer can see, since ExpenseLine holds no back-reference to walk.
+
+    @Test
+    void aZeroOverrideRemovesTheLineAndDropsTheSubtotalAndTheTotal() {
+        // 55 h → 2 full days (€108.00) + 1 partial (€25.00). Drop the leftover day —
+        // the correction the trip inputs cannot express: shortening the return would
+        // also cost a full day.
+        var trip = domesticTravel(null, DEP, DEP.plusHours(55), false, false)
+                .withQuantityOverride(GeneratedLineKind.PER_DIEM_PARTIAL,
+                        new QuantityOverride(BigDecimal.ZERO, "the leftover was travel"));
+
+        var id = service.create(dtoWithTravels(LocalDate.of(2026, 7, 10), List.of(trip)));
+
+        var loaded = service.findMine(id);
+        // No line at all for that kind — not a €0.00 one.
+        assertThat(loaded.travels().getFirst()
+                .generatedLine(GeneratedLineKind.PER_DIEM_PARTIAL)).isEmpty();
+        assertThat(loaded.travels().getFirst().generatedLines()).hasSize(1);
+        assertThat(loaded.perDiemTotal()).isEqualByComparingTo("108.00");
+        assertThat(loaded.total()).isEqualByComparingTo("108.00");
+        // Nothing was persisted for it either: the aggregate orphan-removed the row.
+        assertThat(jdbcTemplate.queryForObject("select count(*) from expense_line "
+                + "where generated_kind = 'PER_DIEM_PARTIAL' and travel_id in "
+                + "(select id from travel where report_id = ?)", Integer.class, id))
+                .isZero();
+        // The override itself stays — it is the trip input that explains the absence,
+        // and it is what "Reset to calculated" removes.
+        assertThat(loaded.travels().getFirst().quantityOverrides())
+                .containsKey(GeneratedLineKind.PER_DIEM_PARTIAL);
+    }
+
+    @Test
+    void previewOffersASuppressedKindAsARowWithItsBaselineSoTheScreenCanShowIt() {
+        // A removed line has no earned spec left, so the row the user needs — badge,
+        // reason, and what the rules had awarded — comes from the recomputed baseline.
+        var trip = domesticTravel(null, DEP, DEP.plusHours(55), false, false)
+                .withQuantityOverride(GeneratedLineKind.PER_DIEM_FULL,
+                        new QuantityOverride(BigDecimal.ZERO, "all of it was personal"));
+
+        var preview = service.previewTravel(trip);
+
+        assertThat(preview.generatedLine(GeneratedLineKind.PER_DIEM_FULL)).isEmpty();
+        assertThat(preview.amountOf(GeneratedLineKind.PER_DIEM_FULL))
+                .isEqualByComparingTo("0.00");
+        var suppressed = preview.suppressedLines();
+        assertThat(suppressed).hasSize(1);
+        assertThat(suppressed.getFirst().kind()).isEqualTo(GeneratedLineKind.PER_DIEM_FULL);
+        assertThat(suppressed.getFirst().isSuppressed()).isTrue();
+        assertThat(suppressed.getFirst().amount()).isEqualByComparingTo("0.00");
+        assertThat(suppressed.getFirst().overrideReason())
+                .isEqualTo("all of it was personal");
+        assertThat(suppressed.getFirst().calculatedQuantity()).isEqualByComparingTo("2.00");
+        assertThat(suppressed.getFirst().unitPrice()).isEqualByComparingTo("54.00");
+    }
+
+    @Test
+    void suppressingALineDeletesItsReceiptRowFromTheDatabase() {
+        // A meal allowance carrying a receipt — exactly the line a user is likely to
+        // have attached one to, which is why the UI confirms before this happens.
+        var id = service.create(
+                dtoWithTravels(LocalDate.of(2026, 7, 10), List.of(
+                        domesticTravel(null, DEP, DEP.plusHours(11), ZERO, true, ZERO,
+                                true))),
+                Map.of(),
+                Map.of(new GeneratedLineRef(0, GeneratedLineKind.MEAL),
+                        new ReceiptUpload(JPEG, "lunch.jpg")));
+        var loaded = service.findMine(id);
+        var meal = loaded.travels().getFirst()
+                .generatedLine(GeneratedLineKind.MEAL).orElseThrow();
+        Long receiptId = meal.receiptId();
+        Long lineId = meal.lineId();
+        assertThat(receiptId).isNotNull();
+
+        // The save that suppresses the line is a new request in production — a fresh
+        // persistence context that has never loaded the Receipt entity. This test's
+        // single transaction has, and a managed Receipt pointing at a line Hibernate is
+        // deleting is exactly the reference the database (not the ORM) is responsible
+        // for cleaning up: keeping it around would raise a TransientPropertyValueException
+        // that no user could ever hit. So detach first, and let the cascade do its job.
+        entityManager.flush();
+        entityManager.clear();
+
+        // Set the count to zero: the line goes, and the receipt goes with it.
+        var suppressed = domesticTravel(loaded.travels().getFirst().id(), DEP,
+                DEP.plusHours(11), ZERO, true, ZERO, true)
+                .withQuantityOverride(GeneratedLineKind.MEAL,
+                        new QuantityOverride(BigDecimal.ZERO, "the lunch was hosted"));
+        service.update(id, dtoWithTravels(id, LocalDate.of(2026, 7, 10),
+                loaded.version(), List.of(suppressed)), loaded.version());
+        entityManager.flush();
+
+        var after = service.findMine(id);
+        assertThat(after.travels().getFirst().generatedLine(GeneratedLineKind.MEAL))
+                .isEmpty();
+        assertThat(after.mealTotal()).isEqualByComparingTo("0.00");
+        assertThat(after.total()).isEqualByComparingTo("0.00");
+        // The cascade is the point: assert the receipt row is gone from the table,
+        // not merely that no DTO mentions it. Nothing above the database would notice
+        // an orphaned blob left behind.
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from receipt where id = ?", Integer.class, receiptId))
+                .isZero();
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from expense_line where id = ?", Integer.class, lineId))
+                .isZero();
+        assertThat(receiptRepository.findById(receiptId)).isEmpty();
+    }
+
+    @Test
+    void removingTheZeroOverrideRestoresTheLineAtItsStatutoryCount() {
+        var id = service.create(dtoWithTravels(LocalDate.of(2026, 7, 10), List.of(
+                domesticTravel(null, DEP, DEP.plusHours(55), false, false)
+                        .withQuantityOverride(GeneratedLineKind.PER_DIEM_FULL,
+                                new QuantityOverride(BigDecimal.ZERO, "personal trip")))));
+        var loaded = service.findMine(id);
+        assertThat(loaded.perDiemTotal()).isEqualByComparingTo("25.00"); // partial only
+
+        // "Reset to calculated" on a suppressed kind: the trip is untouched, the
+        // override simply stops being sent, and the line is regenerated statutorily.
+        var reset = domesticTravel(loaded.travels().getFirst().id(), DEP,
+                DEP.plusHours(55), false, false);
+        service.update(id, dtoWithTravels(id, LocalDate.of(2026, 7, 10),
+                loaded.version(), List.of(reset)), loaded.version());
+
+        var after = service.findMine(id);
+        var full = after.travels().getFirst()
+                .generatedLine(GeneratedLineKind.PER_DIEM_FULL).orElseThrow();
+        assertThat(full.quantity()).isEqualByComparingTo("2.00");
+        assertThat(full.isOverridden()).isFalse();
+        assertThat(after.travels().getFirst().suppressedLines()).isEmpty();
+        assertThat(after.perDiemTotal()).isEqualByComparingTo("133.00");
+    }
+
+    @Test
+    void aZeroOverrideOnAKindTheTripNeverEarnedRemovesNothingAndShowsNothing() {
+        // Suppression rides the same "never conjures a line" rule: there is nothing to
+        // remove, so there is no row and no phantom €0.00 anywhere.
+        var trip = domesticTravel(null, DEP, DEP.plusHours(11), ZERO, true, ZERO, true)
+                .withQuantityOverride(GeneratedLineKind.PER_DIEM_FULL,
+                        new QuantityOverride(BigDecimal.ZERO, "not eligible anyway"));
+
+        var preview = service.previewTravel(trip);
+
+        assertThat(preview.generatedLine(GeneratedLineKind.PER_DIEM_FULL)).isEmpty();
+        assertThat(preview.suppressedLines()).isEmpty();
+        // The meal allowance the trip does earn is untouched.
+        assertThat(preview.amountOf(GeneratedLineKind.MEAL)).isEqualByComparingTo("13.50");
+    }
+
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);
 
     private static TravelDto domesticTravel(Long id, LocalDateTime departure,

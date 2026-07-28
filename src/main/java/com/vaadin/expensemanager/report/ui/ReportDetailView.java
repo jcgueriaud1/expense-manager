@@ -6,7 +6,9 @@ import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Predicate;
+import java.util.stream.Stream;
 
 import com.vaadin.expensemanager.approval.service.ApprovalService;
 import com.vaadin.expensemanager.base.DomainRuleException;
@@ -659,23 +661,46 @@ public class ReportDetailView extends VerticalLayout
         new TravelEditorDialog(before, service::previewTravel,
                 service::foreignDestinations, updated -> {
             entry.set(mergeReceipts(before, updated));
-            var kinds = updated.generatedLines().stream()
-                    .map(GeneratedLineView::kind).toList();
-            pendingTravelReceipts.keySet().removeIf(
-                    key -> key.travel().equals(entry) && !kinds.contains(key.kind()));
+            pruneBufferedReceipts(entry, updated);
         }).open();
     }
 
-    /** Carries each still-present kind's receipt summary from {@code before} onto {@code updated}. */
+    /**
+     * Carries each still-present kind's receipt summary from {@code before} onto
+     * {@code updated} — the suppressed rows included, so the working copy keeps saying
+     * what the database still holds until a save actually deletes it (issue #132).
+     */
     private static TravelDto mergeReceipts(TravelDto before, TravelDto updated) {
-        var merged = updated.generatedLines().stream()
-                .map(line -> before.generatedLine(line.kind())
-                        .filter(GeneratedLineView::hasReceipt)
-                        .map(old -> line.withReceipt(old.receiptId(), old.receiptFilename(),
-                                old.receiptContentType(), old.receiptSizeBytes()))
-                        .orElse(line))
-                .toList();
-        return updated.withGeneratedLines(merged);
+        return updated.withGeneratedLines(carryReceipts(before, updated.generatedLines()),
+                carryReceipts(before, updated.suppressedLines()));
+    }
+
+    private static List<GeneratedLineView> carryReceipts(TravelDto before,
+            List<GeneratedLineView> lines) {
+        return lines.stream().map(line -> receiptFor(before, line)
+                .map(old -> line.withReceipt(old.receiptId(), old.receiptFilename(),
+                        old.receiptContentType(), old.receiptSizeBytes()))
+                .orElse(line)).toList();
+    }
+
+    /**
+     * The receipt {@code before} carried on one line's kind, looked up across both its
+     * earned and its suppressed rows — a kind can move between the two as the count is
+     * dropped to zero and reset, and the receipt should survive that as long as the
+     * database does.
+     *
+     * <p>A <em>suppressed</em> row keeps only a receipt the database already holds: a
+     * buffered one's bytes were pruned along with the line
+     * ({@link #pruneBufferedReceipts}), so carrying its filename onward would name a
+     * file that no longer exists anywhere.
+     */
+    private static Optional<GeneratedLineView> receiptFor(TravelDto before,
+            GeneratedLineView line) {
+        return Stream.concat(before.generatedLines().stream(),
+                        before.suppressedLines().stream())
+                .filter(old -> old.kind() == line.kind() && old.hasReceipt())
+                .filter(old -> !line.isSuppressed() || old.receiptId() != null)
+                .findFirst();
     }
 
     /** Opens the receipt editor for one of a trip's generated lines (Phase 4.3). */
@@ -985,6 +1010,11 @@ public class ReportDetailView extends VerticalLayout
             generatedList.removeAll();
             trip.generatedLines()
                     .forEach(line -> generatedList.add(generatedLineRow(entry, line)));
+            // The kinds an override dropped (issue #132) follow the earned lines: they
+            // are not lines and no total sums them, but they keep the correction
+            // visible and its "Reset to calculated" reachable.
+            trip.suppressedLines()
+                    .forEach(line -> generatedList.add(generatedLineRow(entry, line)));
         });
 
         var group = new VerticalLayout(card, generatedList);
@@ -1032,6 +1062,13 @@ public class ReportDetailView extends VerticalLayout
      * given, and the statutory baseline the calculator produced, in place of the
      * composed comment — which restates all three and would only repeat the row. The
      * amount and the {@code qty × unit} breakdown are already the effective ones.
+     *
+     * <p>The same renderer draws a {@linkplain GeneratedLineView#isSuppressed()
+     * suppressed} kind (issue #132) — a row for a line that no longer exists: badged
+     * "Removed", at €0.00, with the reason and what the rules had awarded, and with no
+     * receipt affordance, since agreeing to the removal was agreeing to lose the file.
+     * Its override and reset actions are the ordinary ones, which is how a dropped
+     * line stays reversible.
      */
     private Component generatedLineRow(ValueSignal<TravelDto> entry,
             GeneratedLineView line) {
@@ -1047,7 +1084,9 @@ public class ReportDetailView extends VerticalLayout
         texts.setSpacing(false);
         if (line.isOverridden()) {
             // Text, never colour alone (ADR-0020) — the badge carries its own label.
-            var badge = new Badge("Overridden");
+            // A suppressed line says so plainly: "Removed" is the whole story, and
+            // "Overridden" beside it would understate a line that is gone (#132).
+            var badge = new Badge(line.isSuppressed() ? "Removed" : "Overridden");
             badge.addThemeVariants(BadgeVariant.SMALL, BadgeVariant.WARNING);
             heading.add(badge);
             texts.add(mutedXs("Reason: " + line.overrideReason()));
@@ -1060,7 +1099,10 @@ public class ReportDetailView extends VerticalLayout
         amount.addClassName("line-amount");
         var receipt = new Div();
         receipt.addClassName("line-receipt");
-        if (line.hasReceipt()) {
+        // A suppressed row shows no receipt: the file is on its way out, and the user
+        // agreed to that. The summary is still carried on the view ({@link #receiptFor})
+        // so resetting the count restores what the database in fact still holds.
+        if (line.hasReceipt() && !line.isSuppressed()) {
             receipt.add(receiptCardPreview(line.receiptId(), line.receiptFilename(),
                     line.receiptContentType(),
                     pendingTravelReceipts.get(new TravelReceiptKey(entry, line.kind()))));
@@ -1068,8 +1110,8 @@ public class ReportDetailView extends VerticalLayout
         var amounts = new VerticalLayout(amount);
         // The km line is a multiple, so it reads "12.5 × €0.55 = €6.88" like a
         // multi-unit manual card; the flat kinds are quantity 1 and show nothing
-        // extra (ADR-0023).
-        if (line.showsQuantity()) {
+        // extra (ADR-0023). A suppressed line's "0 × …" would only restate its €0.00.
+        if (line.showsQuantity() && !line.isSuppressed()) {
             var quantity = new Span(quantityBreakdown(line.quantity(), line.unitPrice()));
             quantity.addClassName("muted-xs");
             amounts.add(quantity);
@@ -1091,15 +1133,22 @@ public class ReportDetailView extends VerticalLayout
         row.expand(body);
         row.addClassName("line-card");
         row.addClassName("travel-line-row");
+        if (line.isSuppressed()) {
+            row.addClassName("travel-line-suppressed");
+        }
         if (editable) {
-            var attach = new Button(line.hasReceipt() ? "Receipt" : "Add receipt",
-                    VaadinIcon.PAPERCLIP.create());
-            attach.addThemeVariants(ButtonVariant.TERTIARY, ButtonVariant.SMALL);
-            attach.addClickListener(event -> openTravelLineReceipt(entry, line));
-            attach.getElement().setAttribute("aria-label",
-                    (line.hasReceipt() ? "Edit receipt: " : "Add receipt: ")
-                            + ReportViewSupport.generatedLineLabel(line.kind()));
-            var actions = new HorizontalLayout(attach);
+            var actions = new HorizontalLayout();
+            // Nothing to attach a receipt to on a line that is no longer there.
+            if (!line.isSuppressed()) {
+                var attach = new Button(line.hasReceipt() ? "Receipt" : "Add receipt",
+                        VaadinIcon.PAPERCLIP.create());
+                attach.addThemeVariants(ButtonVariant.TERTIARY, ButtonVariant.SMALL);
+                attach.addClickListener(event -> openTravelLineReceipt(entry, line));
+                attach.getElement().setAttribute("aria-label",
+                        (line.hasReceipt() ? "Edit receipt: " : "Add receipt: ")
+                                + ReportViewSupport.generatedLineLabel(line.kind()));
+                actions.add(attach);
+            }
             actions.setPadding(false);
             actions.setSpacing("var(--vaadin-gap-xs)");
             actions.setAlignItems(FlexComponent.Alignment.CENTER);
@@ -1149,6 +1198,12 @@ public class ReportDetailView extends VerticalLayout
      * amount, the per-diem subtotal and the report total follow immediately — before
      * the report is saved. Receipts already attached are carried across by kind, as
      * on the trip-edit path.
+     *
+     * <p>A zero override removes the line, so the buffered receipt for that kind is
+     * <strong>pruned</strong> with it (issue #132) — exactly as a trip edit prunes the
+     * kinds it stops earning. Without that, a not-yet-saved receipt would outlive the
+     * line the user just dropped and re-attach itself the moment they reset the count,
+     * having already been promised it was deleted.
      */
     private void applyOverride(ValueSignal<TravelDto> entry, GeneratedLineKind kind,
             QuantityOverride override) {
@@ -1157,10 +1212,25 @@ public class ReportDetailView extends VerticalLayout
         var corrected = override == null ? before.withoutQuantityOverride(kind)
                 : before.withQuantityOverride(kind, override);
         try {
-            entry.set(mergeReceipts(before, service.previewTravel(corrected)));
+            var recosted = service.previewTravel(corrected);
+            entry.set(mergeReceipts(before, recosted));
+            pruneBufferedReceipts(entry, recosted);
         } catch (RuntimeException ex) {
             surface(ex);
         }
+    }
+
+    /**
+     * Drops every buffered receipt for a kind {@code recosted} no longer earns, so no
+     * stale generated-line reference reaches the service on save (ADR-0021). Shared by
+     * the trip-edit path (a kind the new inputs stop earning) and the override path (a
+     * kind a zero count suppressed).
+     */
+    private void pruneBufferedReceipts(ValueSignal<TravelDto> entry, TravelDto recosted) {
+        var earned = recosted.generatedLines().stream().map(GeneratedLineView::kind)
+                .toList();
+        pendingTravelReceipts.keySet().removeIf(
+                key -> key.travel().equals(entry) && !earned.contains(key.kind()));
     }
 
     /** A muted extra line under a generated row's label. */
@@ -1175,11 +1245,11 @@ public class ReportDetailView extends VerticalLayout
      * claimed. Empty when the baseline could not be recomputed for a loaded report
      * (the badge and reason still show).
      */
-    private static java.util.Optional<String> calculatedBaseline(GeneratedLineView line) {
+    private static Optional<String> calculatedBaseline(GeneratedLineView line) {
         if (line.calculatedQuantity() == null) {
-            return java.util.Optional.empty();
+            return Optional.empty();
         }
-        return java.util.Optional.of("Calculated: "
+        return Optional.of("Calculated: "
                 + quantityBreakdown(line.calculatedQuantity(), line.unitPrice()));
     }
 

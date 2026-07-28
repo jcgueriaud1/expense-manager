@@ -19,6 +19,10 @@ import com.vaadin.flow.component.datetimepicker.DateTimePicker;
 import com.vaadin.flow.component.html.Image;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.textfield.IntegerField;
+
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.security.test.context.support.WithUserDetails;
 
@@ -37,6 +41,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @WithUserDetails(LocalUserSeeder.PLAIN_USER_EMAIL)
 class ReportDetailViewUiTest extends AbstractReportViewUiTest {
+
+    /** For detaching between simulated requests — see {@link #seedMealTravelWithReceipt}. */
+    @PersistenceContext
+    private EntityManager entityManager;
 
     @Test
     void newReportSaveWithDefaultsPersistsTodayDatedDraftAndRoutesToId() {
@@ -1032,21 +1040,6 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
     }
 
     @Test
-    void theCountFieldTakesWholeNumbersAtOrAboveTheFloor() {
-        // Integrality is enforced at the widget (an IntegerField) and the floor with
-        // it; the domain enforces both again on save. The tester refuses to set an
-        // out-of-range value, so assert the constraint that makes that so (F-021).
-        var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(55));
-        navigate(ReportDetailView.class, id);
-
-        findButton().withAriaLabel("Override count: Per diem allowance (full day)")
-                .click();
-
-        var count = (IntegerField) findIntegerField().withLabel("Count").getComponent();
-        assertThat(count.getMin()).isEqualTo(1);
-    }
-
-    @Test
     void kilometreAndParkingLinesOfferNoOverride() {
         // Their numbers are trip inputs with a single home — edited on the trip.
         var id = seedReportWithFullTravel(LocalDate.of(2026, 7, 10), DEP,
@@ -1144,6 +1137,237 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findIntegerField().withLabel("Count").setValue(count);
         findTextArea().withLabel("Reason for the override").setValue(reason);
         findButton().withText("Save override").click();
+    }
+
+    // --- Zero suppresses the line, with the receipt-destruction confirm (issue #132) ---
+    //
+    // Setting the count to 0 drops the line from the report — the only way to express
+    // a correction the trip inputs cannot. When the line carries a receipt, dropping it
+    // destroys the file irrecoverably (the receipt table cascades on the line delete),
+    // so the user is asked first and the dialog names the file.
+
+    @Test
+    void aZeroCountRemovesTheLineFromTheReportAndTheTotalsFollow() {
+        // 55 h → 2 full days (€108.00) + 1 partial (€25.00). Drop the leftover day.
+        var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(55));
+        navigate(ReportDetailView.class, id);
+        assertThat(getCurrentView().getElement().getTextRecursively())
+                .contains("€133.00");
+
+        overrideCount("Per diem allowance (partial day)", 0, "the leftover was travel");
+
+        // The row stays on screen, but badged "Removed" and at €0.00 — so the user can
+        // see what they dropped, why, and what the rules had said. The live subtotal
+        // and total are the full days alone.
+        var shown = getCurrentView().getElement().getTextRecursively();
+        assertThat(shown).contains("Removed", "Reason: the leftover was travel",
+                "Calculated: 1 × €25.00 = €25.00", "€108.00");
+        assertThat(shown).doesNotContain("€133.00");
+
+        findButton().withText("Save").click();
+
+        var loaded = service.findMine(id);
+        assertThat(loaded.perDiemTotal()).isEqualByComparingTo("108.00");
+        assertThat(loaded.total()).isEqualByComparingTo("108.00");
+        assertThat(loaded.travels().getFirst()
+                .generatedLine(GeneratedLineKind.PER_DIEM_PARTIAL)).isEmpty();
+    }
+
+    @Test
+    void aZeroCountOnALineWithNoReceiptDoesNotPrompt() {
+        var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(55));
+        navigate(ReportDetailView.class, id);
+
+        overrideCount("Per diem allowance (partial day)", 0, "the leftover was travel");
+
+        // No confirm was raised and the removal took effect straight away — there is
+        // no file to lose, so there is nothing to ask about.
+        assertThat(findButton().withText("Remove line and delete receipt").exists())
+                .isFalse();
+        assertThat(findButton().withText("Save override").exists()).isFalse();
+        assertThat(getCurrentView().getElement().getTextRecursively())
+                .contains("Removed");
+    }
+
+    @Test
+    void suppressingALineWithAReceiptAsksFirstAndNamesTheFile() {
+        var id = seedMealTravelWithReceipt("lunch.jpg");
+        navigate(ReportDetailView.class, id);
+        // Precondition: the line really carries the receipt the confirm is about.
+        assertThat(findButton().withAriaLabel("Preview receipt: lunch.jpg").exists())
+                .isTrue();
+
+        setMealCountToZero("the lunch was hosted");
+
+        // The question stands on its own — the override editor has closed behind it —
+        // and it names the line, the file, and that the deletion is permanent.
+        assertThat(findButton().withText("Remove line and delete receipt").exists())
+                .isTrue();
+        assertThat(UI.getCurrent().getElement().getTextRecursively()).contains(
+                "removes Meal allowance", "lunch.jpg", "will be deleted with it",
+                "permanently", "cannot be undone");
+
+        findButton().withText("Remove line and delete receipt").click();
+
+        // The line is gone from the working copy and the meal subtotal with it.
+        var shown = getCurrentView().getElement().getTextRecursively();
+        assertThat(shown).contains("Removed", "Reason: the lunch was hosted");
+        assertThat(findButton().withAriaLabel("Preview receipt: lunch.jpg").exists())
+                .isFalse();
+
+        findButton().withText("Save").click();
+
+        var loaded = service.findMine(id);
+        assertThat(loaded.travels().getFirst().generatedLine(GeneratedLineKind.MEAL))
+                .isEmpty();
+        assertThat(loaded.mealTotal()).isEqualByComparingTo("0.00");
+        assertThat(loaded.total()).isEqualByComparingTo("0.00");
+    }
+
+    @Test
+    void cancellingTheReceiptConfirmLeavesBothTheLineAndItsReceiptUntouched() {
+        var id = seedMealTravelWithReceipt("lunch.jpg");
+        navigate(ReportDetailView.class, id);
+
+        setMealCountToZero("the lunch was hosted");
+        findButton().withText("Keep the line").click();
+
+        // Nothing was corrected: the line is still there at its statutory €13.50, its
+        // receipt still previewable, and no override was recorded.
+        var shown = getCurrentView().getElement().getTextRecursively();
+        assertThat(shown).contains("€13.50").doesNotContain("Removed");
+        assertThat(findButton().withAriaLabel("Preview receipt: lunch.jpg").exists())
+                .isTrue();
+        assertThat(findButton().withAriaLabel("Reset to calculated: Meal allowance")
+                .exists()).isFalse();
+
+        var loaded = service.findMine(id);
+        var meal = loaded.travels().getFirst()
+                .generatedLine(GeneratedLineKind.MEAL).orElseThrow();
+        assertThat(meal.hasReceipt()).isTrue();
+        assertThat(meal.receiptFilename()).isEqualTo("lunch.jpg");
+        assertThat(loaded.mealTotal()).isEqualByComparingTo("13.50");
+    }
+
+    @Test
+    void resetToCalculatedRestoresASuppressedLineAtItsStatutoryCount() {
+        var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(55));
+        navigate(ReportDetailView.class, id);
+        overrideCount("Per diem allowance (full day)", 0, "the whole trip was personal");
+        findButton().withText("Save").click();
+
+        // Reloading proves the removal is reachable after a round-trip too: the row is
+        // reconstructed from the persisted override, reset and all.
+        navigate(ReportDetailView.class, id);
+        assertThat(service.findMine(id).perDiemTotal()).isEqualByComparingTo("25.00");
+
+        findButton().withAriaLabel("Reset to calculated: Per diem allowance (full day)")
+                .click();
+
+        var shown = getCurrentView().getElement().getTextRecursively();
+        assertThat(shown).contains("2 × €54.00 = €108.00", "€133.00")
+                .doesNotContain("Removed");
+
+        findButton().withText("Save").click();
+
+        var loaded = service.findMine(id);
+        assertThat(loaded.perDiemTotal()).isEqualByComparingTo("133.00");
+        assertThat(loaded.travels().getFirst().quantityOverrides()).isEmpty();
+        assertThat(loaded.travels().getFirst()
+                .generatedLine(GeneratedLineKind.PER_DIEM_FULL).orElseThrow()
+                .quantity()).isEqualByComparingTo("2.00");
+        // The trip itself was never touched.
+        assertThat(loaded.travels().getFirst().returnAt()).isEqualTo(DEP.plusHours(55));
+    }
+
+    @Test
+    void aBufferedReceiptIsPrunedWithTheLineItWasAttachedTo() {
+        // The receipt is attached but the report is not saved, so the bytes are only
+        // buffered in the view. Suppressing the line must drop them: otherwise the
+        // reference would outlive the line and re-attach itself on the way back — after
+        // the user was told the receipt would be deleted.
+        var id = seedReportWithMealTravel(LocalDate.of(2026, 7, 10), DEP,
+                DEP.plusHours(11));
+        navigate(ReportDetailView.class, id);
+        findButton().withAriaLabel("Add receipt: Meal allowance").click();
+        findUpload().upload("lunch.jpg", "image/jpeg", jpegBytes());
+        findButton().withText("Save receipt").click();
+        assertThat(findButton().withAriaLabel("Preview receipt: lunch.jpg").exists())
+                .isTrue();
+
+        setMealCountToZero("the lunch was hosted");
+        findButton().withText("Remove line and delete receipt").click();
+
+        // Back to the calculated count: the line returns, the pruned receipt does not.
+        findButton().withAriaLabel("Reset to calculated: Meal allowance").click();
+        assertThat(findButton().withAriaLabel("Preview receipt: lunch.jpg").exists())
+                .isFalse();
+
+        findButton().withText("Save").click();
+
+        var meal = service.findMine(id).travels().getFirst()
+                .generatedLine(GeneratedLineKind.MEAL).orElseThrow();
+        assertThat(meal.hasReceipt()).isFalse();
+    }
+
+    @Test
+    void everyOverridableKindsCountFieldFloorsAtZero() {
+        // The floor is enforced at the widget as well as in the domain, and it is 0 for
+        // all three overridable kinds — a partial day is capped above, never below.
+        var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(55));
+        navigate(ReportDetailView.class, id);
+
+        for (String label : List.of("Per diem allowance (full day)",
+                "Per diem allowance (partial day)")) {
+            findButton().withAriaLabel("Override count: " + label).click();
+            var count = (IntegerField) findIntegerField().withLabel("Count").getComponent();
+            assertThat(count.getMin()).as(label).isEqualTo(0);
+            assertThat(count.getHelperText()).as(label).contains("0 removes this line");
+            findButton().withText("Cancel").click();
+        }
+
+        var mealId = seedReportWithMealTravel(LocalDate.of(2026, 7, 10), DEP,
+                DEP.plusHours(11));
+        navigate(ReportDetailView.class, mealId);
+        findButton().withAriaLabel("Override count: Meal allowance").click();
+        assertThat(((IntegerField) findIntegerField().withLabel("Count").getComponent())
+                .getMin()).isEqualTo(0);
+    }
+
+    /**
+     * Sets the meal allowance's count to zero and confirms the override, leaving any
+     * receipt-destruction question open for the caller to answer.
+     */
+    private void setMealCountToZero(String reason) {
+        findButton().withAriaLabel("Override count: Meal allowance").click();
+        findIntegerField().withLabel("Count").setValue(0);
+        findTextArea().withLabel("Reason for the override").setValue(reason);
+        findButton().withText("Save override").click();
+    }
+
+    /**
+     * Seeds a saved report whose meal-allowance generated line carries a persisted
+     * receipt — the case the receipt-destruction confirm exists for.
+     *
+     * <p>Ends by detaching everything. Each click is its own transaction and its own
+     * persistence context in the running app ({@code spring.jpa.open-in-view=false}),
+     * so the session that later deletes this line has never loaded its {@code Receipt}
+     * — which is what lets the database's {@code on delete cascade} clean it up. This
+     * test's single rollback transaction would otherwise keep that Receipt managed and
+     * Hibernate would refuse the delete with a TransientPropertyValueException no user
+     * could reach.
+     */
+    private Long seedMealTravelWithReceipt(String filename) {
+        var id = seedReportWithMealTravel(LocalDate.of(2026, 7, 10), DEP,
+                DEP.plusHours(11));
+        navigate(ReportDetailView.class, id);
+        findButton().withAriaLabel("Add receipt: Meal allowance").click();
+        findUpload().upload(filename, "image/jpeg", jpegBytes());
+        findButton().withText("Save receipt").click();
+        findButton().withText("Save").click();
+        entityManager.flush();
+        entityManager.clear();
+        return id;
     }
 
     // --- Meal-allowance / eligibility checkbox coupling (issue #93) ---

@@ -27,6 +27,10 @@ import com.vaadin.expensemanager.report.domain.QuantityOverride;
  * ADR-0024): the user's corrected <em>count</em> per generated-line kind, with a
  * mandatory reason. The client sends the count; the service applies it after the
  * calculator has run, so the money in {@link #generatedLines} stays the server's.
+ * A <strong>zero</strong> count removes the line (issue #132), so that kind leaves
+ * {@link #generatedLines} — where no total can reach it — and reappears in
+ * {@link #suppressedLines}, which exists only so the screen can show what was dropped
+ * and offer the way back. Nothing persists or sums a suppressed line.
  *
  * <p>{@link #id} is the reconciliation key (ADR-0019): {@code null} for a
  * not-yet-persisted trip the service will insert, non-null for one it will match
@@ -48,13 +52,15 @@ import com.vaadin.expensemanager.report.domain.QuantityOverride;
  * @param parkingFees             parking fees paid (a VAT-bearing expense)
  * @param quantityOverrides       the trip's Quantity Overrides by kind (never null)
  * @param generatedLines          the server-computed lines this trip earns (never null)
+ * @param suppressedLines         the kinds a zero override removed (never null)
  */
 public record TravelDto(Long id, LocalDateTime departureAt, LocalDateTime returnAt,
         String destinations, String purpose, String country,
         boolean notEligibleForAllowance, boolean freeLunch, boolean chargeToCustomer,
         BigDecimal kilometres, boolean payMealAllowance, BigDecimal parkingFees,
         Map<GeneratedLineKind, QuantityOverride> quantityOverrides,
-        List<GeneratedLineView> generatedLines) {
+        List<GeneratedLineView> generatedLines,
+        List<GeneratedLineView> suppressedLines) {
 
     /** The sentinel country a domestic (Finnish) trip is costed against. */
     public static final String DOMESTIC_COUNTRY = "Finland";
@@ -63,6 +69,26 @@ public record TravelDto(Long id, LocalDateTime departureAt, LocalDateTime return
         quantityOverrides = quantityOverrides == null ? Map.of()
                 : Map.copyOf(quantityOverrides);
         generatedLines = generatedLines == null ? List.of() : List.copyOf(generatedLines);
+        suppressedLines = suppressedLines == null ? List.of()
+                : List.copyOf(suppressedLines);
+    }
+
+    /**
+     * Every trip constructor that predates issue #132 — the {@code suppressedLines}
+     * list is derived, never entered, so a caller building a trip from inputs (a
+     * dialog, a test, the load path before costing) leaves it empty and the costing
+     * fills it in.
+     */
+    public TravelDto(Long id, LocalDateTime departureAt, LocalDateTime returnAt,
+            String destinations, String purpose, String country,
+            boolean notEligibleForAllowance, boolean freeLunch, boolean chargeToCustomer,
+            BigDecimal kilometres, boolean payMealAllowance, BigDecimal parkingFees,
+            Map<GeneratedLineKind, QuantityOverride> quantityOverrides,
+            List<GeneratedLineView> generatedLines) {
+        this(id, departureAt, returnAt, destinations, purpose, country,
+                notEligibleForAllowance, freeLunch, chargeToCustomer, kilometres,
+                payMealAllowance, parkingFees, quantityOverrides, generatedLines,
+                List.of());
     }
 
     /**
@@ -93,11 +119,24 @@ public record TravelDto(Long id, LocalDateTime departureAt, LocalDateTime return
                 payMealAllowance, parkingFees);
     }
 
-    /** This trip with its computed generated lines attached (preview / load path). */
+    /**
+     * This trip with its computed generated lines attached (preview / load path),
+     * keeping any {@link #suppressedLines} already worked out.
+     */
     public TravelDto withGeneratedLines(List<GeneratedLineView> generatedLines) {
+        return withGeneratedLines(generatedLines, suppressedLines);
+    }
+
+    /**
+     * This trip with both halves of the costing attached: the lines it earns and the
+     * kinds a zero override removed (issue #132).
+     */
+    public TravelDto withGeneratedLines(List<GeneratedLineView> generatedLines,
+            List<GeneratedLineView> suppressedLines) {
         return new TravelDto(id, departureAt, returnAt, destinations, purpose, country,
                 notEligibleForAllowance, freeLunch, chargeToCustomer, kilometres,
-                payMealAllowance, parkingFees, quantityOverrides, generatedLines);
+                payMealAllowance, parkingFees, quantityOverrides, generatedLines,
+                suppressedLines);
     }
 
     /**
@@ -109,7 +148,8 @@ public record TravelDto(Long id, LocalDateTime departureAt, LocalDateTime return
             Map<GeneratedLineKind, QuantityOverride> overrides) {
         return new TravelDto(id, departureAt, returnAt, destinations, purpose, country,
                 notEligibleForAllowance, freeLunch, chargeToCustomer, kilometres,
-                payMealAllowance, parkingFees, overrides, generatedLines);
+                payMealAllowance, parkingFees, overrides, generatedLines,
+                suppressedLines);
     }
 
     /** This trip with one kind's Quantity Override set (replacing any prior one). */

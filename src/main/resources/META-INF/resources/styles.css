@@ -259,6 +259,19 @@
     white-space: nowrap;
 }
 
+/* A line a zero Quantity Override removed from the report (issue #132). It is kept
+   on screen so the correction stays visible and reversible, but it is no longer part
+   of the report, so it reads back: the label and its €0.00 are struck through and the
+   whole row is dimmed. Never the only signal — the row also carries a "Removed"
+   badge and the reason in text (ADR-0020). */
+.travel-line-suppressed {
+    opacity: 0.65;
+}
+.travel-line-suppressed .line-name,
+.travel-line-suppressed .line-amount {
+    text-decoration: line-through;
+}
+
 /* Below tablet width a generated line's three columns — label, amount, actions —
    no longer fit side by side, and the override actions would otherwise push the
    card off the screen. Stack the actions under the line instead (ADR-0020). */

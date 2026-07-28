@@ -12,6 +12,7 @@ import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.html.Div;
+import com.vaadin.flow.component.html.Paragraph;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.textfield.IntegerField;
 import com.vaadin.flow.component.textfield.TextArea;
@@ -29,6 +30,13 @@ import static com.vaadin.expensemanager.report.ui.ReportViewSupport.formatQuanti
  * server-computed, so what leaves this dialog is a count and a reason, never money.
  * The dialog shows the calculated baseline it is correcting, a whole-number count
  * field, and a <strong>mandatory</strong> reason.
+ *
+ * <p>The floor is <strong>zero</strong>, and zero is a real answer (issue #132): it
+ * drops the line from the report — the only way to say "keep the full days, lose the
+ * leftover partial one" or "no meal allowance after all". Because that deletion also
+ * destroys any {@code Receipt} attached to the line, and irrecoverably, the one case
+ * where both are true {@linkplain #confirmReceiptDestruction asks first and names the
+ * file} — as a second, separate dialog, this one having closed.
  *
  * <p>Validation follows the project rule (ADR-0020): the confirm button is
  * <strong>always enabled</strong>; a blank reason, a missing count, or a count the
@@ -65,12 +73,13 @@ final class GeneratedLineOverrideDialog extends Dialog {
 
         count.setRequiredIndicatorVisible(true);
         // A count of discrete days or meals: whole numbers only, never below the
-        // floor. The domain re-checks both, plus the per-kind cap.
-        count.setMin(1);
+        // floor — which is 0, and 0 means "drop this line" (issue #132). The domain
+        // re-checks both, plus the per-kind cap.
+        count.setMin(0);
         count.setStepButtonsVisible(true);
         count.setValue(line.quantity().intValue());
-        count.setHelperText(line.kind().isPerDiem()
-                ? "Whole days only." : "Whole meals only.");
+        count.setHelperText((line.kind().isPerDiem() ? "Whole days only."
+                : "Whole meals only.") + " 0 removes this line from the report.");
 
         reason.setRequiredIndicatorVisible(true);
         reason.setMaxLength(500);
@@ -114,6 +123,16 @@ final class GeneratedLineOverrideDialog extends Dialog {
      * Builds the override through the domain factory and hands it up, or surfaces the
      * domain's own message in the summary and keeps the dialog open (ADR-0020 — the
      * click is always allowed, the reason always shown).
+     *
+     * <p>A count of zero removes the line, and removing a line that carries a
+     * {@code Receipt} destroys the uploaded file: the {@code receipt} table cascades
+     * on the line delete at the database level, and nothing keeps a copy. So that one
+     * case asks first. This editor <strong>closes</strong> before the question is put,
+     * so the question stands alone: a dialog opened on top of an open one is added
+     * under the still-active modal rather than to the UI, which leaves it unreachable
+     * to a keyboard, a screen reader and the browserless tester alike (finding F-055).
+     * Cancelling the question therefore returns the user to the report with the line
+     * and its receipt exactly as they were — nothing is committed on the way through.
      */
     private void submit(GeneratedLineView line, Consumer<QuantityOverride> onSave) {
         errorSummary.clear();
@@ -121,10 +140,46 @@ final class GeneratedLineOverrideDialog extends Dialog {
         try {
             var override = QuantityOverride.of(line.kind(),
                     value == null ? null : BigDecimal.valueOf(value), reason.getValue());
-            onSave.accept(override);
-            close();
+            if (override.suppresses() && line.hasReceipt()) {
+                close();
+                confirmReceiptDestruction(line, () -> onSave.accept(override));
+                return;
+            }
+            commit(override, onSave);
         } catch (DomainRuleException invalid) {
             errorSummary.show(invalid.getMessage());
         }
+    }
+
+    private void commit(QuantityOverride override, Consumer<QuantityOverride> onSave) {
+        onSave.accept(override);
+        close();
+    }
+
+    /**
+     * Asks before an irrecoverable deletion, <strong>naming the file</strong> so the
+     * user knows exactly what they are about to lose — a meal allowance is precisely
+     * the line someone is likely to have attached a receipt to, so this is a real
+     * decision and not a formality. Cancelling does nothing at all.
+     */
+    private static void confirmReceiptDestruction(GeneratedLineView line,
+            Runnable onConfirmed) {
+        var dialog = new Dialog();
+        dialog.setHeaderTitle("Remove the line and delete its receipt?");
+        dialog.setWidth("26rem");
+        dialog.setMaxWidth("100%");
+        dialog.add(new Paragraph("A count of 0 removes " + line.kind().label()
+                + " from this report. The receipt attached to it — "
+                + line.receiptFilename()
+                + " — will be deleted with it, permanently. This cannot be undone."));
+
+        var confirm = new Button("Remove line and delete receipt", event -> {
+            dialog.close();
+            onConfirmed.run();
+        });
+        confirm.addThemeVariants(ButtonVariant.ERROR, ButtonVariant.PRIMARY);
+        var cancel = new Button("Keep the line", event -> dialog.close());
+        dialog.getFooter().add(cancel, confirm);
+        dialog.open();
     }
 }

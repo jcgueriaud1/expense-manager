@@ -606,7 +606,7 @@ class ExpenseReportTest {
         assertThat(report.perDiemTotal()).isEqualByComparingTo("0.00");
     }
 
-    // --- Quantity Override invariants (ADR-0024, issue #131) ---
+    // --- Quantity Override invariants (ADR-0024, issues #131 / #132) ---
     //
     // The pair (count, reason) is indivisible and lives in the value object; the
     // rules that depend on WHICH line is corrected — overridable kinds, the
@@ -621,14 +621,47 @@ class ExpenseReportTest {
         assertThatThrownBy(() -> new QuantityOverride(new BigDecimal("1.5"), "half"))
                 .isInstanceOf(DomainRuleException.class)
                 .hasMessageContaining("whole number");
-        // The floor is 1 in this slice; issue #132 lowers it to 0 (suppress the line).
-        assertThatThrownBy(() -> new QuantityOverride(BigDecimal.ZERO, "drop it"))
+        // The floor is 0 (issue #132) — a negative count is the only one refused.
+        assertThatThrownBy(() -> new QuantityOverride(new BigDecimal("-1"), "owe a day"))
                 .isInstanceOf(DomainRuleException.class)
-                .hasMessageContaining("less than 1");
+                .hasMessageContaining("less than 0");
 
         // A whole count at money scale round-trips.
         assertThat(new QuantityOverride(new BigDecimal("2"), "two days").quantity())
                 .isEqualByComparingTo("2.00");
+    }
+
+    @Test
+    void aZeroCountIsAcceptedForEveryOverridableKindAndSuppressesTheLine() {
+        // Issue #132: zero is the answer, not a rejected edge — it drops the line,
+        // which is the only way to express "keep the full days, lose the leftover
+        // partial one" or "no meal allowance after all".
+        for (GeneratedLineKind kind : List.of(GeneratedLineKind.PER_DIEM_FULL,
+                GeneratedLineKind.PER_DIEM_PARTIAL, GeneratedLineKind.MEAL)) {
+            var override = QuantityOverride.of(kind, BigDecimal.ZERO, "not claimed");
+            assertThat(override.quantity()).as(kind.name()).isEqualByComparingTo("0.00");
+            assertThat(override.suppresses()).as(kind.name()).isTrue();
+        }
+        // Any other count rescales rather than removes.
+        assertThat(new QuantityOverride(BigDecimal.ONE, "one day").suppresses()).isFalse();
+    }
+
+    @Test
+    void aTripAcceptsAZeroOverrideAsAnInputLikeAnyOther() {
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+
+        // No generated lines: a suppressed kind simply has none (the service's earned
+        // gate drops it), and the override still round-trips as a trip input.
+        report.reconcileTravels(List.of(travelSpecWith(null,
+                Map.of(GeneratedLineKind.PER_DIEM_PARTIAL,
+                        new QuantityOverride(BigDecimal.ZERO, "left the leftover")),
+                List.of())));
+
+        var stored = report.getTravels().getFirst().getQuantityOverrides()
+                .get(GeneratedLineKind.PER_DIEM_PARTIAL);
+        assertThat(stored.quantity()).isEqualByComparingTo("0.00");
+        assertThat(stored.suppresses()).isTrue();
+        assertThat(report.getLines()).isEmpty();
     }
 
     @Test
