@@ -1840,3 +1840,45 @@ Deployment/Observability · UX-spec
   `LocalReportSeeder` (a 55 h domestic trip earning full + partial days, and a
   not-eligible trip earning a meal allowance with a receipt) and label them like the
   existing ones. Not done here: it is a change to a seeder outside #132's scope.
+
+### F-057 — A browserless dialog's words are invisible in `UI.getElement().getTextRecursively()` — silently, and only sometimes
+- Date: 2026-07-29
+- Area: Verification
+- Severity: Medium
+- Task being attempted: asserting the text of the new clear-your-override confirm
+  (issue #133) in `ReportDetailViewUiTest` — a dialog opened *over* the still-open
+  `TravelEditorDialog`, so a stacked overlay.
+- Expected vs actual: expected the repo's established pattern —
+  `assertThat(UI.getCurrent().getElement().getTextRecursively()).contains(…)`, used by
+  a dozen dialog tests here — to see the confirm's paragraphs. Actual: that string
+  carries **neither the view's text** (it is `""` on a plain report screen with a
+  full report rendered) **nor a just-opened dialog's**. A probe showed the trip
+  dialog's own content appearing there only *after* a subsequent interaction
+  (`setValue` on a field), and the confirm's content never — while
+  `findButton().withText("Keep editing").click()` located and clicked a button inside
+  that very confirm. So the locator DSL sees the dialog and the text API does not.
+- Workaround used: read the dialog, not the UI —
+  `findDialog().components().stream().filter(Dialog::isOpened)`, pick the one whose
+  `getElement().getTextRecursively()` contains a phrase only it uses (the trip editor
+  is still open behind the confirm, so "the dialog" is ambiguous), and assert on that.
+  Header titles are a property, not text, so they need `Dialog::getHeaderTitle`.
+  Wrapped as `openDialogSaying` / `clearingConfirm` / `tripPreviewText` in the test.
+- Evidence: this ticket — six new tests failed with `Expecting actual: ""` or with
+  only the *other* dialog's text, while the behaviour they asserted was working (the
+  browser run confirmed it). Probe output: `ui text (no dialog): []` beside a
+  1 000-character view; `ui text (trip editor open): []` beside a dialog whose own
+  `getTextRecursively()` returned the full preview.
+- Impact: the failure mode is an empty string, which reads as "the dialog says
+  nothing" — i.e. it looks like a product bug in the code under test. Worse, the
+  existing passing tests are passing *by luck of an extra interaction*: the same
+  assertion is one refactor away from silently asserting against `""`. Any test that
+  asserts dialog copy should read the dialog.
+- Suggested Vaadin/product improvement: either make `UI.getElement()
+  .getTextRecursively()` include attached overlay content deterministically, or give
+  the browserless DSL an explicit `text()` on the locators (e.g.
+  `findDialog().text()`) so the reliable path is the obvious one. Failing an assert
+  on an empty tree is a third option: an empty `getTextRecursively()` on a UI that
+  has children is never what the caller meant.
+- Owner / next step: documented here and in the test's javadoc; folded the
+  IntegerField half of the same class of problem into
+  `docs/manual-verification.md`'s Playwright pattern (below).
