@@ -259,6 +259,20 @@
     white-space: nowrap;
 }
 
+/* A generated line the owner dropped with a zero-count override (issue #132). It is
+   a placeholder for something that is NOT on the report, so it must not read as a
+   line that counts: no surface fill, a dashed edge, and the label at secondary
+   weight. It still has to carry its reason and the way back, so it stays legible
+   rather than merely faded. */
+.travel-line-removed {
+    border-style: dashed;
+    background: transparent;
+}
+.travel-line-removed .line-name {
+    color: var(--vaadin-text-color-secondary);
+    font-weight: var(--aura-font-weight-regular);
+}
+
 /* Below tablet width a generated line's three columns — label, amount, actions —
    no longer fit side by side, and the override actions would otherwise push the
    card off the screen. Stack the actions under the line instead (ADR-0020). */

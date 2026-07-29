@@ -621,14 +621,41 @@ class ExpenseReportTest {
         assertThatThrownBy(() -> new QuantityOverride(new BigDecimal("1.5"), "half"))
                 .isInstanceOf(DomainRuleException.class)
                 .hasMessageContaining("whole number");
-        // The floor is 1 in this slice; issue #132 lowers it to 0 (suppress the line).
-        assertThatThrownBy(() -> new QuantityOverride(BigDecimal.ZERO, "drop it"))
+        // The floor is 0 (issue #132) — below it there is nothing to claim.
+        assertThatThrownBy(() -> new QuantityOverride(new BigDecimal("-1"), "negative"))
                 .isInstanceOf(DomainRuleException.class)
-                .hasMessageContaining("less than 1");
+                .hasMessageContaining("less than 0");
 
         // A whole count at money scale round-trips.
         assertThat(new QuantityOverride(new BigDecimal("2"), "two days").quantity())
                 .isEqualByComparingTo("2.00");
+    }
+
+    @Test
+    void aZeroCountIsAValidOverrideThatSuppressesItsLine() {
+        // Zero is the point of the floor, not an edge of it (issue #132): it is how a
+        // user says "drop this line", which the trip inputs cannot express. It still
+        // needs a reason like any other correction.
+        var suppression = new QuantityOverride(BigDecimal.ZERO, "the leftover day");
+        assertThat(suppression.quantity()).isEqualByComparingTo("0.00");
+        assertThat(suppression.isSuppression()).isTrue();
+        assertThat(new QuantityOverride(BigDecimal.ONE, "one day").isSuppression())
+                .isFalse();
+        assertThatThrownBy(() -> new QuantityOverride(BigDecimal.ZERO, "  "))
+                .isInstanceOf(DomainRuleException.class)
+                .hasMessageContaining("reason");
+
+        // A suppression is accepted for every overridable kind, the partial-day cap
+        // included — zero is at or below every ceiling.
+        var report = new ExpenseReport(OWNER, LocalDate.of(2026, 7, 10), null);
+        report.reconcileTravels(List.of(travelSpecWith(null, Map.of(
+                GeneratedLineKind.PER_DIEM_FULL, suppression,
+                GeneratedLineKind.PER_DIEM_PARTIAL, suppression,
+                GeneratedLineKind.MEAL, suppression), List.of())));
+        assertThat(report.getTravels().getFirst().getQuantityOverrides())
+                .containsOnlyKeys(GeneratedLineKind.PER_DIEM_FULL,
+                        GeneratedLineKind.PER_DIEM_PARTIAL, GeneratedLineKind.MEAL);
+        assertThat(report.getLines()).isEmpty();
     }
 
     @Test
