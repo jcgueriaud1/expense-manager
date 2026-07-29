@@ -5,13 +5,19 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.Year;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
 import java.util.function.UnaryOperator;
 
 import com.vaadin.expensemanager.base.DomainRuleException;
 import com.vaadin.expensemanager.base.ui.ErrorSummary;
+import com.vaadin.expensemanager.report.domain.GeneratedLineKind;
+import com.vaadin.expensemanager.report.domain.QuantityOverride;
 import com.vaadin.expensemanager.report.service.GeneratedLineView;
 import com.vaadin.expensemanager.report.service.TravelDto;
 import com.vaadin.flow.component.button.Button;
@@ -23,6 +29,7 @@ import com.vaadin.flow.component.datetimepicker.DateTimePicker.DateTimePickerI18
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.html.Div;
+import com.vaadin.flow.component.html.Paragraph;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.textfield.BigDecimalField;
 import com.vaadin.flow.component.textfield.TextField;
@@ -54,6 +61,17 @@ import static com.vaadin.expensemanager.report.ui.ReportViewSupport.generatedLin
  * year. Picking Finland keeps the domestic per-diem; picking a foreign country
  * costs the per-diem against that country's rate. The list is year-dependent, so it
  * refreshes whenever the departure's year changes.
+ *
+ * <p><strong>The preview shows what the trip inputs produce</strong> — the
+ * <em>calculated</em> figures, never the effective ones (ADR-0024, issue #133).
+ * Where a {@linkplain QuantityOverride Quantity Override} is in force the preview
+ * line says so, so the two numbers on screen (the preview's and the report row's)
+ * are never confusing; and because the preview is the calculation, a
+ * {@code "3 → 5 days"} clearing warning reads against it. Saving an edit that moves
+ * the calculated count for an overridden kind therefore <strong>clears that kind's
+ * override</strong> — {@linkplain #confirmClearing behind a confirm} naming the kind,
+ * the change and what is being discarded. Cancelling that confirm abandons the save
+ * and leaves the trip, and the override, exactly as they were.
  */
 final class TravelEditorDialog extends Dialog {
 
@@ -265,20 +283,64 @@ final class TravelEditorDialog extends Dialog {
         getFooter().add(cancel, save);
     }
 
-    /** Commits the trip with its server-authoritative per-diem (dialog "Save"). */
+    /**
+     * Validates the form, then commits the trip with its server-authoritative
+     * allowances (dialog "Save") — asking first when the recalculation would clear a
+     * Quantity Override (issue #133). Validation follows ADR-0020: never a disabled
+     * button, so invalid input lands in the error summary instead.
+     */
     private void onSave(Consumer<TravelDto> onSave) {
-        TravelDto computed = validateAndCompute();
-        if (computed != null) {
-            onSave.accept(computed);
-            close();
+        errorSummary.clear();
+        if (!binder.writeBeanIfValid(model)) {
+            preview.setVisible(false);
+            errorSummary.showValidationErrors(binder.validate());
+            return;
+        }
+        try {
+            // The calculated ("after") trip: the edited inputs with no override in
+            // force, which is both what the preview shows and one half of the
+            // comparison below.
+            var calculated = costPreview.apply(inputFromModel());
+            var cleared = clearedOverrides(calculated);
+            if (cleared.isEmpty()) {
+                commit(onSave, calculated, existingOverrides());
+                return;
+            }
+            confirmClearing(cleared, () -> {
+                try {
+                    commit(onSave, calculated, surviving(cleared));
+                } catch (DomainRuleException invalid) {
+                    errorSummary.show(invalid.getMessage());
+                }
+            });
+        } catch (DomainRuleException ex) {
+            // An invalid trip (a domain rule — e.g. return before departure) lands in
+            // the summary. A technical failure (e.g. no rate configured for the year)
+            // propagates to the global UiErrorHandler as the generic dialog (issue #86).
+            preview.setVisible(false);
+            errorSummary.show(ex.getMessage());
         }
     }
 
     /**
+     * Hands the edited trip out with {@code overrides} in force, re-costed
+     * <strong>server-side</strong> so the committed trip carries the effective
+     * figures the report row shows (the client never computes money). No override
+     * left standing means the calculated trip already is that answer.
+     */
+    private void commit(Consumer<TravelDto> onSave, TravelDto calculated,
+            Map<GeneratedLineKind, QuantityOverride> overrides) {
+        onSave.accept(overrides.isEmpty() ? calculated
+                : costPreview.apply(calculated.withQuantityOverrides(overrides)));
+        close();
+    }
+
+    /**
      * Recomputes and shows the live allowance preview from the current inputs. The
-     * amounts are always the server's ({@link #costPreview}); the preview hides
-     * while the dates are incomplete or the range is invalid (Save surfaces any
-     * reason).
+     * amounts are always the server's ({@link #costPreview}) and always the
+     * <em>calculated</em> ones — overrides are stripped, and annotated on the line
+     * instead (ADR-0024). The preview hides while the dates are incomplete or the
+     * range is invalid (Save surfaces any reason).
      */
     private void refreshPreview(LocalDateTime departure, LocalDateTime returnAt,
             String country, String destinations, String purpose, boolean notEligible,
@@ -288,10 +350,9 @@ final class TravelEditorDialog extends Dialog {
             preview.setVisible(false);
             return;
         }
-        var input = withExistingOverrides(TravelDto.of(
-                existing == null ? null : existing.id(), departure, returnAt,
-                destinations, purpose, country, notEligible, freeLunch,
-                chargeToCustomer, kilometres, payMeal, parkingFees));
+        var input = TravelDto.of(existing == null ? null : existing.id(), departure,
+                returnAt, destinations, purpose, country, notEligible, freeLunch,
+                chargeToCustomer, kilometres, payMeal, parkingFees);
         try {
             renderPreview(costPreview.apply(input));
         } catch (IllegalArgumentException | IllegalStateException invalid) {
@@ -300,41 +361,27 @@ final class TravelEditorDialog extends Dialog {
     }
 
     /**
-     * Validates the form and computes the per-diem server-side (ADR-0020: never a
-     * disabled button — invalid input lands in the error summary instead).
-     *
-     * @return the trip with its computed per-diem, or {@code null} if invalid
+     * The trip the validated form describes, carrying <strong>no</strong> Quantity
+     * Override — so previewing it yields the calculated baseline the inputs alone
+     * produce (ADR-0024). The overrides are put back, minus any this edit clears, when
+     * the trip is {@linkplain #commit committed}.
      */
-    private TravelDto validateAndCompute() {
-        errorSummary.clear();
-        if (!binder.writeBeanIfValid(model)) {
-            preview.setVisible(false);
-            errorSummary.showValidationErrors(binder.validate());
-            return null;
-        }
-        var input = withExistingOverrides(TravelDto.of(
-                existing == null ? null : existing.id(), model.getDepartureAt(),
-                model.getReturnAt(), model.getDestinations(), model.getPurpose(),
-                model.getCountry(), model.isNotEligibleForAllowance(),
-                model.isFreeLunch(), model.isChargeToCustomer(), model.getKilometres(),
-                model.isPayMealAllowance(), model.getParkingFees()));
-        try {
-            return costPreview.apply(input);
-        } catch (DomainRuleException ex) {
-            // An invalid trip (a domain rule — e.g. return before departure) lands in
-            // the summary. A technical failure (e.g. no rate configured for the year)
-            // propagates to the global UiErrorHandler as the generic dialog (issue #86).
-            preview.setVisible(false);
-            errorSummary.show(ex.getMessage());
-            return null;
-        }
+    private TravelDto inputFromModel() {
+        return TravelDto.of(existing == null ? null : existing.id(),
+                model.getDepartureAt(), model.getReturnAt(), model.getDestinations(),
+                model.getPurpose(), model.getCountry(),
+                model.isNotEligibleForAllowance(), model.isFreeLunch(),
+                model.isChargeToCustomer(), model.getKilometres(),
+                model.isPayMealAllowance(), model.getParkingFees());
     }
 
     /**
-     * Shows the computed trip outputs below the form: one line per non-zero
-     * allowance/expense (per-diem, kilometre, meal, parking) with its breakdown,
-     * plus a grand-total heading — or a "no allowances" note when the trip earns
-     * nothing (Phase 4.3).
+     * Shows the <em>calculated</em> trip outputs below the form: one line per non-zero
+     * allowance/expense (per-diem, kilometre, meal, parking) with its breakdown, plus
+     * a grand-total heading — or a "no allowances" note when the trip earns nothing
+     * (Phase 4.3). A kind carrying a Quantity Override gets an extra note saying so,
+     * so the user is not confused by the preview and the report showing different
+     * numbers (ADR-0024).
      */
     private void renderPreview(TravelDto trip) {
         preview.removeAll();
@@ -348,8 +395,19 @@ final class TravelEditorDialog extends Dialog {
         heading.addClassName("travel-preview-amount");
         preview.add(heading);
 
-        trip.generatedLines().forEach(line -> addPreviewLine(
-                generatedLineLabel(line.kind()), line.amount(), line.comment()));
+        trip.generatedLines().forEach(line -> {
+            addPreviewLine(generatedLineLabel(line.kind()), line.amount(),
+                    line.comment());
+            overrideNote(line.kind()).ifPresent(this::addPreviewNote);
+        });
+        // An override on a kind the trip earns nothing for has no preview line to
+        // annotate, so it gets its own note — otherwise a suppressed line would
+        // vanish from the dialog without explanation.
+        existingOverrides().keySet().stream()
+                .filter(kind -> trip.generatedLine(kind).isEmpty())
+                .sorted()
+                .forEach(kind -> overrideNote(kind).ifPresent(note ->
+                        addPreviewNote(generatedLineLabel(kind) + " — " + note)));
         preview.setVisible(true);
     }
 
@@ -359,11 +417,30 @@ final class TravelEditorDialog extends Dialog {
         line.addClassName("travel-preview-line");
         preview.add(line);
         if (explanation != null) {
-            var detail = new Span(explanation);
-            detail.addClassName("muted");
-            detail.addClassName("muted-xs");
-            preview.add(detail);
+            addPreviewNote(explanation);
         }
+    }
+
+    /** Adds one muted note under the preview line above it. */
+    private void addPreviewNote(String text) {
+        var detail = new Span(text);
+        detail.addClassName("muted");
+        detail.addClassName("muted-xs");
+        preview.add(detail);
+    }
+
+    /**
+     * "Overridden: 2 days on the report (the Wednesday was personal)" — what the
+     * report shows for a kind whose count the user corrected, beside what the rules
+     * calculate. Empty when the kind carries no override (ADR-0024).
+     */
+    private Optional<String> overrideNote(GeneratedLineKind kind) {
+        var override = existingOverrides().get(kind);
+        if (override == null) {
+            return Optional.empty();
+        }
+        return Optional.of("Overridden: " + claimOf(kind, override)
+                + " on the report (" + override.reason() + ")");
     }
 
     /**
@@ -380,16 +457,135 @@ final class TravelEditorDialog extends Dialog {
                 .setBadInputErrorMessage("Enter a valid date and time");
     }
 
+    // ------------------------------------- clearing an override on recalculation
+
     /**
-     * Carries the edited trip's existing Quantity Overrides onto the dialog's input,
-     * so a trip edit does not silently discard a correction the user made on a
-     * generated-line row (ADR-0024). Editing an override never changes the
-     * calculation, and a trip edit only clears an override — behind a confirm naming
-     * the change — when the recalculated count actually moves (issue #133).
+     * One Quantity Override this trip edit invalidates: the kind, the calculated count
+     * before and after the edit, and the correction being discarded (issue #133).
      */
-    private TravelDto withExistingOverrides(TravelDto input) {
-        return existing == null ? input
-                : input.withQuantityOverrides(existing.quantityOverrides());
+    private record ClearedOverride(GeneratedLineKind kind, BigDecimal was,
+            BigDecimal now, QuantityOverride override) {
+
+        /**
+         * Whether the recalculated count for this kind actually moved — the
+         * <strong>only</strong> trigger (ADR-0024). Not "a field changed", not even "a
+         * calculation-relevant field changed": a typo fixed in the purpose, or a
+         * departure nudged by a quarter of an hour the day count absorbs, leaves this
+         * false and the override alone. A confirm dialog that cries wolf gets clicked
+         * through, which is exactly the silent data loss it exists to prevent.
+         */
+        boolean countMoved() {
+            return was.compareTo(now) != 0;
+        }
+
+        /**
+         * "Per diem allowance (full day): calculated 3 → 5 days. Your override
+         * (2 days — "the Wednesday was personal") will be cleared." — the kind, the
+         * change, and what is discarded, in one sentence.
+         */
+        String sentence() {
+            return kind.label() + ": calculated " + count(was) + " → " + count(now) + " "
+                    + kind.countNoun(now.longValue()) + ". Your override ("
+                    + claimOf(kind, override) + " — \"" + override.reason()
+                    + "\") will be cleared.";
+        }
+    }
+
+    /**
+     * The overrides this edit invalidates, in kind order — each kind whose
+     * <em>calculated</em> count differs between the trip as it was and the trip as
+     * edited.
+     *
+     * <p>Both sides are read by previewing the trip with its overrides stripped, which
+     * is the {@link #costPreview} contract from issue #131 rather than a second service
+     * method: one call for the trip before the edit, and the {@code calculated} the save
+     * already has for after. A kind the trip no longer earns counts as {@code 0}, so an
+     * edit that drops a line clears the override standing on it too.
+     *
+     * @param calculated the edited trip previewed with no override in force
+     */
+    private List<ClearedOverride> clearedOverrides(TravelDto calculated) {
+        if (existingOverrides().isEmpty()) {
+            return List.of();
+        }
+        TravelDto before = costPreview.apply(existing.withoutQuantityOverrides());
+        return existingOverrides().entrySet().stream()
+                .map(entry -> new ClearedOverride(entry.getKey(),
+                        calculatedCount(before, entry.getKey()),
+                        calculatedCount(calculated, entry.getKey()), entry.getValue()))
+                .filter(ClearedOverride::countMoved)
+                .sorted(Comparator.comparing(ClearedOverride::kind))
+                .toList();
+    }
+
+    /** The count the rules awarded a kind, or zero if the trip earns no such line. */
+    private static BigDecimal calculatedCount(TravelDto calculated,
+            GeneratedLineKind kind) {
+        return calculated.generatedLine(kind).map(GeneratedLineView::quantity)
+                .orElse(BigDecimal.ZERO);
+    }
+
+    /** The edited trip's overrides — everything this edit does not clear. */
+    private Map<GeneratedLineKind, QuantityOverride> surviving(
+            List<ClearedOverride> cleared) {
+        var overrides = new EnumMap<GeneratedLineKind, QuantityOverride>(
+                GeneratedLineKind.class);
+        overrides.putAll(existingOverrides());
+        cleared.forEach(entry -> overrides.remove(entry.kind()));
+        return overrides;
+    }
+
+    /** The Quantity Overrides standing on the trip being edited (none for a new one). */
+    private Map<GeneratedLineKind, QuantityOverride> existingOverrides() {
+        return existing == null ? Map.of() : existing.quantityOverrides();
+    }
+
+    /**
+     * Asks before a trip edit discards a Quantity Override (ADR-0024 decision 6). The
+     * override is a standing correction to a specific calculated number ("2 full days,
+     * not the 3 you calculated"); once the edit moves that number the correction no
+     * longer applies to anything, so it goes — but never silently, and never without
+     * naming the change, because clearing it destroys the user's count <em>and</em> the
+     * reason they gave for it.
+     *
+     * <p>Cancelling ({@code Keep editing}) is a full retreat: the trip is not saved,
+     * the override stands, and the form is still there to be corrected or abandoned.
+     */
+    private void confirmClearing(List<ClearedOverride> cleared, Runnable proceed) {
+        var dialog = new Dialog();
+        dialog.setHeaderTitle(cleared.size() == 1 ? "Clear your override?"
+                : "Clear your overrides?");
+        // Capped to a readable measure, like the other confirms: unconstrained, these
+        // sentences render as ~100-character lines on a desktop viewport, the worst
+        // possible shape for the one thing the user must actually read.
+        dialog.setWidth("32rem");
+        dialog.setMaxWidth("100%");
+        dialog.add(new Paragraph("Saving this trip recalculates its allowances, and "
+                + (cleared.size() == 1 ? "the count you corrected is"
+                        : "the counts you corrected are")
+                + " no longer what the rules produce:"));
+        cleared.forEach(entry -> dialog.add(new Paragraph(entry.sentence())));
+
+        var confirm = new Button("Clear and save trip", event -> {
+            dialog.close();
+            proceed.run();
+        });
+        confirm.addThemeVariants(ButtonVariant.ERROR, ButtonVariant.PRIMARY);
+        var cancel = new Button("Keep editing", event -> dialog.close());
+        dialog.getFooter().add(cancel, confirm);
+        dialog.open();
+    }
+
+    /** The count an override claims — "2 days", or "no line" for a suppression. */
+    private static String claimOf(GeneratedLineKind kind, QuantityOverride override) {
+        return override.isSuppression() ? "no line"
+                : count(override.quantity()) + " "
+                        + kind.countNoun(override.quantity().longValue());
+    }
+
+    /** A count without trailing zeros — {@code "2"}, not {@code "2.00"}. */
+    private static String count(BigDecimal quantity) {
+        return quantity.stripTrailingZeros().toPlainString();
     }
 
     /** Blank a zero amount so an untouched money field shows empty, not "0.00". */

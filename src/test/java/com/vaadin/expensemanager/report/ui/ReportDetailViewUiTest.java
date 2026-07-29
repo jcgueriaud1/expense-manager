@@ -6,6 +6,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import com.vaadin.expensemanager.report.domain.GeneratedLineKind;
+import com.vaadin.expensemanager.report.domain.QuantityOverride;
 import com.vaadin.expensemanager.report.domain.ReportStatus;
 import com.vaadin.expensemanager.report.service.ReportDetailDto;
 import com.vaadin.expensemanager.report.service.TravelDto;
@@ -16,6 +17,7 @@ import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.checkbox.Checkbox;
 import com.vaadin.flow.component.datepicker.DatePicker;
 import com.vaadin.flow.component.datetimepicker.DateTimePicker;
+import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.html.Image;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.textfield.IntegerField;
@@ -1341,6 +1343,320 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findButton().withText("Save").click();
         entityManager.clear();
         return id;
+    }
+
+    // --- A trip edit clears the override it invalidates (issue #133) ---
+    //
+    // An override is a standing correction to a specific calculated number ("2 full
+    // days, not the 3 you calculated"). When a trip edit moves that number the
+    // correction no longer applies to anything, so saving the edit clears it — but
+    // asks first, naming the change. The trigger is deliberately narrow: per kind, and
+    // only when the RECALCULATED COUNT actually differs. A confirm that cries wolf gets
+    // clicked through, which is the silent data loss it exists to prevent.
+
+    @Test
+    void aTripEditThatMovesTheCalculatedCountConfirmsAndClearsTheOverride() {
+        // 55 h → 2 full days + 1 partial; the full days are overridden down to 1.
+        var id = seedOverriddenTravel(DEP.plusHours(55));
+
+        // Lengthen the trip to 79 h → 3 full days: the number the override corrected
+        // has moved, so the correction cannot stand.
+        editTripReturn(DEP.plusHours(79));
+
+        assertThat(clearingConfirm().getHeaderTitle()).isEqualTo("Clear your override?");
+        assertThat(dialogText(clearingConfirm())).contains(
+                "Per diem allowance (full day): calculated 2 → 3 days.",
+                "Your override (1 day — \"the Wednesday was personal\") "
+                        + "will be cleared.");
+        findButton().withText("Clear and save trip").click();
+
+        // The line is back to the statutory count, live: 3 × €54.00 + the partial day.
+        var shown = getCurrentView().getElement().getTextRecursively();
+        assertThat(shown).contains("3 × €54.00 = €162.00", "€187.00")
+                .doesNotContain("Overridden", "the Wednesday was personal");
+
+        findButton().withText("Save").click();
+
+        var trip = service.findMine(id).travels().getFirst();
+        assertThat(trip.quantityOverrides()).isEmpty();
+        assertThat(trip.returnAt()).isEqualTo(DEP.plusHours(79));
+        assertThat(service.findMine(id).perDiemTotal()).isEqualByComparingTo("187.00");
+    }
+
+    @Test
+    void cancellingTheClearingConfirmAbandonsTheTripSaveAndKeepsTheOverride() {
+        var id = seedOverriddenTravel(DEP.plusHours(55));
+
+        editTripReturn(DEP.plusHours(79));
+        findButton().withText("Keep editing").click();
+
+        // A full retreat: the trip editor is still open on the user's edit, and behind
+        // it the trip and its override are untouched (1 × €54.00 + €25.00 = €79.00).
+        assertThat(findButton().withText("Save trip").exists()).isTrue();
+        var shown = getCurrentView().getElement().getTextRecursively();
+        assertThat(shown).contains("Overridden",
+                "Reason: the Wednesday was personal", "€79.00");
+
+        // Abandon the trip edit, then save the report: nothing of the edit survived.
+        findButton().withText("Cancel").click();
+        findButton().withText("Save").click();
+
+        var trip = service.findMine(id).travels().getFirst();
+        assertThat(trip.returnAt()).isEqualTo(DEP.plusHours(55));
+        assertThat(trip.quantityOverrides()).containsKey(GeneratedLineKind.PER_DIEM_FULL);
+        assertThat(service.findMine(id).perDiemTotal()).isEqualByComparingTo("79.00");
+    }
+
+    @Test
+    void editingOnlyThePurposeOrDestinationsNeverPromptsAndNeverClears() {
+        var id = seedOverriddenTravel(DEP.plusHours(55));
+
+        findButton().withText("Edit").click();
+        findTextField().withLabel("Travel purpose").setValue("Client visit (Acme)");
+        findTextField().withLabel("Destinations").setValue("Helsinki, Espoo");
+        findButton().withText("Save trip").click();
+
+        // Nothing the calculation can see changed, so nothing is asked and nothing lost.
+        assertThat(findButton().withText("Clear and save trip").exists()).isFalse();
+        assertThat(getCurrentView().getElement().getTextRecursively())
+                .contains("Overridden", "Reason: the Wednesday was personal", "€79.00");
+
+        findButton().withText("Save").click();
+
+        var trip = service.findMine(id).travels().getFirst();
+        assertThat(trip.purpose()).isEqualTo("Client visit (Acme)");
+        assertThat(trip.quantityOverrides()
+                .get(GeneratedLineKind.PER_DIEM_FULL).quantity())
+                .isEqualByComparingTo("1.00");
+    }
+
+    @Test
+    void aTimeChangeTheDayCountAbsorbsNeverPromptsAndNeverClears() {
+        var id = seedOverriddenTravel(DEP.plusHours(55));
+
+        // 55 h → 55 h 15 min: still 2 full days and one leftover over the 6 h partial
+        // threshold. The inputs moved; the counts the override corrects did not.
+        editTripReturn(DEP.plusHours(55).plusMinutes(15));
+
+        assertThat(findButton().withText("Clear and save trip").exists()).isFalse();
+        assertThat(getCurrentView().getElement().getTextRecursively())
+                .contains("Overridden", "Reason: the Wednesday was personal", "€79.00");
+
+        findButton().withText("Save").click();
+
+        var trip = service.findMine(id).travels().getFirst();
+        assertThat(trip.returnAt()).isEqualTo(DEP.plusHours(55).plusMinutes(15));
+        assertThat(trip.quantityOverrides())
+                .containsKey(GeneratedLineKind.PER_DIEM_FULL);
+        assertThat(service.findMine(id).perDiemTotal()).isEqualByComparingTo("79.00");
+    }
+
+    @Test
+    void clearingIsPerKindSoAnUnaffectedOverrideStands() {
+        var id = seedOverriddenTravel(DEP.plusHours(55));
+        overrideCount("Per diem allowance (partial day)", 1, "the leftover was worked");
+        findButton().withText("Save").click();
+
+        // 55 h → 31 h: the full days drop 2 → 1, but the trip still earns exactly one
+        // partial day, so only the full-day override is invalidated.
+        editTripReturn(DEP.plusHours(31));
+
+        assertThat(clearingConfirm().getHeaderTitle()).isEqualTo("Clear your override?");
+        assertThat(dialogText(clearingConfirm()))
+                .contains("Per diem allowance (full day): calculated 2 → 1 day.")
+                .doesNotContain("Per diem allowance (partial day)");
+        findButton().withText("Clear and save trip").click();
+        findButton().withText("Save").click();
+
+        var trip = service.findMine(id).travels().getFirst();
+        assertThat(trip.quantityOverrides())
+                .containsOnlyKeys(GeneratedLineKind.PER_DIEM_PARTIAL);
+        assertThat(trip.generatedLine(GeneratedLineKind.PER_DIEM_PARTIAL).orElseThrow()
+                .overrideReason()).isEqualTo("the leftover was worked");
+    }
+
+    @Test
+    void aMealCountChangeLeavesAPerDiemOverrideInPlace() {
+        // The other direction of per-kind clearing: a trip paying a meal allowance
+        // (so earning no per-diem, issue #93) with an override on each kind — the
+        // per-diem one dormant, since an override never conjures a line.
+        var id = seedMealTravelOverriddenOnBothKinds();
+        navigate(ReportDetailView.class, id);
+
+        // Stop paying the meal allowance: its count drops 1 → 0. The trip stays not
+        // eligible, so the per-diem count is 0 either side and its override stands.
+        findButton().withText("Edit").click();
+        findCheckbox().withLabel("Pay meal allowance?").click();
+        findButton().withText("Save trip").click();
+
+        assertThat(dialogText(clearingConfirm()))
+                .contains("Meal allowance: calculated 1 → 0 meals.")
+                .doesNotContain("Per diem allowance");
+        findButton().withText("Clear and save trip").click();
+        findButton().withText("Save").click();
+
+        assertThat(service.findMine(id).travels().getFirst().quantityOverrides())
+                .containsOnlyKeys(GeneratedLineKind.PER_DIEM_FULL);
+    }
+
+    @Test
+    void aTripEditThatMovesTwoOverriddenCountsReportsBothInOneConfirm() {
+        var id = seedOverriddenTravel(DEP.plusHours(55));
+        overrideCount("Per diem allowance (partial day)", 1, "the leftover was worked");
+        findButton().withText("Save").click();
+
+        // 55 h → 72 h: three whole days and no leftover at all, so both corrected
+        // counts move (full 2 → 3, partial 1 → 0) — one dialog, both named.
+        editTripReturn(DEP.plusHours(72));
+
+        // One dialog, both corrections named — not two prompts in a row.
+        assertThat(clearingConfirm().getHeaderTitle()).isEqualTo("Clear your overrides?");
+        assertThat(dialogText(clearingConfirm())).contains(
+                "Per diem allowance (full day): calculated 2 → 3 days.",
+                "Per diem allowance (partial day): calculated 1 → 0 days.",
+                "\"the Wednesday was personal\"", "\"the leftover was worked\"");
+        findButton().withText("Clear and save trip").click();
+        findButton().withText("Save").click();
+
+        var trip = service.findMine(id).travels().getFirst();
+        assertThat(trip.quantityOverrides()).isEmpty();
+        assertThat(service.findMine(id).perDiemTotal()).isEqualByComparingTo("162.00");
+    }
+
+    @Test
+    void editingAnOverrideNeverChangesTheCalculationAndNeverPrompts() {
+        // The two surfaces are independent: an override is a correction to the
+        // calculation's output, so it can never move the calculation's input.
+        var id = seedOverriddenTravel(DEP.plusHours(55));
+
+        findButton().withAriaLabel("Edit override: Per diem allowance (full day)")
+                .click();
+        findIntegerField().withLabel("Count").setValue(2);
+        findTextArea().withLabel("Reason for the override")
+                .setValue("both days were personal after all");
+        findButton().withText("Save override").click();
+
+        assertThat(findButton().withText("Clear and save trip").exists()).isFalse();
+        assertThat(getCurrentView().getElement().getTextRecursively())
+                .contains("Calculated: 2 × €54.00 = €108.00",
+                        "Reason: both days were personal after all");
+
+        findButton().withText("Save").click();
+
+        var trip = service.findMine(id).travels().getFirst();
+        assertThat(trip.returnAt()).isEqualTo(DEP.plusHours(55));
+        assertThat(trip.quantityOverrides()
+                .get(GeneratedLineKind.PER_DIEM_FULL).quantity())
+                .isEqualByComparingTo("2.00");
+    }
+
+    @Test
+    void theTripPreviewShowsCalculatedFiguresAnnotatedWhereAnOverrideIsInForce() {
+        // What makes the "2 → 3" warning legible: the dialog previews the trip inputs,
+        // never the corrected figures — and says so where a correction is in force, so
+        // the preview and the report showing different numbers is never a mystery.
+        seedOverriddenTravel(DEP.plusHours(55));
+
+        findButton().withText("Edit").click();
+
+        assertThat(tripPreviewText()).contains(
+                "Per diem allowance (full day): €108.00",
+                "Overridden: 1 day on the report (the Wednesday was personal)");
+        // The report row behind still shows the effective figure — the two disagree by
+        // design, which is exactly why the preview line is annotated.
+        assertThat(getCurrentView().getElement().getTextRecursively()).contains("€79.00");
+    }
+
+    @Test
+    void aSuppressedKindIsAnnotatedInThePreviewThatNoLongerListsIt() {
+        var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(55));
+        navigate(ReportDetailView.class, id);
+        overrideCount("Per diem allowance (partial day)", 0, "the leftover was personal");
+        findButton().withText("Save").click();
+
+        findButton().withText("Edit").click();
+
+        // The calculated preview still lists the partial day (the rules award it), and
+        // the note says the report does not.
+        assertThat(tripPreviewText()).contains(
+                "Per diem allowance (partial day): €25.00",
+                "Overridden: no line on the report (the leftover was personal)");
+    }
+
+    /**
+     * Seeds a DRAFT report with one domestic trip of the given return time, corrects
+     * its full-day count down to 1, and saves — the state every clearing case below
+     * starts from: a persisted override standing on a persisted trip. Returns the
+     * report id, with the view left open on it.
+     */
+    private Long seedOverriddenTravel(LocalDateTime returnAt) {
+        var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, returnAt);
+        navigate(ReportDetailView.class, id);
+        overrideCount("Per diem allowance (full day)", 1, "the Wednesday was personal");
+        findButton().withText("Save").click();
+        return id;
+    }
+
+    /**
+     * The clearing confirm a trip save opened (issue #133), identified by a phrase
+     * only it uses — the trip editor is still open behind it, so "the dialog" is
+     * ambiguous.
+     */
+    private Dialog clearingConfirm() {
+        return openDialogSaying("recalculates its allowances");
+    }
+
+    /** The trip editor's live allowance preview, as text. */
+    private String tripPreviewText() {
+        return dialogText(openDialogSaying("Trip total:"));
+    }
+
+    /**
+     * The open dialog whose content includes {@code marker}.
+     *
+     * <p>Read a dialog's words from the dialog, never from
+     * {@code UI.getCurrent().getElement().getTextRecursively()} (F-057): the UI's own
+     * text never carries the view's text and does not carry a <em>just-opened</em>
+     * dialog's either, so asserting there silently reads as "the dialog says nothing".
+     */
+    private Dialog openDialogSaying(String marker) {
+        return findDialog().components().stream().filter(Dialog::isOpened)
+                .filter(dialog -> dialogText(dialog).contains(marker)).findFirst()
+                .orElseThrow(() -> new AssertionError(
+                        "No open dialog says \"" + marker + "\""));
+    }
+
+    private static String dialogText(Dialog dialog) {
+        return dialog.getElement().getTextRecursively();
+    }
+
+    /** Re-costs the open report's only trip by moving its return time. */
+    private void editTripReturn(LocalDateTime returnAt) {
+        findButton().withText("Edit").click();
+        findDateTimePicker().withLabel("Return").setValue(returnAt);
+        findButton().withText("Save trip").click();
+    }
+
+    /**
+     * Seeds a DRAFT report with one meal-allowance trip carrying an override on
+     * <em>both</em> the meal and the full-day per-diem kind. The per-diem one is
+     * dormant — the trip is not eligible, and an override never conjures a line — which
+     * is precisely what makes it the control in a per-kind clearing test. Seeded
+     * through the service because a dormant override has no row to be made on.
+     */
+    private Long seedMealTravelOverriddenOnBothKinds() {
+        var zero = BigDecimal.ZERO.setScale(2);
+        var trip = TravelDto.domestic(null, DEP, DEP.plusHours(11), "Helsinki",
+                        "Client visit", true, false, false, zero, true, zero)
+                .withQuantityOverride(GeneratedLineKind.MEAL,
+                        QuantityOverride.of(GeneratedLineKind.MEAL,
+                                new BigDecimal("2"), "two meals were taken"))
+                .withQuantityOverride(GeneratedLineKind.PER_DIEM_FULL,
+                        QuantityOverride.of(GeneratedLineKind.PER_DIEM_FULL,
+                                BigDecimal.ONE, "one day was personal"));
+        return service.create(new ReportDetailDto(null, LocalDate.of(2026, 7, 10),
+                "seed", ReportStatus.DRAFT, 0L, List.of(), List.of(trip), zero, zero,
+                zero, zero, zero, zero));
     }
 
     // --- Meal-allowance / eligibility checkbox coupling (issue #93) ---

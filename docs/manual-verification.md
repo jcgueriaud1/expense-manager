@@ -76,8 +76,22 @@ Keep runs small:
   error summary says otherwise. From `browser_evaluate`, set `.value` on the
   `vaadin-date-time-picker` and dispatch **both**
   `new CustomEvent('value-changed', {detail: {value}, bubbles: true, composed: true})`
-  **and** a bubbling `change`. (A plain `vaadin-text-field` does commit from an
-  `input` + `change` pair on its inner `input`.)
+  **and** a bubbling `change`. (A plain `vaadin-text-field` / `vaadin-text-area`
+  does commit from an `input` + `change` pair on its inner `input`/`textarea`.)
+- **A `vaadin-integer-field` needs the same host-element pair.** `input` + `change`
+  on its inner `input` does *not* commit — worse than silent: the server keeps the
+  field's pre-filled default, so an override typed as `1` saves as the calculated
+  `2` and everything downstream looks merely surprising rather than broken. Set
+  `.value` on the `vaadin-integer-field` itself and dispatch `value-changed` +
+  `change`, as for the picker.
+- **Find fields by their `<label>` text, not by `label=` or the overlay.** A V25
+  field carries no `label` attribute (the label is a child `<label>` element), and
+  dialog content lives in the **light DOM** — `closest('vaadin-dialog-overlay')`
+  matches nothing, so `document.querySelector('vaadin-text-area')` in an open dialog
+  happily returns the *view's* field behind it. (An override reason typed that way
+  lands in the report's "Additional information".) Select with
+  `[...document.querySelectorAll(tag)].find(el => el.querySelector('label')
+  .textContent.includes('…'))`.
 - **Trips are not seeded** (F-056), so anything Phase 4 — per-diem, kilometre, meal,
   parking, generated-line receipts, Quantity Override — still costs a pass through
   `TravelEditorDialog`. Put every trip a run needs on **one** report so the login,
