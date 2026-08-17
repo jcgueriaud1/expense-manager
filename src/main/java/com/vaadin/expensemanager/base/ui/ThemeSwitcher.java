@@ -11,8 +11,8 @@ import com.vaadin.flow.component.page.ColorScheme;
 import com.vaadin.flow.component.page.WebStorage;
 
 /**
- * Navbar control that lets the user override the app's colour scheme: follow the
- * OS ("System"), or force "Light" / "Dark".
+ * The colour-scheme choice offered in the account menu: follow the OS
+ * ("System"), or force "Light" / "Dark".
  *
  * <p>The scheme is applied with Flow's {@link com.vaadin.flow.component.page.Page#setColorScheme
  * Page.setColorScheme}, which sets an inline {@code color-scheme} on the document
@@ -28,18 +28,25 @@ import com.vaadin.flow.component.page.WebStorage;
  * page head (see {@code Application#configurePage}) re-applies it before first
  * paint, so a reload never flashes the wrong scheme.
  */
-public class ThemeSwitcher extends MenuBar {
+public final class ThemeSwitcher {
 
     /** localStorage key shared with the early bootstrap script in the page head. */
     public static final String STORAGE_KEY = "expense-manager.color-scheme";
 
     private final Map<ColorScheme.Value, MenuItem> choices = new LinkedHashMap<>();
 
-    public ThemeSwitcher() {
-        var trigger = addItem(LucideIcon.SUN_MOON.create());
-        trigger.setAriaLabel("Change colour theme");
+    /**
+     * Adds System / Light / Dark as checkable items of an existing menu.
+     *
+     * <p>The switcher is a set of menu items rather than a control of its own:
+     * the shell's one menu hangs off the account avatar (ADR-0025), so this
+     * populates a submenu there instead of adding a second bar to the header.
+     */
+    public static void addChoicesTo(SubMenu menu) {
+        new ThemeSwitcher(menu);
+    }
 
-        SubMenu menu = trigger.getSubMenu();
+    private ThemeSwitcher(SubMenu menu) {
         addChoice(menu, "System", ColorScheme.Value.NORMAL);
         addChoice(menu, "Light", ColorScheme.Value.LIGHT);
         addChoice(menu, "Dark", ColorScheme.Value.DARK);

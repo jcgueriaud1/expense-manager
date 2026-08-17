@@ -2,7 +2,7 @@ package com.vaadin.expensemanager.approval.ui;
 
 import java.time.LocalDate;
 
-import com.vaadin.expensemanager.base.ui.DashboardView;
+import com.vaadin.expensemanager.report.ui.MyReportsView;
 import com.vaadin.expensemanager.report.ui.ReportDetailView;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
 import org.junit.jupiter.api.Test;
@@ -46,8 +46,8 @@ class ApprovalAccessUiTest extends AbstractApprovalViewUiTest {
 
         // The review alias is @PermitAll but gated in-view: a USER is forwarded to
         // the dashboard, never rendering the report in review mode.
-        navigate("review/" + id, DashboardView.class);
-        assertThat(getCurrentView()).isInstanceOf(DashboardView.class);
+        navigate("review/" + id, MyReportsView.class);
+        assertThat(getCurrentView()).isInstanceOf(MyReportsView.class);
     }
 
     @Test

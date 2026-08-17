@@ -19,12 +19,34 @@ html {
   --aura-accent-color-dark: #60A5FA;
   --aura-accent-color-light: #155dfc;
   /*
-   * A lighter ground than Aura's default (oklch(0.95 0.005 248)) — the content
-   * area was reading as a grey slab. Every light-mode surface derives from this
-   * one token, so lifting it lifts the page, the content area and the cards
-   * together, keeping the step between a card and the ground it sits on.
+   * The app ground: a step darker than Aura's default so the light content panel
+   * reads as a distinct surface on top of it. Every light-mode surface derives from
+   * this token, so darkening the ground keeps the step between ground and panel
+   * rather than flattening it. Dark mode keeps Aura's own ground.
    */
-  --aura-background-color-light: oklch(0.97 0.005 248);
+  --aura-background-color-light: oklch(0.93 0.005 248);
+
+  /*
+   * A grey ground with some movement in it. Grey has almost no chroma to play
+   * with, so this is a gradient in LIGHTNESS, not hue: a slightly deeper grey
+   * across the top fading into the base by the upper third, with one lighter wash
+   * from the top-right so the top edge is not a flat band.
+   *
+   * Every stop is the ground token with its lightness shifted, so the whole thing
+   * follows --aura-background-color-* and needs no second definition for dark
+   * mode — where the same shifts read as a subtly lifted charcoal.
+   */
+  --aura-app-background:
+      radial-gradient(75% 50% at 100% 0%,
+          light-dark(oklch(from var(--aura-background-color-light) calc(l + 0.035) c h),
+                     oklch(from var(--aura-background-color-dark) calc(l + 0.05) c h)),
+          transparent 62%),
+      linear-gradient(180deg,
+          light-dark(oklch(from var(--aura-background-color-light) calc(l - 0.045) c h),
+                     oklch(from var(--aura-background-color-dark) calc(l - 0.03) c h)) 0%,
+          transparent 42%),
+      light-dark(var(--aura-background-color-light), var(--aura-background-color-dark));
+
   --aura-base-font-size: 15;
   --aura-font-family: 'Inter', var(--aura-font-family-system);
 }
@@ -42,90 +64,86 @@ html {
 }
 
 /*
- * Drawer on its own dark ground in both colour schemes, so the navigation reads
- * as a distinct surface against the content area.
+ * Content area: a bordered light panel, evenly inset from the window, against
+ * the darker app ground — the ground/panel contrast that separates the app
+ * chrome from the work.
  *
- * Aura's drawer is transparent by default (it inherits the page background), so
- * the surface has to be named explicitly via the documented
- * --vaadin-app-layout-drawer-background property.
+ * Three knobs, each named explicitly. The inset is the gap outside the panel;
+ * the border and radius have to be stated rather than left to derive, because
+ * Aura re-adds a seam wherever content meets chrome through rules that read
+ * these tokens directly ([has-navbar] the top border, [drawer-opened] the
+ * inline-start border, both together the top-start radius).
  *
- * `color-scheme: dark` re-derives the tokens Aura defines by *reference*
- * (--vaadin-background-container and friends resolve light-dark() at the point
- * of use, which is this subtree). It is not enough on its own: a token whose own
- * declaration contains light-dark() directly is resolved where it is declared —
- * on :root, in light mode — so it does not flip for a subtree. Those are pinned
- * to their -dark variant below, which is also why the pinned list is short:
- * everything else derives from these (F-059). Inherited properties reach our
- * slotted drawer children through the flattened tree, so the app name, side-nav
- * and toggle all pick this up.
- */
-vaadin-app-layout::part(drawer) {
-  color-scheme: dark;
-  --vaadin-app-layout-drawer-background: var(--aura-background-color-dark);
-  --vaadin-text-color: var(--aura-neutral-dark);
-  /*
-   * Pinning the token is not enough on its own: Aura applies it as `color` per
-   * component and per heading element, so a plain Span or Div slotted in here
-   * would inherit the *page's* ink — dark text on this dark ground. Setting
-   * `color` once on the drawer means anything put inside it inherits the right
-   * ink without needing a rule of its own.
-   */
-  color: var(--vaadin-text-color);
-  --aura-neutral: var(--aura-neutral-dark);
-  --aura-accent-color: var(--aura-accent-color-dark);
-  --aura-accent-text-color: var(--aura-accent-color-dark);
-  --vaadin-border-color-secondary: var(--aura-neutral-dark);
-}
-
-/*
- * Content area: one uniform surface, edge to edge — no inset, no rounded
- * bordered panel.
- *
- * All three knobs have to be named. Zeroing the inset alone looks like it
- * should be enough (the base radius and border derive from it, via
- * clamp(0px, radius, inset * 100) and min(inset, border-width)) — but Aura then
- * re-adds a seam wherever the content meets the chrome, through rules that read
- * the radius and border-width tokens directly and ignore the inset:
- * [has-navbar] restores the top border, [drawer-opened] the inline-start
- * border, and the two together the top-start corner radius. Those are what was
- * left of the panel after the inset went to zero.
- *
- * Every value is 0px, never a unitless 0: the inset is consumed inside max()
- * and clamp() next to lengths, and mixing a number with a length is invalid at
- * computed-value time — which drops the whole declaration rather than clamping
- * it. That silently took the content's top offset with it and let the view
- * scroll up behind the navbar.
+ * Lengths, never a unitless 0: the inset is consumed inside max() and clamp()
+ * next to lengths, and mixing a number with a length is invalid at
+ * computed-value time, which drops the whole declaration instead of clamping it.
  */
 vaadin-app-layout {
-  --aura-app-layout-inset: 0px;
-  --aura-app-layout-radius: 0px;
-  --aura-app-layout-border-width: 0px;
+  --aura-app-layout-inset: var(--vaadin-padding-l);
+  --aura-app-layout-radius: var(--vaadin-radius-l);
+  --aura-app-layout-border-width: 1px;
+  /*
+   * Aura sets padding-top to max(inset, navbar-offset), which welds the panel to
+   * the underside of the header — the offset always wins, being the header's own
+   * height. Adding them instead gives the panel the same gap on all four sides.
+   * Both operands are public tokens, so no private internals are relied on.
+   */
+  padding-top: calc(var(--vaadin-app-layout-navbar-offset-top, 0px)
+      + var(--aura-app-layout-inset));
 }
 
 /*
- * The drawer's own padding is derived from that same inset, so it has to be
- * restated here or the navigation would sit flush against the drawer edges.
+ * The panel itself, one step lighter than the ground it floats on. Painted with
+ * the solid surface rather than by raising --aura-surface-opacity, which would
+ * inherit into the cards inside and flatten them against this background.
  */
-vaadin-app-layout:not([overlay])::part(drawer) {
-  padding-block: var(--vaadin-padding-m);
-  padding-inline: var(--vaadin-padding-xs);
+vaadin-app-layout::part(content) {
+  /*
+   * Near-white but not opaque, so the ground shows through and the panel reads as
+   * paper laid over it rather than a separate screen. Derived from the ground
+   * rather than hand-picked — same hue family, most of the chroma taken out,
+   * lightness at the top — so dark mode gets a panel a step up from its own ground
+   * instead of a white slab.
+   *
+   * The alpha is itself a gradient: sheerer at the top where the ground is deepest,
+   * settling by a third of the way down where the content lives. A flat value
+   * forces one compromise for both.
+   */
+  background: linear-gradient(180deg,
+      light-dark(
+          oklch(from var(--aura-background-color-light) 0.995 calc(c / 5) h / 0.40),
+          oklch(from var(--aura-background-color-dark) calc(l + 0.04) calc(c / 2) h / 0.40)) 0%,
+      light-dark(
+          oklch(from var(--aura-background-color-light) 0.995 calc(c / 5) h / 0.82),
+          oklch(from var(--aura-background-color-dark) calc(l + 0.04) calc(c / 2) h / 0.82)) 34%);
+  backdrop-filter: blur(24px);
+  /*
+   * Breathing room inside the panel, on top of whatever padding a view sets for
+   * itself — the content was reading as choked against the border. Here rather
+   * than per view so every screen gets the same inset, including the section
+   * layouts' tab rows.
+   */
+  padding: var(--vaadin-padding-m);
 }
 
-/* Side nav styling */
-vaadin-side-nav-item:not([current]) > vaadin-icon {
-  color: var(--aura-accent-text-color);
-}
-
-vaadin-side-nav-item[current]::part(content) {
-  --vaadin-side-nav-item-background: var(--vaadin-background-container);
-  --vaadin-side-nav-item-border-color: transparent;
-}
-
-vaadin-side-nav::part(label) {
-  text-transform: uppercase;
-  font-size: var(--aura-font-size-xs);
-  color: var(--vaadin-text-color);
-  letter-spacing: 0.03em;
+/*
+ * Cards and grids sit at the top of Aura's elevation scale, opaque — which
+ * resolves to white against the grey ground in light mode, and to the lightest
+ * lifted surface in dark. This is the same knob the Aura playground's presets use
+ * (`vaadin-card { --aura-surface-level: 4 }`), and setting it per component is
+ * what keeps it from lifting every surface in the app.
+ *
+ * Their default is level 2 at 0.5 opacity, i.e. a translucent tint of the ground —
+ * which is why the grid read grey while the cards next to it read white.
+ */
+vaadin-card,
+vaadin-grid {
+  --aura-surface-level: 4;
+  --aura-surface-opacity: 1;
+  /* Lighter than the secondary border token: the cards read as white paper, and a
+     hairline is enough to separate them from a coloured ground. */
+  --vaadin-card-border-color: color-mix(in srgb,
+      var(--vaadin-border-color-secondary) 55%, transparent);
 }
 
 /* Neutral secondary/default buttons (accent reserved for primary/tertiary) */

@@ -1,5 +1,6 @@
 package com.vaadin.expensemanager.base.ui;
 
+import com.vaadin.expensemanager.report.ui.MyReportsView;
 import com.vaadin.browserless.SpringBrowserlessTest;
 import com.vaadin.expensemanager.base.DomainRuleException;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
@@ -57,7 +58,7 @@ class ErrorDialogFlowUiTest extends SpringBrowserlessTest {
 
     @Test
     void theGlobalHandlerIsInstalledAsTheSessionErrorHandler() {
-        navigate(DashboardView.class);
+        navigate(MyReportsView.class);
 
         // The VaadinServiceInitListener wired it onto the session, so any uncaught
         // action failure is routed here in production (issue #86).
@@ -67,7 +68,7 @@ class ErrorDialogFlowUiTest extends SpringBrowserlessTest {
 
     @Test
     void aTechnicalErrorOpensTheGenericDialogWithoutTheCause() {
-        navigate(DashboardView.class);
+        navigate(MyReportsView.class);
 
         errorHandler.error(new ErrorEvent(new IllegalStateException("stack trace guts")));
 
@@ -80,7 +81,7 @@ class ErrorDialogFlowUiTest extends SpringBrowserlessTest {
 
     @Test
     void aDomainRuleLandsInTheSummaryAndOpensNoDialog() {
-        navigate(DashboardView.class);
+        navigate(MyReportsView.class);
         new EditorDialog<>("Editor", new TextField("Name"),
                 new Binder<>(Object.class), new Object())
                 .onSave(() -> {

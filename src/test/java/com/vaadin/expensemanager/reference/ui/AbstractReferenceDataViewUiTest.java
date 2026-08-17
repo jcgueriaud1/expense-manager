@@ -1,5 +1,6 @@
 package com.vaadin.expensemanager.reference.ui;
 
+import com.vaadin.flow.server.menu.MenuConfiguration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -8,7 +9,6 @@ import com.vaadin.browserless.locator.Locators;
 import com.vaadin.expensemanager.reference.ReferenceDataService;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.grid.GridLocator;
-import com.vaadin.flow.component.sidenav.SideNavItem;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -87,10 +87,16 @@ abstract class AbstractReferenceDataViewUiTest extends SpringBrowserlessTest
         return find(Button.class, cell).withAriaLabel(ariaLabel).single();
     }
 
-    /** The auto-registered {@code @Menu} entry paths currently in the side nav. */
+    /**
+     * The auto-registered, access-filtered {@code @Menu} entry paths. Read from
+     * {@link MenuConfiguration} rather than a rendered nav component: that set is
+     * what drives both the header's Admin item and AdminLayout's sub-tabs
+     * (ADR-0025), so it is the thing this test is actually about.
+     */
     protected List<String> menuItemPaths() {
-        return find(SideNavItem.class).all().stream()
-                .map(SideNavItem::getPath)
+        return MenuConfiguration.getMenuEntries().stream()
+                .map(entry -> entry.path().startsWith("/")
+                        ? entry.path().substring(1) : entry.path())
                 .toList();
     }
 }

@@ -17,51 +17,99 @@
 }
 
 /*
- * Navigation shell (MainLayout) — the drawer toggle follows the drawer.
+ * Navigation shell (MainLayout) — logo · menu · account, with the menu centred
+ * (ADR-0025).
  *
- * MainLayout puts a toggle in both surfaces: `shell-drawer-toggle` in the drawer
- * header, `shell-navbar-toggle` in the navbar. Exactly one is ever shown, keyed
- * off the `drawer-opened` attribute that <vaadin-app-layout> reflects on its own
- * host — so the swap is pure CSS, with no server round-trip and no state of our
- * own to keep in sync. `display: none` (not visibility/opacity) also drops the
- * hidden toggle out of the accessibility tree and the tab order, so only one
- * toggle is ever reachable. The layout of the drawer header row itself lives in
- * Java, per docs/theming-layouts.md.
+ * A three-column grid, not a flex row: the menu has to be centred on the
+ * *header*, not on the space left over between the logo and the account control.
+ * With `1fr auto 1fr` the two side columns claim equal width whatever they
+ * contain, so the menu's centre is the header's centre and stays there when the
+ * user's name changes length. Flex would centre it between its neighbours, which
+ * drifts off-centre as they grow.
  */
-vaadin-app-layout[drawer-opened] .shell-navbar-toggle,
-vaadin-app-layout:not([drawer-opened]) .shell-drawer-toggle {
-    display: none;
+.shell-header {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: var(--vaadin-gap-m);
+    padding-inline: var(--vaadin-padding-m);
 }
 
-.shell-app-name,
-.shell-view-title {
-    margin: 0;
-    font-size: var(--aura-font-size-l);
-    /* Both were headings once; as a Span and an H1 they need the weight stated
-       rather than inherited from a UA heading style. */
+.shell-logo {
+    display: flex;
+    align-items: center;
+    gap: var(--vaadin-gap-s);
+    color: var(--vaadin-text-color);
+    text-decoration: none;
+    min-width: 0;
+}
+.shell-logo vaadin-icon {
+    color: var(--aura-accent-text-color);
+    --vaadin-icon-size: 2rem;
+}
+.shell-wordmark {
+    font-size: var(--aura-font-size-xl);
     font-weight: var(--aura-font-weight-semibold);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-/*
- * The view title sits at the head of the navbar, taking the space the drawer
- * toggle leaves — so it lands hard left when the drawer is open and just after
- * the toggle when it is collapsed, without either state needing its own rule.
- *
- * flex: 1 belongs here rather than in Java: the navbar is <vaadin-app-layout>'s
- * own flex container, not one of our layout components, so there is no
- * expand(child) to call. Growing the title is also what holds the user menu at
- * the trailing edge — and the min-width override is what lets it actually
- * shrink: a flex item's floor is its content size, so without it a long title
- * would push the user menu off the row instead of ellipsing.
- */
-.shell-view-title {
-    flex: 1;
-    min-width: 0;
-    padding-inline-start: var(--vaadin-padding-s);
+.shell-nav {
+    display: flex;
+    align-items: center;
+    gap: var(--vaadin-gap-xs);
 }
+
+/*
+ * A nav link, and its current state. Flow toggles the `highlight` attribute on
+ * the RouterLink after every navigation, so "which item is current" needs no
+ * state of ours — this is only its appearance.
+ */
+.shell-nav-link {
+    padding: var(--vaadin-padding-s) var(--vaadin-padding-l);
+    border-radius: var(--vaadin-radius-l);
+    color: var(--vaadin-text-color-secondary);
+    text-decoration: none;
+    font-size: var(--aura-font-size-m);
+    font-weight: var(--aura-font-weight-medium);
+    white-space: nowrap;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+.shell-nav-link:hover {
+    color: var(--vaadin-text-color);
+    background: var(--aura-surface-color);
+}
+.shell-nav-link[highlight] {
+    color: var(--aura-accent-text-color);
+    background: var(--aura-accent-surface);
+    font-weight: var(--aura-font-weight-semibold);
+}
+
+/* The account control sits at the trailing edge of its grid column.
+   The avatar is sized by its documented token rather than AvatarVariant, whose
+   constants are all LUMO_* — Lumo-only, and silent no-ops under Aura. */
+.shell-account { justify-self: end; }
+/* Size only: the avatar's own colours track the theme in both schemes. */
+.shell-avatar { --vaadin-avatar-size: 2.75rem; }
+.shell-account-name {
+    display: block;
+    padding: var(--vaadin-padding-xs) var(--vaadin-padding-m);
+    font-size: var(--aura-font-size-s);
+    font-weight: var(--aura-font-weight-semibold);
+    color: var(--vaadin-text-color);
+}
+
+/* ---- Admin area (AdminLayout): heading + sub-tabs above the screen ---- */
+
+/*
+ * The same stepped spacing as the list view: the tab row belongs to the heading
+ * above it (s), while the screen below is a separate region (xl, applied as the
+ * content's own top padding so the tab row's underline stays flush).
+ */
+/* The column, its gap, its padding and the heading's type all come from
+   VerticalLayout and Aura's h1..h6 rule; only the tab row's rule is ours. */
+.admin-tabs { border-bottom: 1px solid var(--vaadin-border-color-secondary); }
 
 /*
  * Report views (MyReportsView, ReportDetailView) — decoration and typography the
@@ -81,38 +129,61 @@ vaadin-app-layout:not([drawer-opened]) .shell-drawer-toggle {
     color: var(--vaadin-text-color-secondary);
 }
 
-/* ---- List ---- */
-.reports-title {
-    margin: 0;
+/* ---- Per-view stat cards (StatCard, ADR-0026) ----
+ *
+ * The card itself is Vaadin's Card under Aura, so its padding, radius and slot
+ * spacing need no rules here. What is left is the row's equal columns, "big
+ * number", and the surface: cards sit at the top of Aura's elevation scale
+ * (level 4, opaque), which resolves to white in light mode and to the lightest
+ * lifted surface in dark mode — a literal `white` would be wrong in one of them.
+ */
+.stat-cards > vaadin-card { flex: 1; min-width: 0; }
+.stat-card-label {
+    font-size: var(--aura-font-size-xs);
+    color: var(--vaadin-text-color-secondary);
+}
+.stat-card-value {
     font-size: var(--aura-font-size-xl);
     font-weight: var(--aura-font-weight-semibold);
+    line-height: 1.1;
 }
-.reports-filter-bar { flex-wrap: wrap; }
+
+
+/* ---- List ---- */
+
+/* A Span in a flex column is already a full-width block, so this is colour and
+   padding only. */
 .no-results {
-    display: block;
     color: var(--vaadin-text-color-secondary);
     padding: var(--vaadin-padding-m);
 }
 
+/*
+ * The card itself is Vaadin's Card: surface, padding, border and radius all come
+ * from the component and the theme, so what is left is the gap between its rows
+ * (the tightest in the hierarchy — the footer's rule does the separating) and the
+ * lift that distinguishes a report you can still act on from a closed one.
+ */
 .report-card {
-    /* RouterLink is not a Vaadin layout — its column/gap live here (see docs). */
-    display: flex;
-    flex-direction: column;
-    gap: var(--vaadin-gap-s);
-    width: 100%;
-    color: var(--vaadin-text-color);
+    --vaadin-card-gap: var(--vaadin-gap-xs);
+    /* Inherits the lighter card border set in the theme file. */
+    --vaadin-card-padding: var(--vaadin-padding-l);
+    transition: box-shadow 0.12s ease;
+}
+.report-card--actionable { box-shadow: var(--aura-shadow-xs); }
+
+/* The anchor around a card: an <a> is inline and underlined by default. */
+.card-link {
+    display: block;
     text-decoration: none;
-    padding: var(--vaadin-padding-l);
-    border: 1px solid var(--vaadin-border-color);
-    border-radius: var(--vaadin-radius-l);
-    background: var(--vaadin-background-container);
-    transition: background 0.12s ease;
+    color: inherit;
+    border-radius: var(--vaadin-card-border-radius, var(--vaadin-radius-m));
 }
-.report-card--actionable {
-    background: var(--aura-surface-color);
-    box-shadow: var(--aura-shadow-xs);
+.card-link:hover .report-card { box-shadow: var(--aura-shadow-s); }
+.card-link:focus-visible {
+    outline: 2px solid var(--vaadin-focus-ring-color, var(--aura-accent-color));
+    outline-offset: 2px;
 }
-.report-card:hover { background: var(--aura-surface-color); }
 .report-card-title {
     font-weight: var(--aura-font-weight-semibold);
     font-size: var(--aura-font-size-m);
@@ -120,6 +191,21 @@ vaadin-app-layout:not([drawer-opened]) .shell-drawer-toggle {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+/*
+ * The travel line: where and when, between the title and the footer. It reads
+ * one step below the title and one above the footer — same size as body text but
+ * with the destination carrying the weight, so a glance gets the place and a
+ * second look gets the dates.
+ */
+.report-card-travel { font-size: var(--aura-font-size-s); }
+.report-card-travel vaadin-icon {
+    color: var(--vaadin-text-color-secondary);
+    --vaadin-icon-size: var(--aura-font-size-m);
+}
+.report-card-travel-where {
+    font-weight: var(--aura-font-weight-medium);
+    color: var(--vaadin-text-color);
 }
 .report-card-footer {
     border-top: 1px solid var(--vaadin-border-color-secondary);
@@ -148,9 +234,9 @@ vaadin-app-layout:not([drawer-opened]) .shell-drawer-toggle {
     padding-inline-start: var(--vaadin-padding-l);
 }
 .summary-heading {
-    font-weight: var(--aura-font-weight-semibold);
+    /* Aura's h1..h6 rule already gives the H3 semibold and margin: 0. */
     font-size: var(--aura-font-size-m);
-    margin: 0 0 var(--vaadin-gap-s) 0;
+    margin-bottom: var(--vaadin-gap-s);
 }
 /* Field-linked summary entry: reads as an inline link, focuses its field on activation. */
 .error-summary-link {
@@ -197,7 +283,6 @@ vaadin-app-layout:not([drawer-opened]) .shell-drawer-toggle {
     color: var(--vaadin-text-color);
 }
 .status-callout-heading {
-    display: block;
     font-weight: var(--aura-font-weight-semibold);
 }
 .status-callout-reason { font-style: italic; }

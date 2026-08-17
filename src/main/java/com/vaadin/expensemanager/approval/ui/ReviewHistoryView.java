@@ -1,6 +1,9 @@
 package com.vaadin.expensemanager.approval.ui;
 
+import com.vaadin.expensemanager.base.ui.AdminLayout;
 import com.vaadin.expensemanager.base.ui.LucideIcon;
+import com.vaadin.expensemanager.base.ui.ViewHeader;
+import com.vaadin.expensemanager.base.ui.MainLayout;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -12,6 +15,8 @@ import com.vaadin.expensemanager.base.ui.EmptyState;
 import com.vaadin.expensemanager.report.domain.ReportStatus;
 import com.vaadin.expensemanager.report.ui.ReportViewSupport;
 import com.vaadin.flow.component.Component;
+import com.vaadin.flow.component.card.Card;
+import com.vaadin.flow.component.card.CardVariant;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
@@ -42,9 +47,9 @@ import jakarta.annotation.security.RolesAllowed;
  * outcome obvious via the status badge (never colour alone, ADR-0020), showing the
  * rejection reason for a rejected report. Accessible and usable at ~360px.
  */
-@Route("approval-history")
+@Route(value = "approval-history", layout = AdminLayout.class)
 @PageTitle("Review history")
-@Menu(title = "Review history", order = 6, icon = "icons/lucide/rotate-ccw-clock.svg")
+@Menu(title = "Review history", order = 11, icon = "icons/lucide/rotate-ccw-clock.svg")
 @RolesAllowed("ADMIN")
 public class ReviewHistoryView extends VerticalLayout {
 
@@ -58,11 +63,11 @@ public class ReviewHistoryView extends VerticalLayout {
         setSpacing(false);
         setAlignItems(FlexComponent.Alignment.CENTER);
 
-        var content = new VerticalLayout(header(reviewed.size()));
+        var content = new VerticalLayout(new ViewHeader(this), header(reviewed.size()));
         content.setPadding(false);
         content.setSpacing(true);
         content.setWidthFull();
-        content.setMaxWidth("46rem");
+        content.setMaxWidth(MainLayout.CONTENT_MAX_WIDTH);
 
         if (reviewed.isEmpty()) {
             content.add(new EmptyState(LucideIcon.ROTATE_CCW_CLOCK, "No reviewed reports yet",
@@ -73,14 +78,17 @@ public class ReviewHistoryView extends VerticalLayout {
 
         var stack = new VerticalLayout();
         stack.setPadding(false);
-        stack.setSpacing("var(--vaadin-gap-m)");
+        stack.setSpacing("var(--vaadin-gap-l)");
+        // RouterLink is not HasSize, so the card links take their width from the
+        // stack's cross-axis alignment rather than setting it themselves.
+        stack.setDefaultHorizontalComponentAlignment(FlexComponent.Alignment.STRETCH);
         stack.setWidthFull();
         reviewed.forEach(dto -> stack.add(historyCard(dto)));
         content.add(stack);
         add(content);
     }
 
-    /** Count of reviewed reports; the title lives in the navbar. */
+    /** Count of reviewed reports; AdminLayout heads the screen. */
     private Component header(int count) {
         var subtitle = new Span(count + (count == 1
                 ? " reviewed report" : " reviewed reports"));
@@ -119,8 +127,10 @@ public class ReviewHistoryView extends VerticalLayout {
         bottomRow.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
         bottomRow.addClassName("report-card-footer");
 
-        var card = new RouterLink();
-        card.getElement().setAttribute("href", "review/" + dto.id());
+        var card = new Card();
+        card.addThemeVariants(CardVariant.OUTLINED);
+        card.setWidthFull();
+        card.setAriaRole("presentation");
         card.add(topRow, bottomRow);
         // The rejection reason, when there is one, sits below the decision line.
         if (dto.rejectionComment() != null && !dto.rejectionComment().isBlank()) {
@@ -130,7 +140,14 @@ public class ReviewHistoryView extends VerticalLayout {
         }
         card.addClassName("report-card");
         card.addClassName("report-card--actionable");
-        return card;
+
+        // The anchor wraps the card: the href points at the review alias directly,
+        // since an alias is not addressable via a navigation-target class.
+        var link = new RouterLink();
+        link.getElement().setAttribute("href", "review/" + dto.id());
+        link.add(card);
+        link.addClassName("card-link");
+        return link;
     }
 
     /** "{submitter} · approved/rejected by {admin} on {date}", trailing parts dropped if absent. */

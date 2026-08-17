@@ -1,5 +1,6 @@
 package com.vaadin.expensemanager.allowance.ui;
 
+import com.vaadin.flow.server.menu.MenuConfiguration;
 import java.math.BigDecimal;
 import java.util.List;
 
@@ -7,9 +8,8 @@ import com.vaadin.browserless.SpringBrowserlessTest;
 import com.vaadin.browserless.locator.Locators;
 import com.vaadin.expensemanager.allowance.AllowanceRateService;
 import com.vaadin.expensemanager.allowance.ForeignPerDiemDto;
-import com.vaadin.expensemanager.base.ui.DashboardView;
+import com.vaadin.expensemanager.report.ui.MyReportsView;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
-import com.vaadin.flow.component.sidenav.SideNavItem;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -71,14 +71,14 @@ class AllowanceRatesViewUiTest extends SpringBrowserlessTest implements Locators
     @Test
     @WithUserDetails("admin@vaadin.com")
     void adminSeesMenuEntry() {
-        navigate(DashboardView.class);
+        navigate(MyReportsView.class);
         assertThat(menuItemPaths()).contains("allowance-rates");
     }
 
     @Test
     @WithUserDetails(LocalUserSeeder.PLAIN_USER_EMAIL)
     void userSeesNoMenuEntry() {
-        navigate(DashboardView.class);
+        navigate(MyReportsView.class);
         assertThat(menuItemPaths()).doesNotContain("allowance-rates");
     }
 
@@ -138,10 +138,16 @@ class AllowanceRatesViewUiTest extends SpringBrowserlessTest implements Locators
         assertThat(service.availableYears()).containsExactly(2027, 2026);
     }
 
-    /** The auto-registered {@code @Menu} entry paths currently in the side nav. */
+    /**
+     * The auto-registered, access-filtered {@code @Menu} entry paths. Read from
+     * {@link MenuConfiguration} rather than a rendered nav component: that set is
+     * what drives both the header's Admin item and AdminLayout's sub-tabs
+     * (ADR-0025), so it is the thing this test is actually about.
+     */
     private List<String> menuItemPaths() {
-        return find(SideNavItem.class).all().stream()
-                .map(SideNavItem::getPath)
+        return MenuConfiguration.getMenuEntries().stream()
+                .map(entry -> entry.path().startsWith("/")
+                        ? entry.path().substring(1) : entry.path())
                 .toList();
     }
 }

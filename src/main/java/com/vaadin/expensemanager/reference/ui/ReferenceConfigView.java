@@ -1,6 +1,7 @@
 package com.vaadin.expensemanager.reference.ui;
 
 import com.vaadin.expensemanager.base.ui.LucideIcon;
+import com.vaadin.expensemanager.base.ui.ViewHeader;
 import java.util.List;
 
 import com.vaadin.flow.component.button.Button;
@@ -43,13 +44,9 @@ abstract class ReferenceConfigView<T> extends VerticalLayout {
                 event -> openEditor(null));
         addButton.addThemeVariants(ButtonVariant.PRIMARY);
 
-        // The screen's title is rendered by MainLayout in the navbar; this row is
-        // just the action, kept at the trailing edge as before.
-        var header = new HorizontalLayout(addButton);
-        header.setWidthFull();
-        header.setAlignItems(FlexComponent.Alignment.CENTER);
-        header.setJustifyContentMode(FlexComponent.JustifyContentMode.END);
-        add(header);
+        // Title beside the action, as on every other screen; the subclass's
+        // @PageTitle supplies the name.
+        add(new ViewHeader(this, addButton));
 
         if (intro != null) {
             add(new Paragraph(intro));

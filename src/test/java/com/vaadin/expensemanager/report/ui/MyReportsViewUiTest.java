@@ -1,8 +1,11 @@
 package com.vaadin.expensemanager.report.ui;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 import com.vaadin.expensemanager.user.LocalUserSeeder;
+import com.vaadin.flow.component.datepicker.DatePicker;
+import com.vaadin.flow.component.textfield.TextField;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.test.context.support.WithUserDetails;
 
@@ -15,13 +18,19 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>Covers the acceptance criteria against the card layout: owner scoping (only
  * the current user's reports render), newest-report-date-first ordering, the
  * grouping into "Needs your attention" (draft/rejected) vs "Submitted &amp;
- * closed" (submitted/approved), the status and month/year period filters
- * narrowing the sections, the empty state when there are none, and the
- * "New report" action routing to the detail view. Assertions read the rendered
+ * closed" (submitted/approved), the search / report-date range / status filters
+ * narrowing the sections, the travel summary on a trip report's card, the empty
+ * state when there are none, and the "New" action routing to the detail view. Assertions read the rendered
  * text of the view (the cards are plain links, not a Grid).
  */
 @WithUserDetails(LocalUserSeeder.PLAIN_USER_EMAIL)
 class MyReportsViewUiTest extends AbstractReportViewUiTest {
+
+    /** Picks a status — by aria-label, since the filter row uses placeholders. */
+    private void selectStatus(String label) {
+        findComboBox(com.vaadin.expensemanager.report.domain.ReportStatus.class)
+                .withAriaLabel("Status").selectItem(label);
+    }
 
     private String renderedText() {
         return getCurrentView().getElement().getTextRecursively();
@@ -60,35 +69,77 @@ class MyReportsViewUiTest extends AbstractReportViewUiTest {
                 .contains("Submitted & closed");
 
         // Filtering by SUBMITTED leaves only the "Submitted & closed" section.
-        findComboBox(com.vaadin.expensemanager.report.domain.ReportStatus.class)
-                .withLabel("Status").selectItem("Submitted");
+        selectStatus("Submitted");
         assertThat(renderedText()).contains("Submitted & closed")
                 .doesNotContain("Needs your attention")
                 .doesNotContain("still a draft");
 
         // Filtering by DRAFT leaves only the "Needs your attention" section.
-        findComboBox(com.vaadin.expensemanager.report.domain.ReportStatus.class)
-                .withLabel("Status").selectItem("Draft");
+        selectStatus("Draft");
         assertThat(renderedText()).contains("Needs your attention")
                 .contains("still a draft")
                 .doesNotContain("Submitted & closed");
     }
 
+    /**
+     * The From/To range bounds the report date, inclusively at both ends — a
+     * report dated exactly on a bound stays in, which is what a user picking "the
+     * 15th" means.
+     */
     @Test
-    void monthAndYearFiltersNarrowTheList() {
+    void reportDateRangeNarrowsTheList() {
         seedReport(LocalDate.of(2026, 1, 15), "january");
         seedReport(LocalDate.of(2026, 7, 15), "july");
         seedReport(LocalDate.of(2025, 7, 15), "last july");
         navigate(MyReportsView.class);
 
-        findComboBox(java.time.Month.class).withLabel("Month").selectItem("July");
-        // Both Julys remain; January is filtered out.
-        assertThat(renderedText()).contains("last july").doesNotContain("january");
+        var from = $(DatePicker.class).withAriaLabel("Report date from").first();
+        var to = $(DatePicker.class).withAriaLabel("Report date to").first();
 
-        findComboBox(Integer.class).withLabel("Year").selectItem("2026");
-        // July + 2026 leaves just the one report — the 2025 July drops out.
-        assertThat(renderedText()).contains("july")
-                .doesNotContain("last july").doesNotContain("january");
+        from.setValue(LocalDate.of(2026, 1, 1));
+        // 2026 onwards: the 2025 July drops out, both 2026 reports remain.
+        assertThat(renderedText()).contains("january").contains("july")
+                .doesNotContain("last july");
+
+        to.setValue(LocalDate.of(2026, 1, 15));
+        // Narrowed to a range ending on January's own date — it survives the bound.
+        assertThat(renderedText()).contains("january")
+                .doesNotContain("last july");
+    }
+
+    /**
+     * Search matches the note and, for a travel report, where it went — so a
+     * destination finds the report even though nobody typed it into the note.
+     */
+    @Test
+    void searchMatchesTheNoteAndTheTravelDestination() {
+        seedReport(LocalDate.of(2026, 7, 1), "office supplies");
+        seedReportWithTravel(LocalDate.of(2026, 7, 2), "conference",
+                LocalDateTime.of(2026, 7, 2, 8, 0),
+                LocalDateTime.of(2026, 7, 4, 19, 0));
+        navigate(MyReportsView.class);
+
+        var search = $(TextField.class).withAriaLabel("Search reports").first();
+
+        search.setValue("supplies");
+        assertThat(renderedText()).contains("office supplies")
+                .doesNotContain("conference");
+
+        // "Helsinki" is the seeded trip's destination, not part of any note.
+        search.setValue("Helsinki");
+        assertThat(renderedText()).contains("conference")
+                .doesNotContain("office supplies");
+    }
+
+    /** A travel report says where and when on its card; a plain one has no such row. */
+    @Test
+    void travelReportShowsItsDestinationAndDatesOnTheCard() {
+        seedReportWithTravel(LocalDate.of(2026, 7, 2), "conference",
+                LocalDateTime.of(2026, 7, 2, 8, 0),
+                LocalDateTime.of(2026, 7, 4, 19, 0));
+        navigate(MyReportsView.class);
+
+        assertThat(renderedText()).contains("conference").contains("Helsinki");
     }
 
     @Test
@@ -106,7 +157,7 @@ class MyReportsViewUiTest extends AbstractReportViewUiTest {
     void newReportButtonNavigatesToDetailView() {
         navigate(MyReportsView.class);
 
-        findButton().withText("New report").click();
+        findButton().withText("New").click();
 
         assertThat(getCurrentView()).isInstanceOf(ReportDetailView.class);
     }

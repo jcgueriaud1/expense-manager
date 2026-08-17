@@ -1,10 +1,15 @@
 package com.vaadin.expensemanager.base.ui;
 
 import com.vaadin.browserless.SpringBrowserlessTest;
+import com.vaadin.expensemanager.approval.ui.ApprovalQueueView;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
-import com.vaadin.flow.component.applayout.DrawerToggle;
-import com.vaadin.flow.component.sidenav.SideNav;
-import com.vaadin.flow.component.sidenav.SideNavItem;
+import com.vaadin.expensemanager.reference.ui.VatRateView;
+import com.vaadin.expensemanager.report.ui.MyReportsView;
+import com.vaadin.expensemanager.user.ui.UserManagementView;
+import com.vaadin.flow.component.html.Nav;
+import com.vaadin.flow.component.tabs.Tab;
+import com.vaadin.flow.component.tabs.Tabs;
+import com.vaadin.flow.router.RouterLink;
 import com.vaadin.flow.server.menu.MenuConfiguration;
 import com.vaadin.flow.server.menu.MenuEntry;
 import org.junit.jupiter.api.Test;
@@ -20,16 +25,16 @@ import java.util.Objects;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * UI unit test for the base navigation shell (issue #7/#9, ADR-0017), driven
- * with Vaadin's browserless tester — no browser, full Spring context.
+ * UI unit test for the base navigation shell (issue #7/#9, ADR-0025), driven with
+ * Vaadin's browserless tester — no browser, full Spring context.
  *
  * <p>Verifies the shell's contract from the outside for an authenticated user:
  * the landing dashboard renders at {@code @Route("")} inside {@link MainLayout},
- * the side navigation is generated from {@code @Menu}-annotated views (not a
- * hand-maintained list), and an unknown route resolves to the custom
- * {@link NotFoundView} rather than a raw error. Access control now requires a
- * user, so each test authenticates as the seeded plain user via
- * {@link WithUserDetails}.
+ * the header menu offers the three top-level destinations with Admin gated by
+ * role, the administrative screens are {@link AdminLayout} sub-tabs generated
+ * from {@code @Menu} (not a hand-maintained list), and an unknown route resolves
+ * to the custom {@link NotFoundView} rather than a raw error. Access control
+ * requires a user, so each test authenticates via {@link WithUserDetails}.
  *
  * <p>Boots on the same singleton {@link PostgreSQLContainer} pattern as
  * {@code AbstractIntegrationTest}; this class can't extend that base because
@@ -47,96 +52,87 @@ class NavigationShellUiTest extends SpringBrowserlessTest {
         POSTGRES.start();
     }
 
+    /** "" is the reports list now — there is no dashboard (ADR-0026). */
     @Test
     @WithUserDetails(LocalUserSeeder.PLAIN_USER_EMAIL)
-    void landingViewRendersInsideMainLayout() {
-        var dashboard = navigate(DashboardView.class);
+    void landingViewIsMyReportsInsideMainLayout() {
+        var landing = navigate("", MyReportsView.class);
 
-        assertThat(dashboard).isNotNull();
-        assertThat(getCurrentView()).isInstanceOf(DashboardView.class);
-        assertThat(dashboard.getParent()).containsInstanceOf(MainLayout.class);
-    }
-
-    @Test
-    @WithUserDetails(LocalUserSeeder.PLAIN_USER_EMAIL)
-    void sideNavIsGeneratedFromMenuAnnotatedViews() {
-        navigate(DashboardView.class);
-
-        // The top group is the first SideNav, built from MenuConfiguration.
-        var titles = itemLabels($(SideNav.class).first());
-
-        // DashboardView's @Menu(title = "Dashboard") self-registered — proving the
-        // menu is auto-generated, not a hand-maintained list.
-        assertThat(titles).contains("Dashboard");
+        assertThat(landing).isNotNull();
+        assertThat(landing.getParent()).containsInstanceOf(MainLayout.class);
     }
 
     /**
-     * Issue #91: the drawer is grouped into sections. The everyday views lead
-     * in an unlabelled top group; the administrative reference tables and user
-     * management follow as their own labelled sections at the end.
+     * A plain user gets no menu at all: their reports are the only screen they can
+     * reach and also where "" lands, so a menu would be one item pointing at the
+     * page they are already on (ADR-0026). Nothing in the shell checks the role to
+     * decide this — the access-filtered {@code @Menu} set simply has one entry.
+     */
+    @Test
+    @WithUserDetails(LocalUserSeeder.PLAIN_USER_EMAIL)
+    void plainUserGetsNoMenu() {
+        navigate(MyReportsView.class);
+
+        assertThat(headerMenuLabels()).isEmpty();
+    }
+
+    /** An admin also gets the two grouped destinations. */
+    @Test
+    @WithUserDetails("admin@vaadin.com")
+    void adminSeesTheGroupedDestinations() {
+        navigate(MyReportsView.class);
+
+        assertThat(headerMenuLabels()).containsExactly("My reports",
+                "Reference tables", "Admin");
+    }
+
+    /**
+     * The admin screens are sub-tabs of one destination, generated from their
+     * {@code @Menu} entries in {@code order} — so an administrative view still
+     * self-registers its navigation by annotating itself, with no edit to the
+     * shell.
      */
     @Test
     @WithUserDetails("admin@vaadin.com")
-    void adminDrawerIsGroupedIntoSectionsWithAdminAtTheEnd() {
-        navigate(DashboardView.class);
+    void adminScreensAreSubTabsGeneratedFromMenuAnnotations() {
+        var approvals = navigate(ApprovalQueueView.class);
 
-        var navs = $(SideNav.class).all();
-
-        // Section labels, in drawer order: top group unlabelled, admin last.
-        var labels = navs.stream().map(SideNav::getLabel).toList();
-        assertThat(labels)
-                .containsExactly(null, "Reference tables", "User management");
-
-        // Everyday views lead the top group, in Dashboard → My reports →
-        // Approvals → Review history order; no reference/user-management views
-        // leak into it.
-        assertThat(itemLabels(navs.get(0)))
-                .containsExactly("Dashboard", "My reports", "Approvals", "Review history");
-
-        // The reference tables and user management are their own sections.
-        assertThat(itemLabels(navs.get(1)))
-                .containsExactly("VAT rates", "Expense types", "Allowance rates");
-        assertThat(itemLabels(navs.get(2))).containsExactly("Users");
+        // AdminLayout renders the screen into a slot of its own, so it is an
+        // ancestor rather than the immediate parent.
+        assertThat(ancestors(approvals)).hasAtLeastOneElementOfType(AdminLayout.class);
+        assertThat(tabLabels()).containsExactly("Approvals", "Review history",
+                "Users");
     }
 
     /**
-     * A section with no accessible entries renders nothing: the plain user, who
-     * can reach neither the reference tables nor user management, sees only the
-     * unlabelled top group.
+     * The reference tables are their own destination, not a corner of Admin — a
+     * screen's group is whichever layout its {@code @Route} names, so this is
+     * what keeps the two sets apart.
      */
     @Test
-    @WithUserDetails(LocalUserSeeder.PLAIN_USER_EMAIL)
-    void plainUserSeesNoAdminSections() {
-        navigate(DashboardView.class);
+    @WithUserDetails("admin@vaadin.com")
+    void referenceTablesAreTheirOwnTabbedDestination() {
+        var vatRates = navigate(VatRateView.class);
 
-        var navs = $(SideNav.class).all();
-
-        assertThat(navs).hasSize(1);
-        assertThat(navs.get(0).getLabel()).isNull();
-        assertThat(itemLabels(navs.get(0))).containsExactly("Dashboard", "My reports");
+        assertThat(ancestors(vatRates)).hasAtLeastOneElementOfType(ReferenceLayout.class);
+        assertThat(ancestors(vatRates)).doesNotHaveAnyElementsOfTypes(AdminLayout.class);
+        assertThat(tabLabels()).containsExactly("VAT rates", "Expense types",
+                "Allowance rates");
     }
 
     /**
-     * The drawer toggle follows the drawer: the shell carries one toggle in each
-     * surface and hides the wrong one in CSS off the {@code drawer-opened}
-     * attribute. Which one is <em>visible</em> is a browser concern (covered by
-     * the Playwright pass); what this layer can pin down is the contract the CSS
-     * depends on — both toggles exist, each in the right surface, carrying the
-     * class name the stylesheet keys off and its own state-specific label.
+     * The selected tab follows the route, not a click — arriving by deep link has
+     * to light the right tab, which is what makes the admin screens individually
+     * addressable rather than reachable only by clicking through.
      */
     @Test
-    @WithUserDetails(LocalUserSeeder.PLAIN_USER_EMAIL)
-    void shellCarriesAToggleInBothTheDrawerAndTheNavbar() {
-        navigate(DashboardView.class);
+    @WithUserDetails("admin@vaadin.com")
+    void deepLinkingToAnAdminScreenSelectsItsTab() {
+        navigate(UserManagementView.class);
 
-        var toggles = $(DrawerToggle.class).all();
-
-        assertThat(toggles).hasSize(2);
-        assertThat(toggles).extracting(DrawerToggle::getClassName)
-                .containsExactlyInAnyOrder("shell-drawer-toggle",
-                        "shell-navbar-toggle");
-        assertThat(toggles).extracting(toggle -> toggle.getAriaLabel().orElseThrow())
-                .containsExactlyInAnyOrder("Collapse menu", "Expand menu");
+        var tabs = $(Tabs.class).first();
+        assertThat(tabs.getSelectedTab()).isNotNull();
+        assertThat(label(tabs.getSelectedTab())).isEqualTo("Users");
     }
 
     /**
@@ -148,7 +144,7 @@ class NavigationShellUiTest extends SpringBrowserlessTest {
     @Test
     @WithUserDetails("admin@vaadin.com")
     void everyMenuIconResolvesToAVendoredSvg() {
-        navigate(DashboardView.class);
+        navigate(MyReportsView.class);
 
         var icons = MenuConfiguration.getMenuEntries().stream()
                 .map(MenuEntry::icon)
@@ -162,19 +158,50 @@ class NavigationShellUiTest extends SpringBrowserlessTest {
                 .isNotNull());
     }
 
-    private static List<String> itemLabels(SideNav nav) {
-        return nav.getChildren()
-                .filter(SideNavItem.class::isInstance)
-                .map(SideNavItem.class::cast)
-                .map(SideNavItem::getLabel)
-                .toList();
-    }
-
     @Test
     @WithUserDetails(LocalUserSeeder.PLAIN_USER_EMAIL)
     void unknownRouteResolvesToCustomNotFoundView() {
         navigate("no-such-route-exists", NotFoundView.class);
 
         assertThat(getCurrentView()).isInstanceOf(NotFoundView.class);
+    }
+
+    /** Every component above {@code component} in the tree, nearest first. */
+    private static List<com.vaadin.flow.component.Component> ancestors(
+            com.vaadin.flow.component.Component component) {
+        var chain = new java.util.ArrayList<com.vaadin.flow.component.Component>();
+        for (var parent = component.getParent(); parent.isPresent();
+                parent = parent.get().getParent()) {
+            chain.add(parent.get());
+        }
+        return chain;
+    }
+
+    /** The header menu's link texts, in order. */
+    private List<String> headerMenuLabels() {
+        return $(Nav.class).first().getChildren()
+                .filter(RouterLink.class::isInstance)
+                .map(RouterLink.class::cast)
+                .map(RouterLink::getText)
+                .toList();
+    }
+
+    /** The admin sub-tab labels, in order. */
+    private List<String> tabLabels() {
+        return $(Tabs.class).first().getChildren()
+                .filter(Tab.class::isInstance)
+                .map(Tab.class::cast)
+                .map(NavigationShellUiTest::label)
+                .toList();
+    }
+
+    /** A tab's label — it wraps a RouterLink, so the text is one level down. */
+    private static String label(Tab tab) {
+        return tab.getChildren()
+                .filter(RouterLink.class::isInstance)
+                .map(RouterLink.class::cast)
+                .map(RouterLink::getText)
+                .findFirst()
+                .orElseGet(tab::getLabel);
     }
 }

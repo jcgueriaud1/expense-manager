@@ -2,7 +2,7 @@ package com.vaadin.expensemanager.reference.ui;
 
 import java.math.BigDecimal;
 
-import com.vaadin.expensemanager.base.ui.DashboardView;
+import com.vaadin.expensemanager.report.ui.MyReportsView;
 import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.VatRateDto;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
@@ -48,14 +48,14 @@ class ExpenseTypeViewUiTest extends AbstractReferenceDataViewUiTest {
     @Test
     @WithUserDetails("admin@vaadin.com")
     void adminSeesMenuEntry() {
-        navigate(DashboardView.class);
+        navigate(MyReportsView.class);
         assertThat(menuItemPaths()).contains("expense-types");
     }
 
     @Test
     @WithUserDetails(LocalUserSeeder.PLAIN_USER_EMAIL)
     void userSeesNoMenuEntry() {
-        navigate(DashboardView.class);
+        navigate(MyReportsView.class);
         assertThat(menuItemPaths()).doesNotContain("expense-types");
     }
 

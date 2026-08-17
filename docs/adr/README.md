@@ -22,7 +22,7 @@ Status values: `Accepted`, `Superseded by ADR-XXXX`, `Deprecated`.
 | [0014](0014-java-25.md) | Java 25 in pom and Dockerfile | Accepted |
 | [0015](0015-binder-and-signals.md) | Binder for form validation; Signals for dynamic state | Accepted |
 | [0016](0016-persistence-baseline-pk-audit.md) | Bigint PKs, app-side audit timestamps, minimal V1 baseline | Accepted |
-| [0017](0017-base-ui-shell-and-ux-states.md) | Base UI shell: auto-menu nav + shared UX-state primitives | Accepted |
+| [0017](0017-base-ui-shell-and-ux-states.md) | Base UI shell: auto-menu nav + shared UX-state primitives | Accepted (auto-menu navigation superseded by 0025) |
 | [0018](0018-expense-type-and-vat-config.md) | Expense Type & VAT Rate as editable reference config | Accepted |
 | [0019](0019-report-save-model.md) | Report edit/save: whole-aggregate, in-memory until first save | Accepted (receipt consequence retired by 0021) |
 | [0020](0020-accessible-and-mobile-friendly.md) | Accessible (WCAG 2.1 AA) and mobile-friendly baseline | Accepted |
@@ -30,5 +30,7 @@ Status values: `Accepted`, `Superseded by ADR-XXXX`, `Deprecated`.
 | [0022](0022-form-models-top-level.md) | Binder form-backing models are top-level classes, not view inner classes | Accepted |
 | [0023](0023-expense-line-quantity.md) | Expense-line quantity: `amount` becomes a unit price, gross derived | Accepted |
 | [0024](0024-generated-line-quantity-override.md) | Generated lines corrected by overriding the quantity, never the amount | Accepted |
+| [0025](0025-header-navigation-with-tabbed-sections.md) | Header navigation: standalone destinations plus tabbed sections | Accepted (dashboard destination retired by 0026) |
+| [0026](0026-no-dashboard-per-view-stat-cards.md) | No dashboard: each screen carries its own numbers | Accepted |
 
 See also: [../glossary.md](../glossary.md) · [../plan.md](../plan.md) · [../findings.md](../findings.md)

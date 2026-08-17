@@ -1,259 +1,276 @@
 package com.vaadin.expensemanager.base.ui;
 
-import com.vaadin.expensemanager.allowance.ui.AllowanceRatesView;
-import com.vaadin.expensemanager.reference.ui.ExpenseTypeView;
-import com.vaadin.expensemanager.reference.ui.VatRateView;
+import com.vaadin.expensemanager.report.ui.MyReportsView;
 import com.vaadin.expensemanager.security.CurrentUserProvider;
-import com.vaadin.expensemanager.user.ui.UserManagementView;
 import com.vaadin.flow.component.Component;
+import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.applayout.AppLayout;
-import com.vaadin.flow.component.applayout.DrawerToggle;
-import com.vaadin.flow.component.button.Button;
-import com.vaadin.flow.component.button.ButtonVariant;
-import com.vaadin.flow.component.html.H1;
+import com.vaadin.flow.component.avatar.Avatar;
+import com.vaadin.flow.component.contextmenu.SubMenu;
+import com.vaadin.flow.component.html.Div;
+import com.vaadin.flow.component.html.Nav;
 import com.vaadin.flow.component.html.Span;
-import com.vaadin.flow.component.icon.SvgIcon;
-import com.vaadin.flow.component.orderedlayout.FlexComponent;
-import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
-import com.vaadin.flow.component.orderedlayout.Scroller;
-import com.vaadin.flow.component.orderedlayout.VerticalLayout;
-import com.vaadin.flow.component.sidenav.SideNav;
-import com.vaadin.flow.component.sidenav.SideNavItem;
-import com.vaadin.flow.router.AfterNavigationEvent;
-import com.vaadin.flow.router.AfterNavigationObserver;
+import com.vaadin.flow.component.menubar.MenuBar;
+import com.vaadin.flow.component.menubar.MenuBarVariant;
+import com.vaadin.flow.router.HighlightConditions;
 import com.vaadin.flow.router.Layout;
+import com.vaadin.flow.router.Route;
+import com.vaadin.flow.router.RouteAlias;
+import com.vaadin.flow.router.RouterLayout;
+import com.vaadin.flow.router.RouterLink;
 import com.vaadin.flow.server.menu.MenuConfiguration;
 import com.vaadin.flow.server.menu.MenuEntry;
 import com.vaadin.flow.spring.security.AuthenticationContext;
 
 import jakarta.annotation.security.PermitAll;
 
-import java.util.HashSet;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
- * The application's Aura-themed navigation shell (ADR-0017).
+ * The application's Aura-themed navigation shell (ADR-0025, superseding the
+ * drawer shell of ADR-0017).
  *
  * <p>Registered as the automatic {@link Layout @Layout} for the whole app, so
  * every {@code @Route} view without an explicit layout renders inside this
- * {@link AppLayout}: a drawer holding the app name and side navigation, and a
- * navbar with the current-user identity and a logout action. The drawer toggle
- * follows the drawer — inside it while it is open, back in the navbar once it
- * collapses (see {@link #createToggle}).
+ * {@link AppLayout}. There is no drawer: navigation lives in the header as
+ * <strong>logo · menu · account</strong>, with the menu centred. {@code AppLayout}
+ * is still the container even with an empty drawer — it publishes the measured
+ * navbar height as the content's top offset (so a taller header can never
+ * overlap a view), it re-slots navbar children into a bottom bar on coarse
+ * pointers, and Aura's whole app chrome is keyed to {@code vaadin-app-layout}
+ * selectors. The component detects the empty drawer and collapses it to zero
+ * width, so nothing needs switching off.
  *
- * <p><strong>Navigation is auto-generated, never hand-maintained.</strong> The
- * items come from {@link MenuConfiguration#getMenuEntries()}, which collects
- * every {@code @Menu}-annotated view and is already filtered by the user's
- * access (ADR-0008), so role-aware navigation comes for free.
+ * <p><strong>The menu is derived, not listed.</strong> A screen becomes its own
+ * destination by declaring {@code @Menu} and no layout of its own; it joins a
+ * grouped destination — Reference tables, Admin — by naming that group's layout
+ * in its {@code @Route}. So membership is declared where the screen is, and the
+ * only navigation this class hand-maintains is {@link #SECTIONS}: a name per
+ * group. That keeps the property ADR-0017 was built around, a view registering
+ * its own access-filtered navigation with no edit to the shell (ADR-0008), and it
+ * role-gates the grouped items without a check of its own — {@code
+ * getMenuEntries()} is already access-filtered, so a plain user's groups come
+ * back empty and neither item renders.
  *
- * <p><strong>Grouped into sections (issue #91).</strong> Everyday views —
- * Dashboard, My reports, Approvals — head an unlabelled {@link SideNav}. The
- * administrative reference tables and user management follow as their own
- * labelled sections at the end. Only the section-to-view mapping in
- * {@link #ADMIN_SECTIONS} is hand-maintained, and it references the view
- * classes directly (via {@link MenuEntry#menuClass()}) rather than repeating
- * their {@code @Route} paths — so a renamed route can never silently drop a
- * view out of its section. Membership, order within a section, and access
- * filtering all still flow from the {@code @Menu} entries, and any view not
- * claimed by an admin section falls into the top group by default. A section
- * with no accessible entries renders nothing.
+ * <p>The header carries no view title: the wireframe puts the screen's name in
+ * the content, where each view renders it as its own heading.
  *
- * <p>{@link PermitAll} guards the shell: it hosts only authenticated views, so
- * a current user is always present when it renders (the public login view opts
- * out via {@code autoLayout = false}). The header therefore always resolves an
- * identity, and logout goes through Vaadin's
- * {@link AuthenticationContext#logout()} (ADR-0017).
+ * <p>{@link PermitAll} guards the shell: it hosts only authenticated views, so a
+ * current user is always present when it renders (the public login view opts out
+ * via {@code autoLayout = false}). Logout goes through Vaadin's
+ * {@link AuthenticationContext#logout()}.
  */
 @Layout
 @PermitAll
-public class MainLayout extends AppLayout implements AfterNavigationObserver {
+public class MainLayout extends AppLayout {
 
     /**
-     * The administrative sections shown at the end of the drawer, in order.
-     * Each maps a section label to the view classes that belong under it; any
-     * menu entry whose view is not listed here stays in the top group.
+     * The header's grouped destinations, in order: a tab-shell layout and the
+     * name it goes by. Everything else about a group — which screens it holds,
+     * their order, who may see them — comes from the screens themselves.
+     *
+     * <p>This map is the whole of the shell's hand-maintained navigation. A
+     * screen joins a group by naming that group's layout in its {@code @Route},
+     * so adding one needs no edit here; only a brand-new group does.
      */
-    private static final List<NavSection> ADMIN_SECTIONS = List.of(
-            new NavSection("Reference tables",
-                    List.of(VatRateView.class, ExpenseTypeView.class,
-                            AllowanceRatesView.class)),
-            new NavSection("User management", List.of(UserManagementView.class)));
+    private static final Map<Class<? extends RouterLayout>, String> SECTIONS =
+            new LinkedHashMap<>();
+
+    static {
+        SECTIONS.put(ReferenceLayout.class, "Reference tables");
+        SECTIONS.put(AdminLayout.class, "Admin");
+    }
+
+    /**
+     * The width every screen's content column is held to.
+     *
+     * <p>One value, shared: the reports list, the approval queue and the tabbed
+     * sections all read as the same document rather than three layouts that happen
+     * to sit under one header. None of this app's tables is wide enough to want the
+     * full window.
+     */
+    public static final String CONTENT_MAX_WIDTH = "1000px";
 
     private final transient AuthenticationContext authenticationContext;
-
-    /**
-     * The current view's title, shown at the head of the navbar. The views no
-     * longer carry their own copy — see {@link #afterNavigation}.
-     */
-    private final H1 viewTitle = new H1();
 
     public MainLayout(CurrentUserProvider currentUserProvider,
             AuthenticationContext authenticationContext) {
         this.authenticationContext = authenticationContext;
 
-        viewTitle.addClassName("shell-view-title");
-
-        setPrimarySection(Section.DRAWER);
-        addToNavbar(createToggle("shell-navbar-toggle", "Expand menu"), viewTitle,
-                createUserMenu(currentUserProvider));
-        addToDrawer(createHeader(), new Scroller(createNavigation()));
-    }
-
-    /**
-     * Retitles the navbar for the view that was just navigated to.
-     *
-     * <p>{@link MenuConfiguration#getPageHeader(Component)} exists for exactly
-     * this — it resolves {@link com.vaadin.flow.router.HasDynamicTitle
-     * HasDynamicTitle} first, then the view's {@code @PageTitle} — so the title
-     * shown here is the same string the browser tab gets, and a view declares it
-     * in one place.
-     *
-     * <p>This hangs off {@link AfterNavigationObserver} rather than overriding
-     * {@code AppLayout.afterNavigation()}, which is package-private in Vaadin 25
-     * and so not ours to override (F-061).
-     */
-    @Override
-    public void afterNavigation(AfterNavigationEvent event) {
-        viewTitle.setText(MenuConfiguration.getPageHeader(getContent()).orElse(""));
-    }
-
-    /** A labelled group of navigation items and the views it collects. */
-    private record NavSection(String label,
-            List<Class<? extends Component>> views) {
-    }
-
-    /**
-     * The drawer's own header: the app name paired with a drawer toggle.
-     *
-     * <p>The toggle here is the <em>collapse</em> half of the pair described on
-     * {@link #createToggle}; the navbar holds the <em>expand</em> half.
-     */
-    private Component createHeader() {
-        // A Span, not a heading: the page's one H1 is the view title in the
-        // navbar. The app name is a brand mark, not this page's heading, and two
-        // competing H1s would leave a screen reader with no clear page title.
-        var appName = new Span("Expense Manager");
-        appName.addClassName("shell-app-name");
-
-        var header = new HorizontalLayout(appName,
-                createToggle("shell-drawer-toggle", "Collapse menu"));
+        var header = new Div(logo(), menu(), account(currentUserProvider));
+        header.addClassName("shell-header");
         header.setWidthFull();
-        // setPadding takes only a boolean — there is no String overload for a
-        // custom value, unlike setSpacing (F-058).
-        header.setPadding(true);
-        header.setSpacing("var(--vaadin-gap-s)");
-        header.setAlignItems(FlexComponent.Alignment.CENTER);
-        header.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
-        return header;
+        addToNavbar(header);
+    }
+
+    /** Brand mark, doubling as the way home. */
+    private Component logo() {
+        var mark = LucideIcon.RECEIPT.create();
+        var wordmark = new Span("Expense Manager");
+        wordmark.addClassName("shell-wordmark");
+
+        var link = new RouterLink();
+        link.setRoute(MyReportsView.class);
+        link.add(mark, wordmark);
+        link.addClassName("shell-logo");
+        // A logo is not a nav item — without this it would light up as "current"
+        // on the dashboard, since its route is "" and the default highlight
+        // condition is a location *prefix* match.
+        link.setHighlightCondition(HighlightConditions.never());
+        return link;
     }
 
     /**
-     * One half of the drawer-toggle pair.
+     * The centred menu: every screen that stands on its own, then every group
+     * that has anything in it for this user.
      *
-     * <p>The shell carries <strong>two</strong> toggles — one in the drawer
-     * header, one in the navbar — and shows whichever belongs to the current
-     * drawer state: while the drawer is open the toggle sits inside it, and once
-     * it collapses the toggle reappears in the view header. Both are always in
-     * the DOM; {@code styles.css} hides the wrong one off the {@code
-     * drawer-opened} attribute that {@code <vaadin-app-layout>} reflects on its
-     * host, so the swap costs no server round-trip and survives a drawer state
-     * change made from either side. It hides with {@code display: none}, which
-     * also keeps the hidden one out of the accessibility tree — assistive tech
-     * and tab order see a single toggle, hence the state-specific labels.
+     * <p>Nothing here is a list of screens. A screen appears as its own
+     * destination by declaring {@code @Menu} and no layout; it appears inside a
+     * group by naming that group's layout. Both come from
+     * {@link MenuConfiguration}, which has already dropped whatever the user may
+     * not see — so a group with nothing accessible in it renders no item at all,
+     * and that is the whole of the role gating (ADR-0008).
+     *
+     * <p>{@link RouterLink} rather than tabs or a menu bar: it is a real anchor
+     * (keyboard, middle-click, "open in new tab" all work) and it already tracks
+     * the current route — Flow toggles a {@code highlight} attribute on it after
+     * navigation, which is what {@code styles.css} styles as the current item.
      */
-    private Component createToggle(String className, String ariaLabel) {
-        var toggle = new DrawerToggle();
-        toggle.addClassName(className);
-        toggle.setAriaLabel(ariaLabel);
-        toggle.addThemeVariants(ButtonVariant.TERTIARY);
-        return toggle;
-    }
+    private Component menu() {
+        var nav = new Nav();
+        nav.addClassName("shell-nav");
 
-    private Component createUserMenu(CurrentUserProvider currentUserProvider) {
-        var userName = new Span(currentUserProvider.get()
-                .map(user -> user.name())
-                .orElse(""));
-        userName.getStyle().setFontWeight("500");
-
-        var logout = new Button("Sign out", LucideIcon.LOG_OUT.create(),
-                event -> authenticationContext.logout());
-        logout.addThemeVariants(ButtonVariant.TERTIARY);
-
-        // Sized to its content, not the full row: the view title beside it is what
-        // takes up the slack (see .shell-view-title), which both keeps this bar at
-        // the trailing edge and stops it from squeezing the title into an ellipsis.
-        var bar = new HorizontalLayout(new ThemeSwitcher(), userName, logout);
-        bar.setAlignItems(FlexComponent.Alignment.CENTER);
-        bar.getStyle().setPaddingRight("var(--vaadin-padding-m)");
-        return bar;
-    }
-
-    private Component createNavigation() {
-        var entries = MenuConfiguration.getMenuEntries();
-
-        Set<Class<? extends Component>> adminViews = new HashSet<>();
-        ADMIN_SECTIONS.forEach(section -> adminViews.addAll(section.views()));
-
-        var container = new VerticalLayout();
-        container.setPadding(false);
-        container.setSpacing("var(--vaadin-gap-m)");
-        // VerticalLayout aligns children to START, which on a column axis makes
-        // each SideNav shrink to its widest label — so the items, and the
-        // current-item highlight, stopped short of the drawer's edge. STRETCH
-        // fills the drawer width.
-        container.setDefaultHorizontalComponentAlignment(
-                FlexComponent.Alignment.STRETCH);
-
-        // Top group: every entry not claimed by an admin section, kept in the
-        // order MenuConfiguration returns them (by @Menu order).
-        var topEntries = entries.stream()
-                .filter(entry -> !adminViews.contains(entry.menuClass()))
+        var standalone = entriesFor(UI.class);
+        var sections = SECTIONS.entrySet().stream()
+                .filter(section -> !entriesFor(section.getKey()).isEmpty())
                 .toList();
-        addSection(container, null, topEntries);
 
-        // Admin sections at the end, each in its declared view order.
-        for (var section : ADMIN_SECTIONS) {
-            var sectionEntries = section.views().stream()
-                    .flatMap(view -> entries.stream()
-                            .filter(entry -> view.equals(entry.menuClass())))
-                    .toList();
-            addSection(container, section.label(), sectionEntries);
+        // A menu of one is not a menu. A plain user can reach exactly one screen —
+        // their reports, which is also where "" lands — so they get no navigation
+        // at all rather than a lone item that only ever points at the page they are
+        // already on (ADR-0026).
+        if (standalone.size() + sections.size() < 2) {
+            return nav;
         }
-        return container;
+
+        standalone.forEach(entry -> nav.add(standaloneLink(entry)));
+        sections.forEach(section -> nav.add(
+                sectionLink(section.getValue(), entriesFor(section.getKey()))));
+        return nav;
     }
 
-    private void addSection(VerticalLayout container, String label,
-            List<MenuEntry> entries) {
-        if (entries.isEmpty()) {
-            return;
-        }
-        var nav = new SideNav();
-        if (label != null) {
-            nav.setLabel(label);
-        }
-        entries.forEach(entry -> nav.addItem(createSideNavItem(entry)));
-        container.add(nav);
+    /** A destination that is one screen — its {@code @Menu} title links to it. */
+    private RouterLink standaloneLink(MenuEntry entry) {
+        var path = normalizePath(entry.path());
+        var link = new RouterLink(entry.title(), asComponent(entry.menuClass()));
+        link.addClassName("shell-nav-link");
+        // A route of "" is a prefix of every other location, so a prefix match
+        // would keep such a link lit everywhere; it needs an exact match — plus its
+        // aliases, since the landing screen also answers on /reports.
+        var aliases = aliasPaths(entry.menuClass());
+        link.setHighlightCondition(path.isEmpty()
+                ? (target, event) -> event.getLocation().getPath().isEmpty()
+                        || aliases.contains(firstSegment(event.getLocation().getPath()))
+                : HighlightConditions.locationPrefix(path));
+        return link;
     }
 
     /**
-     * Builds one navigation item, rendering the {@code @Menu} entry's icon.
-     *
-     * <p>{@code @Menu(icon = …)} is an uninterpreted string: Flow hands it
-     * through verbatim and it is this method that decides what it means. Ours
-     * carry a path to a vendored Lucide SVG ({@link LucideIcon}), so they need
-     * {@link SvgIcon}, which sets the {@code src} attribute. The {@link
-     * com.vaadin.flow.component.icon.Icon Icon} class cannot render a path —
-     * given one it silently looks up a non-existent name inside the Vaadin
-     * iconset and renders nothing at all, no error — so the annotation values
-     * and this line have to change together.
+     * A destination that stands for several screens: it opens the first of them
+     * and stays lit for any, so the header keeps showing which <em>area</em> you
+     * are in while that area's tabs show which screen.
      */
-    private SideNavItem createSideNavItem(MenuEntry entry) {
-        var item = entry.icon() != null
-                ? new SideNavItem(entry.title(), entry.path(),
-                        new SvgIcon(entry.icon()))
-                : new SideNavItem(entry.title(), entry.path());
-        item.setMatchNested(true);
-        return item;
+    private RouterLink sectionLink(String title, List<MenuEntry> members) {
+        var paths = members.stream().map(entry -> firstSegment(entry.path()))
+                .collect(Collectors.toUnmodifiableSet());
+
+        var link = new RouterLink();
+        link.setRoute(asComponent(members.getFirst().menuClass()));
+        link.setText(title);
+        link.addClassName("shell-nav-link");
+        link.setHighlightCondition((target, event) ->
+                paths.contains(firstSegment(event.getLocation().getPath())));
+        return link;
+    }
+
+    /** The {@code @RouteAlias} paths of a view — locations it also answers on. */
+    private static Set<String> aliasPaths(Class<?> viewClass) {
+        return Arrays.stream(viewClass.getAnnotationsByType(RouteAlias.class))
+                .map(alias -> firstSegment(alias.value()))
+                .collect(Collectors.toUnmodifiableSet());
+    }
+
+    private static String firstSegment(String path) {
+        var trimmed = normalizePath(path);
+        var slash = trimmed.indexOf('/');
+        return slash < 0 ? trimmed : trimmed.substring(0, slash);
+    }
+
+    /**
+     * A path with no leading slash, so a {@code @Menu} entry and a
+     * {@link com.vaadin.flow.router.Location Location} can be compared — they do
+     * not agree on the slash, and a mismatch fails silently.
+     */
+    static String normalizePath(String path) {
+        return path.startsWith("/") ? path.substring(1) : path;
+    }
+
+    /**
+     * The accessible {@code @Menu} screens whose {@code @Route} names
+     * {@code layout} as their parent, in {@code @Menu order}.
+     *
+     * <p>{@code UI.class} is {@code @Route}'s default, so passing it asks for the
+     * screens that declared no layout of their own — the standalone destinations.
+     * This is the one place the shell reads a view's layout, and it is what lets
+     * membership live on the screen instead of in a list here.
+     */
+    static List<MenuEntry> entriesFor(Class<? extends RouterLayout> layout) {
+        return MenuConfiguration.getMenuEntries().stream()
+                .filter(entry -> entry.menuClass() != null)
+                .filter(entry -> declaredLayout(entry.menuClass()) == layout)
+                .toList();
+    }
+
+    private static Class<? extends RouterLayout> declaredLayout(Class<?> viewClass) {
+        var route = viewClass.getAnnotation(Route.class);
+        return route == null ? UI.class : route.layout();
+    }
+
+    @SuppressWarnings("unchecked")
+    static Class<? extends Component> asComponent(Class<?> menuClass) {
+        return (Class<? extends Component>) menuClass;
+    }
+
+    /**
+     * The account control at the trailing edge: an initials avatar whose menu
+     * carries who you are, the colour-scheme choice, and sign-out.
+     */
+    private Component account(CurrentUserProvider currentUserProvider) {
+        var name = currentUserProvider.get().map(user -> user.name()).orElse("");
+        var avatar = new Avatar(name);
+        avatar.addClassName("shell-avatar");
+
+        var bar = new MenuBar();
+        bar.addThemeVariants(MenuBarVariant.TERTIARY);
+        bar.addClassName("shell-account");
+        var trigger = bar.addItem(avatar);
+        trigger.setAriaLabel("Account");
+
+        SubMenu menu = trigger.getSubMenu();
+        // addComponent, not addItem: who you are is a label in the menu, not a
+        // command — an item would be focusable and clickable to no effect.
+        var who = new Span(name);
+        who.addClassName("shell-account-name");
+        menu.addComponent(who);
+        menu.addSeparator();
+        ThemeSwitcher.addChoicesTo(menu.addItem("Theme").getSubMenu());
+        menu.addSeparator();
+        menu.addItem("Sign out", event -> authenticationContext.logout());
+        return bar;
     }
 }

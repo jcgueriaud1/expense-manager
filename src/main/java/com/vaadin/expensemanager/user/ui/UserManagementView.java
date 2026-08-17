@@ -1,6 +1,8 @@
 package com.vaadin.expensemanager.user.ui;
 
+import com.vaadin.expensemanager.base.ui.AdminLayout;
 import com.vaadin.expensemanager.base.ui.LucideIcon;
+import com.vaadin.expensemanager.base.ui.ViewHeader;
 import java.util.List;
 import java.util.Locale;
 
@@ -34,7 +36,7 @@ import jakarta.annotation.security.RolesAllowed;
  *
  * <p>Structure mirrors {@code ExpenseTypeView}: an intro paragraph and a
  * {@link Grid} of {@link UserSummaryDto}, under the screen title that
- * {@code MainLayout} renders in the navbar. The side-nav item is
+ * {@code AdminLayout} renders above its sub-tabs. Its Admin sub-tab is
  * auto-generated from {@code @Menu} and access-filtered, so navigation is gated
  * by {@code @RolesAllowed("ADMIN")} here while the real enforcement lives in
  * {@link UserAdminService#list()} (two-layer authorization, ADR-0008).
@@ -53,9 +55,9 @@ import jakarta.annotation.security.RolesAllowed;
  * left unchanged. Changes take effect at the user's <strong>next login</strong>
  * — there is no forced logout in V1 (ADR-0008), as the intro notes.
  */
-@Route("users")
+@Route(value = "users", layout = AdminLayout.class)
 @PageTitle("Users")
-@Menu(title = "Users", order = 4, icon = "icons/lucide/users.svg")
+@Menu(title = "Users", order = 30, icon = "icons/lucide/users.svg")
 @RolesAllowed("ADMIN")
 public class UserManagementView extends VerticalLayout {
 
@@ -78,7 +80,7 @@ public class UserManagementView extends VerticalLayout {
         setPadding(true);
         setSpacing(true);
 
-        // Title is rendered by MainLayout in the navbar.
+        add(new ViewHeader(this));
         add(new Paragraph(
                 "Everyone with access to the expense manager. Search by name or "
                         + "email and filter by role or status to find someone. "

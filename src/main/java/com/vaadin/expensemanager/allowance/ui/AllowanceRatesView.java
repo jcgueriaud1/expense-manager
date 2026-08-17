@@ -1,6 +1,8 @@
 package com.vaadin.expensemanager.allowance.ui;
 
+import com.vaadin.expensemanager.base.ui.ReferenceLayout;
 import com.vaadin.expensemanager.base.ui.LucideIcon;
+import com.vaadin.expensemanager.base.ui.ViewHeader;
 import java.math.BigDecimal;
 
 import com.vaadin.expensemanager.allowance.AllowanceRateService;
@@ -51,9 +53,9 @@ import static com.vaadin.expensemanager.allowance.ui.AllowanceViewSupport.openDe
  * ADR-0020); the single-value rate editors go through
  * {@link AllowanceViewSupport#openDecimalEditor}.
  */
-@Route("allowance-rates")
+@Route(value = "allowance-rates", layout = ReferenceLayout.class)
 @PageTitle("Allowance rates")
-@Menu(title = "Allowance rates", order = 4, icon = "icons/lucide/coins.svg")
+@Menu(title = "Allowance rates", order = 22, icon = "icons/lucide/coins.svg")
 @RolesAllowed("ADMIN")
 public class AllowanceRatesView extends VerticalLayout {
 
@@ -72,13 +74,7 @@ public class AllowanceRatesView extends VerticalLayout {
                 event -> openAddYearEditor());
         addYear.addThemeVariants(ButtonVariant.PRIMARY);
 
-        // The screen's title is rendered by MainLayout in the navbar, so this row
-        // carries only its action, held at the trailing edge where the title/action
-        // split used to put it.
-        var header = new HorizontalLayout(addYear);
-        header.setWidthFull();
-        header.setAlignItems(FlexComponent.Alignment.CENTER);
-        header.setJustifyContentMode(FlexComponent.JustifyContentMode.END);
+        var header = new ViewHeader(this, addYear);
 
         var intro = new Paragraph(
                 "The per-year rates the travel calculator costs against. History "

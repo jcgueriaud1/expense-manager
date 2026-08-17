@@ -51,6 +51,7 @@ public enum LucideIcon {
     PERCENT,
     PLANE,
     PLUS,
+    RECEIPT,
     ROTATE_CCW_CLOCK,
     SEARCH,
     SQUARE_PEN,

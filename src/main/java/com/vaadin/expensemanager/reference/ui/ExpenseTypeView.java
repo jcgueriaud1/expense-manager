@@ -1,5 +1,6 @@
 package com.vaadin.expensemanager.reference.ui;
 
+import com.vaadin.expensemanager.base.ui.ReferenceLayout;
 import com.vaadin.expensemanager.base.ui.LucideIcon;
 import java.util.ArrayList;
 import java.util.List;
@@ -39,9 +40,9 @@ import static com.vaadin.expensemanager.reference.ui.ReferenceViewSupport.format
  * {@code ComboBox} offering only <em>active</em> VAT rates (plus the current one
  * if since deactivated), in {@link #selectableRatesFor}.
  */
-@Route("expense-types")
+@Route(value = "expense-types", layout = ReferenceLayout.class)
 @PageTitle("Expense types")
-@Menu(title = "Expense types", order = 3, icon = "icons/lucide/tags.svg")
+@Menu(title = "Expense types", order = 21, icon = "icons/lucide/tags.svg")
 @RolesAllowed("ADMIN")
 public class ExpenseTypeView extends ReferenceConfigView<ExpenseTypeDto> {
 

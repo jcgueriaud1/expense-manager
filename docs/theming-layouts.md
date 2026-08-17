@@ -31,7 +31,7 @@ not hard-coded px.
 | Fill parent | `component.setSizeFull()` |
 | Min/max constraints | `component.setMinWidth(...)`, `setMaxWidth(...)` |
 | Flex direction (custom) | `flex.setFlexDirection(FlexLayout.FlexDirection.ROW)` |
-| Flex wrap | `flex.setFlexWrap(FlexLayout.FlexWrap.WRAP)` |
+| Flex wrap | `layout.setWrap(true)` on any `HorizontalLayout`/`VerticalLayout` (ThemableLayout); `flex.setFlexWrap(...)` on `FlexLayout` |
 | Scrollable region | `new Scroller(content)` + `setScrollDirection(...)` |
 | Responsive form columns | `FormLayout` + `setResponsiveSteps(...)` |
 | Resizable split panels | `SplitLayout` |

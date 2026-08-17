@@ -1,12 +1,13 @@
 package com.vaadin.expensemanager.user.ui;
 
+import com.vaadin.flow.server.menu.MenuConfiguration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
 import com.vaadin.browserless.SpringBrowserlessTest;
 import com.vaadin.browserless.locator.Locators;
-import com.vaadin.expensemanager.base.ui.DashboardView;
+import com.vaadin.expensemanager.report.ui.MyReportsView;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
 import com.vaadin.expensemanager.user.Role;
 import com.vaadin.expensemanager.user.User;
@@ -15,7 +16,6 @@ import com.vaadin.expensemanager.user.UserSummaryDto;
 import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.grid.GridLocator;
-import com.vaadin.flow.component.sidenav.SideNavItem;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -82,14 +82,14 @@ class UserManagementViewUiTest extends SpringBrowserlessTest implements Locators
     @Test
     @WithUserDetails(ADMIN_EMAIL)
     void adminSeesMenuEntry() {
-        navigate(DashboardView.class);
+        navigate(MyReportsView.class);
         assertThat(menuItemPaths()).contains("users");
     }
 
     @Test
     @WithUserDetails(LocalUserSeeder.PLAIN_USER_EMAIL)
     void userSeesNoMenuEntry() {
-        navigate(DashboardView.class);
+        navigate(MyReportsView.class);
         assertThat(menuItemPaths()).doesNotContain("users");
     }
 
@@ -240,9 +240,16 @@ class UserManagementViewUiTest extends SpringBrowserlessTest implements Locators
         throw new AssertionError("No row for " + email);
     }
 
+    /**
+     * The auto-registered, access-filtered {@code @Menu} entry paths. Read from
+     * {@link MenuConfiguration} rather than a rendered nav component: that set is
+     * what drives both the header's Admin item and AdminLayout's sub-tabs
+     * (ADR-0025), so it is the thing this test is actually about.
+     */
     private List<String> menuItemPaths() {
-        return find(SideNavItem.class).all().stream()
-                .map(SideNavItem::getPath)
+        return MenuConfiguration.getMenuEntries().stream()
+                .map(entry -> entry.path().startsWith("/")
+                        ? entry.path().substring(1) : entry.path())
                 .toList();
     }
 }

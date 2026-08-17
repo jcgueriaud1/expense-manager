@@ -1,6 +1,6 @@
 # ADR-0017 — Base UI shell: auto-menu navigation + shared UX-state primitives
 
-**Status:** Accepted
+**Status:** Accepted — the auto-menu **navigation** decision below is superseded by [ADR-0025](0025-header-navigation-with-tabbed-sections.md); the UX-state primitives stand; the adaptive dashboard is retired by [ADR-0026](0026-no-dashboard-per-view-stat-cards.md).
 
 ## Context
 Phase 0.7 stands up `MainLayout` (Aura) and the empty/loading/error patterns the

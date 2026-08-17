@@ -3,6 +3,7 @@ package com.vaadin.expensemanager.report.ui;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -126,6 +127,11 @@ public final class ReportViewSupport {
     private static final DateTimeFormatter TIMESTAMP =
             DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm", Locale.ENGLISH)
                     .withZone(ZoneId.systemDefault());
+    /** Date-only parts for the list card's travel range (see formatDateRange). */
+    private static final DateTimeFormatter RANGE_FULL =
+            DateTimeFormatter.ofPattern("d MMM yyyy", Locale.ENGLISH);
+    private static final DateTimeFormatter RANGE_DAY_MONTH =
+            DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH);
 
     /**
      * A status-history / rejection timestamp, e.g. {@code "14 Jul 2026, 08:00"},
@@ -150,5 +156,31 @@ public final class ReportViewSupport {
         String end = departure.toLocalDate().equals(returnAt.toLocalDate())
                 ? TRIP_TIME.format(returnAt) : TRIP_DATE_TIME.format(returnAt);
         return start + " – " + end;
+    }
+
+    /**
+     * A date-only range for the list card's travel line, e.g.
+     * {@code "8 – 12 May 2026"} within one month, {@code "28 Apr – 3 May 2026"}
+     * across months, or a single date when the trip starts and ends on one day.
+     *
+     * <p>Distinct from {@link #formatTripRange}, which is the detail view's
+     * to-the-minute range: a list card wants the shape of the trip, not its
+     * clock times, and repeating the month and year on both ends of a range
+     * makes the line noisier than it is informative.
+     */
+    public static String formatDateRange(LocalDate start, LocalDate end) {
+        if (start == null || end == null) {
+            return "";
+        }
+        if (start.equals(end)) {
+            return RANGE_FULL.format(start);
+        }
+        if (start.getYear() == end.getYear()) {
+            var from = start.getMonth() == end.getMonth()
+                    ? String.valueOf(start.getDayOfMonth())
+                    : RANGE_DAY_MONTH.format(start);
+            return from + " – " + RANGE_FULL.format(end);
+        }
+        return RANGE_FULL.format(start) + " – " + RANGE_FULL.format(end);
     }
 }

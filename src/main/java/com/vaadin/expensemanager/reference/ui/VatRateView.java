@@ -1,5 +1,6 @@
 package com.vaadin.expensemanager.reference.ui;
 
+import com.vaadin.expensemanager.base.ui.ReferenceLayout;
 import com.vaadin.expensemanager.base.ui.LucideIcon;
 import java.math.BigDecimal;
 import java.util.List;
@@ -37,9 +38,9 @@ import static com.vaadin.expensemanager.reference.ui.ReferenceViewSupport.format
  * (always-enabled Save + error summary, ADR-0020). This class owns only the
  * VAT-rate specifics: the single rate column and the required-rate field.
  */
-@Route("vat-rates")
+@Route(value = "vat-rates", layout = ReferenceLayout.class)
 @PageTitle("VAT rates")
-@Menu(title = "VAT rates", order = 2, icon = "icons/lucide/percent.svg")
+@Menu(title = "VAT rates", order = 20, icon = "icons/lucide/percent.svg")
 @RolesAllowed("ADMIN")
 public class VatRateView extends ReferenceConfigView<VatRateDto> {
 

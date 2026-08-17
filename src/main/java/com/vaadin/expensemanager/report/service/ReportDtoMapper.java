@@ -1,8 +1,11 @@
 package com.vaadin.expensemanager.report.service;
 
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
@@ -11,6 +14,7 @@ import java.util.stream.Collectors;
 import com.vaadin.expensemanager.report.domain.ExpenseLine;
 import com.vaadin.expensemanager.report.domain.ExpenseReport;
 import com.vaadin.expensemanager.report.domain.GeneratedLineKind;
+import com.vaadin.expensemanager.report.domain.ReportStatus;
 import com.vaadin.expensemanager.report.domain.StatusChange;
 import com.vaadin.expensemanager.report.domain.Travel;
 
@@ -41,6 +45,9 @@ public class ReportDtoMapper {
 
     private static final Logger log = LoggerFactory.getLogger(ReportDtoMapper.class);
 
+    /** How many distinct destinations a list card names before it says "+N more". */
+    private static final int DESTINATIONS_SHOWN = 2;
+
     private final ReceiptRepository receiptRepository;
     private final TravelCosting travelCosting;
 
@@ -50,10 +57,83 @@ public class ReportDtoMapper {
         this.travelCosting = travelCosting;
     }
 
-    /** The list-row projection: the four grid columns plus the detail-route id. */
+    /** The list-row projection: what the list card shows, plus the detail-route id. */
     public static ReportSummaryDto toSummary(ExpenseReport r) {
         return new ReportSummaryDto(r.getId(), r.getReportDate(),
-                r.getAdditionalInformation(), r.getStatus(), r.total());
+                r.getAdditionalInformation(), r.getStatus(), r.total(),
+                travelSummary(r), submittedAt(r));
+    }
+
+    /**
+     * When the report was last handed off for review, or {@code null} if it never
+     * was — read off the status history the aggregate already carries, so the list
+     * can say how long something has been waiting without a second query.
+     *
+     * <p>The <em>last</em> transition into SUBMITTED, not the first: a rejected
+     * report that was fixed and resubmitted has been waiting since the resubmission.
+     */
+    private static Instant submittedAt(ExpenseReport r) {
+        return r.getStatusHistory().stream()
+                .filter(change -> change.getToStatus() == ReportStatus.SUBMITTED)
+                .map(StatusChange::getChangedAt)
+                .max(Instant::compareTo)
+                .orElse(null);
+    }
+
+    /**
+     * Folds a report's trips into the one line the list card shows, or
+     * {@code null} when the report has no trips (which is what makes the card's
+     * travel row conditional).
+     *
+     * <p>A report can hold any number of trips, so this summarises rather than
+     * copies: destinations are de-duplicated in trip order and capped, so a
+     * many-trip report reads as "Helsinki, Tampere +2 more" instead of an
+     * unbounded run of text, and the range spans the earliest departure to the
+     * latest return. A trip's {@code country} is appended only when it adds
+     * something the destination text does not already say — a domestic trip
+     * reads "Helsinki", a foreign one "Copenhagen · Denmark".
+     */
+    private static ReportSummaryDto.TravelSummary travelSummary(ExpenseReport r) {
+        var travels = r.getTravels();
+        if (travels.isEmpty()) {
+            return null;
+        }
+        var destinations = travels.stream()
+                .map(ReportDtoMapper::describeDestination)
+                .distinct()
+                .toList();
+        var shown = destinations.stream().limit(DESTINATIONS_SHOWN)
+                .collect(Collectors.joining(", "));
+        var hidden = destinations.size() - Math.min(destinations.size(), DESTINATIONS_SHOWN);
+        var destination = hidden == 0 ? shown : shown + " +" + hidden + " more";
+
+        var start = travels.stream().map(Travel::getDepartureAt)
+                .min(LocalDateTime::compareTo).orElseThrow().toLocalDate();
+        var end = travels.stream().map(Travel::getReturnAt)
+                .max(LocalDateTime::compareTo).orElseThrow().toLocalDate();
+        return new ReportSummaryDto.TravelSummary(destination, start, end,
+                travels.size());
+    }
+
+    /**
+     * "Helsinki" for a domestic trip, "Copenhagen · Denmark" for a foreign one.
+     *
+     * <p>The country is appended only when it adds something. {@code destinations}
+     * is free text, so it often already names the country — "Helsinki, Denmark"
+     * with country Denmark must not render as "Helsinki, Denmark · Denmark" — and
+     * a domestic trip's country is the sentinel every Finnish trip carries, which
+     * tells the reader nothing.
+     */
+    private static String describeDestination(Travel travel) {
+        var destinations = travel.getDestinations();
+        var country = travel.getCountry();
+        if (country == null || country.isBlank()
+                || TravelDto.DOMESTIC_COUNTRY.equalsIgnoreCase(country)
+                || destinations.toLowerCase(Locale.ROOT)
+                        .contains(country.toLowerCase(Locale.ROOT))) {
+            return destinations;
+        }
+        return destinations + " · " + country;
     }
 
     /**

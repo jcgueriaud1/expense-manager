@@ -1,6 +1,6 @@
 package com.vaadin.expensemanager.reference.ui;
 
-import com.vaadin.expensemanager.base.ui.DashboardView;
+import com.vaadin.expensemanager.report.ui.MyReportsView;
 import com.vaadin.expensemanager.reference.VatRateDto;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
 import org.junit.jupiter.api.Test;
@@ -37,14 +37,14 @@ class VatRateViewUiTest extends AbstractReferenceDataViewUiTest {
     @Test
     @WithUserDetails("admin@vaadin.com")
     void adminSeesMenuEntry() {
-        navigate(DashboardView.class);
+        navigate(MyReportsView.class);
         assertThat(menuItemPaths()).contains("vat-rates");
     }
 
     @Test
     @WithUserDetails(LocalUserSeeder.PLAIN_USER_EMAIL)
     void userSeesNoMenuEntry() {
-        navigate(DashboardView.class);
+        navigate(MyReportsView.class);
         assertThat(menuItemPaths()).doesNotContain("vat-rates");
     }
 

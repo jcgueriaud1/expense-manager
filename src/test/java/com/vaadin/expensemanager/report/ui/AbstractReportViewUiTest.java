@@ -191,10 +191,19 @@ abstract class AbstractReportViewUiTest extends SpringBrowserlessTest
     /** Seeds a DRAFT report with one domestic trip (11 h → €54.00); returns its id. */
     protected Long seedReportWithTravel(LocalDate date, LocalDateTime departure,
             LocalDateTime returnAt) {
+        return seedReportWithTravel(date, "seed", departure, returnAt);
+    }
+
+    /**
+     * As above, with the note spelled out — for tests that tell a travel report
+     * apart from a plain one by what the card says.
+     */
+    protected Long seedReportWithTravel(LocalDate date, String info,
+            LocalDateTime departure, LocalDateTime returnAt) {
         var zero = BigDecimal.ZERO.setScale(2);
         var travel = TravelDto.domestic(null, departure, returnAt, "Helsinki",
                 "Client visit", false, false, false, zero, false, zero);
-        return service.create(new ReportDetailDto(null, date, "seed",
+        return service.create(new ReportDetailDto(null, date, info,
                 ReportStatus.DRAFT, 0L, List.of(), List.of(travel), zero, zero, zero,
                 zero, zero, zero));
     }
