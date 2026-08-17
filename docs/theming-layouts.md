@@ -21,7 +21,7 @@ not hard-coded px.
 | Custom spacing value | `layout.setSpacing("var(--vaadin-gap-l)")` — accepts any CSS value |
 | No spacing | `layout.setSpacing(false)` |
 | Default theme padding | `layout.setPadding(true)` — uses `--vaadin-padding` |
-| Custom padding value | `layout.setPadding("var(--vaadin-padding-m)")` |
+| Custom padding value | **No API** — `setPadding` is boolean-only (F-058); use a CSS class |
 | No padding | `layout.setPadding(false)` |
 | Cross-axis alignment | `layout.setAlignItems(...)` / `layout.setDefaultHorizontalComponentAlignment(...)` |
 | Main-axis distribution | `layout.setJustifyContentMode(...)` |
@@ -48,7 +48,7 @@ sized token, or a fallback: `var(--vaadin-gap-m, 0.75rem)`.
 // ✅ Spacing/padding with the layout Java API
 HorizontalLayout header = new HorizontalLayout();
 header.setSpacing("var(--vaadin-gap-l)");
-header.setPadding("var(--vaadin-padding-m)");
+header.setPadding(true);  // boolean only — there is no setPadding(String), F-058
 header.setWidthFull();
 header.setAlignItems(FlexComponent.Alignment.CENTER);
 header.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
@@ -61,7 +61,7 @@ sidebar.expand(contentArea);
 // ❌ Don't use the style API for things the layout API covers
 layout.getStyle().set("display", "flex");
 layout.getStyle().set("gap", "16px");      // → setSpacing("var(--vaadin-gap-m)")
-layout.getStyle().set("padding", "16px");  // → setPadding("var(--vaadin-padding-m)")
+layout.getStyle().set("padding", "16px");  // → setPadding(true), or a CSS class for a custom value
 ```
 
 ## Falling back to CSS

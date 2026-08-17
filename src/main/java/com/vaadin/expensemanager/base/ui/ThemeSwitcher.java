@@ -6,8 +6,6 @@ import java.util.Map;
 import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.contextmenu.MenuItem;
 import com.vaadin.flow.component.contextmenu.SubMenu;
-import com.vaadin.flow.component.icon.Icon;
-import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.menubar.MenuBar;
 import com.vaadin.flow.component.page.ColorScheme;
 import com.vaadin.flow.component.page.WebStorage;
@@ -38,7 +36,7 @@ public class ThemeSwitcher extends MenuBar {
     private final Map<ColorScheme.Value, MenuItem> choices = new LinkedHashMap<>();
 
     public ThemeSwitcher() {
-        var trigger = addItem(new Icon(VaadinIcon.ADJUST));
+        var trigger = addItem(LucideIcon.SUN_MOON.create());
         trigger.setAriaLabel("Change colour theme");
 
         SubMenu menu = trigger.getSubMenu();

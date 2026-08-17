@@ -26,7 +26,7 @@ import jakarta.annotation.security.PermitAll;
  */
 @Route("")
 @PageTitle("Dashboard")
-@Menu(title = "Dashboard", order = 0, icon = "vaadin:dashboard")
+@Menu(title = "Dashboard", order = 0, icon = "icons/lucide/layout-dashboard.svg")
 @PermitAll
 public class DashboardView extends VerticalLayout {
 

@@ -29,7 +29,7 @@ public class NotFoundView extends RouteNotFoundError {
     public int setErrorParameter(BeforeEnterEvent event,
             ErrorParameter<NotFoundException> parameter) {
         var content = new VerticalLayout(new EmptyState(
-                "vaadin:map-marker",
+                LucideIcon.MAP_PIN_OFF,
                 "Page not found",
                 "The page you were looking for does not exist. Use the navigation "
                         + "to get back on track."));

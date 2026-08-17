@@ -31,7 +31,7 @@ public class ErrorView extends VerticalLayout
 
     public ErrorView() {
         add(new EmptyState(
-                "vaadin:warning",
+                LucideIcon.TRIANGLE_ALERT,
                 "Something went wrong",
                 "An unexpected error occurred. It has been logged and the team can "
                         + "look into it. Please try again."));

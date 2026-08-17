@@ -1,5 +1,6 @@
 package com.vaadin.expensemanager.approval.ui;
 
+import com.vaadin.expensemanager.base.ui.LucideIcon;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -11,7 +12,6 @@ import com.vaadin.expensemanager.base.ui.EmptyState;
 import com.vaadin.expensemanager.report.domain.ReportStatus;
 import com.vaadin.expensemanager.report.ui.ReportViewSupport;
 import com.vaadin.flow.component.Component;
-import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
@@ -44,7 +44,7 @@ import jakarta.annotation.security.RolesAllowed;
  */
 @Route("approval-history")
 @PageTitle("Review history")
-@Menu(title = "Review history", order = 6, icon = "vaadin:archive")
+@Menu(title = "Review history", order = 6, icon = "icons/lucide/rotate-ccw-clock.svg")
 @RolesAllowed("ADMIN")
 public class ReviewHistoryView extends VerticalLayout {
 
@@ -65,7 +65,7 @@ public class ReviewHistoryView extends VerticalLayout {
         content.setMaxWidth("46rem");
 
         if (reviewed.isEmpty()) {
-            content.add(new EmptyState("vaadin:archive", "No reviewed reports yet",
+            content.add(new EmptyState(LucideIcon.ROTATE_CCW_CLOCK, "No reviewed reports yet",
                     "Reports you approve or reject will appear here."));
             add(content);
             return;
@@ -80,17 +80,12 @@ public class ReviewHistoryView extends VerticalLayout {
         add(content);
     }
 
-    /** Title + count of reviewed reports. */
+    /** Count of reviewed reports; the title lives in the navbar. */
     private Component header(int count) {
-        var title = new H2("Review history");
-        title.addClassName("reports-title");
         var subtitle = new Span(count + (count == 1
                 ? " reviewed report" : " reviewed reports"));
         subtitle.addClassName("muted");
-        var column = new VerticalLayout(title, subtitle);
-        column.setPadding(false);
-        column.setSpacing(false);
-        return column;
+        return subtitle;
     }
 
     /**

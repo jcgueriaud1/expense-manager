@@ -1,5 +1,6 @@
 package com.vaadin.expensemanager.user.ui;
 
+import com.vaadin.expensemanager.base.ui.LucideIcon;
 import java.util.List;
 import java.util.Locale;
 
@@ -14,10 +15,7 @@ import com.vaadin.flow.component.checkbox.Checkbox;
 import com.vaadin.flow.component.combobox.ComboBox;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.grid.Grid;
-import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.Paragraph;
-import com.vaadin.flow.component.icon.Icon;
-import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.radiobutton.RadioButtonGroup;
@@ -34,8 +32,9 @@ import jakarta.annotation.security.RolesAllowed;
  * ADMIN-only screen that lists every user and lets an admin find people quickly
  * (issue #64, Phase 6). Read path only — no mutation in this slice.
  *
- * <p>Structure mirrors {@code ExpenseTypeView}: an H2 header, an intro
- * paragraph, and a {@link Grid} of {@link UserSummaryDto}. The side-nav item is
+ * <p>Structure mirrors {@code ExpenseTypeView}: an intro paragraph and a
+ * {@link Grid} of {@link UserSummaryDto}, under the screen title that
+ * {@code MainLayout} renders in the navbar. The side-nav item is
  * auto-generated from {@code @Menu} and access-filtered, so navigation is gated
  * by {@code @RolesAllowed("ADMIN")} here while the real enforcement lives in
  * {@link UserAdminService#list()} (two-layer authorization, ADR-0008).
@@ -56,7 +55,7 @@ import jakarta.annotation.security.RolesAllowed;
  */
 @Route("users")
 @PageTitle("Users")
-@Menu(title = "Users", order = 4, icon = "vaadin:users")
+@Menu(title = "Users", order = 4, icon = "icons/lucide/users.svg")
 @RolesAllowed("ADMIN")
 public class UserManagementView extends VerticalLayout {
 
@@ -79,7 +78,7 @@ public class UserManagementView extends VerticalLayout {
         setPadding(true);
         setSpacing(true);
 
-        add(new H2("Users"));
+        // Title is rendered by MainLayout in the navbar.
         add(new Paragraph(
                 "Everyone with access to the expense manager. Search by name or "
                         + "email and filter by role or status to find someone. "
@@ -109,7 +108,7 @@ public class UserManagementView extends VerticalLayout {
 
     /** Per-row action opening the role/access editor for that user. */
     private Button manageButton(UserSummaryDto user) {
-        var button = new Button(new Icon(VaadinIcon.EDIT), event -> openEditor(user));
+        var button = new Button(LucideIcon.SQUARE_PEN.create(), event -> openEditor(user));
         button.addThemeVariants(ButtonVariant.TERTIARY);
         button.setAriaLabel("Edit user " + user.email());
         return button;
@@ -225,7 +224,7 @@ public class UserManagementView extends VerticalLayout {
     private HorizontalLayout filters() {
         search.setLabel("Search");
         search.setPlaceholder("Search by name or email");
-        search.setPrefixComponent(new Icon(VaadinIcon.SEARCH));
+        search.setPrefixComponent(LucideIcon.SEARCH.create());
         search.setClearButtonVisible(true);
         search.setWidth("20em");
         search.setValueChangeMode(ValueChangeMode.EAGER);

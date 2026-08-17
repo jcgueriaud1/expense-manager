@@ -1,5 +1,6 @@
 package com.vaadin.expensemanager.reference.ui;
 
+import com.vaadin.expensemanager.base.ui.LucideIcon;
 import java.math.BigDecimal;
 import java.util.List;
 
@@ -7,7 +8,6 @@ import com.vaadin.expensemanager.base.ui.EditorDialog;
 import com.vaadin.expensemanager.reference.ReferenceDataService;
 import com.vaadin.expensemanager.reference.VatRateDto;
 import com.vaadin.flow.component.Component;
-import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.textfield.BigDecimalField;
 import com.vaadin.flow.data.binder.Binder;
@@ -39,15 +39,14 @@ import static com.vaadin.expensemanager.reference.ui.ReferenceViewSupport.format
  */
 @Route("vat-rates")
 @PageTitle("VAT rates")
-@Menu(title = "VAT rates", order = 2, icon = "vaadin:money")
+@Menu(title = "VAT rates", order = 2, icon = "icons/lucide/percent.svg")
 @RolesAllowed("ADMIN")
 public class VatRateView extends ReferenceConfigView<VatRateDto> {
 
     private final transient ReferenceDataService service;
 
     public VatRateView(ReferenceDataService service) {
-        super("VAT rates",
-                "The VAT rates expense lines are filed against. Deactivating a "
+        super("The VAT rates expense lines are filed against. Deactivating a "
                         + "rate hides it from new lines but keeps it on existing "
                         + "ones — nothing is deleted, so past reports keep their "
                         + "original rate.",
@@ -73,13 +72,13 @@ public class VatRateView extends ReferenceConfigView<VatRateDto> {
         int index = indexOf(dto);
         String label = formatPercent(dto.value());
 
-        var edit = iconButton(VaadinIcon.EDIT, "Edit rate " + label, () -> openEditor(dto));
-        var up = reorderButton(VaadinIcon.ARROW_UP, "Move rate " + label + " up",
+        var edit = iconButton(LucideIcon.SQUARE_PEN, "Edit rate " + label, () -> openEditor(dto));
+        var up = reorderButton(LucideIcon.ARROW_UP, "Move rate " + label + " up",
                 index > 0, () -> {
                     service.moveVatRate(dto.id(), -1);
                     refresh();
                 });
-        var down = reorderButton(VaadinIcon.ARROW_DOWN, "Move rate " + label + " down",
+        var down = reorderButton(LucideIcon.ARROW_DOWN, "Move rate " + label + " down",
                 index >= 0 && index < currentItems().size() - 1, () -> {
                     service.moveVatRate(dto.id(), 1);
                     refresh();

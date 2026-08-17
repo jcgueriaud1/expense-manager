@@ -1,14 +1,12 @@
 package com.vaadin.expensemanager.reference.ui;
 
+import com.vaadin.expensemanager.base.ui.LucideIcon;
 import java.util.List;
 
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.grid.Grid;
-import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.Paragraph;
-import com.vaadin.flow.component.icon.Icon;
-import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
@@ -37,18 +35,20 @@ abstract class ReferenceConfigView<T> extends VerticalLayout {
 
     private List<T> items = List.of();
 
-    protected ReferenceConfigView(String heading, String intro, String addButtonText) {
+    protected ReferenceConfigView(String intro, String addButtonText) {
         setPadding(true);
         setSpacing(true);
 
-        var addButton = new Button(addButtonText, new Icon(VaadinIcon.PLUS),
+        var addButton = new Button(addButtonText, LucideIcon.PLUS.create(),
                 event -> openEditor(null));
         addButton.addThemeVariants(ButtonVariant.PRIMARY);
 
-        var header = new HorizontalLayout(new H2(heading), addButton);
+        // The screen's title is rendered by MainLayout in the navbar; this row is
+        // just the action, kept at the trailing edge as before.
+        var header = new HorizontalLayout(addButton);
         header.setWidthFull();
         header.setAlignItems(FlexComponent.Alignment.CENTER);
-        header.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
+        header.setJustifyContentMode(FlexComponent.JustifyContentMode.END);
         add(header);
 
         if (intro != null) {
@@ -81,15 +81,15 @@ abstract class ReferenceConfigView<T> extends VerticalLayout {
     }
 
     /** An accessible, theme-agnostic (Aura/Lumo) tertiary icon button. */
-    protected Button iconButton(VaadinIcon icon, String ariaLabel, Runnable action) {
-        var button = new Button(new Icon(icon), event -> action.run());
+    protected Button iconButton(LucideIcon icon, String ariaLabel, Runnable action) {
+        var button = new Button(icon.create(), event -> action.run());
         button.addThemeVariants(ButtonVariant.TERTIARY);
         button.setAriaLabel(ariaLabel);
         return button;
     }
 
     /** A reorder icon button, disabled at the list boundary. */
-    protected Button reorderButton(VaadinIcon icon, String ariaLabel, boolean enabled,
+    protected Button reorderButton(LucideIcon icon, String ariaLabel, boolean enabled,
             Runnable action) {
         var button = iconButton(icon, ariaLabel, action);
         button.setEnabled(enabled);

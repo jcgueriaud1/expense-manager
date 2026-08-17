@@ -1,5 +1,6 @@
 package com.vaadin.expensemanager.report.ui;
 
+import com.vaadin.expensemanager.base.ui.LucideIcon;
 import java.time.Month;
 import java.time.format.TextStyle;
 import java.util.Comparator;
@@ -14,10 +15,7 @@ import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.combobox.ComboBox;
-import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.Span;
-import com.vaadin.flow.component.icon.Icon;
-import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
@@ -55,7 +53,7 @@ import static com.vaadin.expensemanager.report.ui.ReportViewSupport.statusBadge;
  */
 @Route("reports")
 @PageTitle("My reports")
-@Menu(title = "My reports", order = 1, icon = "vaadin:file-text-o")
+@Menu(title = "My reports", order = 1, icon = "icons/lucide/file-text.svg")
 @PermitAll
 public class MyReportsView extends VerticalLayout {
 
@@ -85,7 +83,7 @@ public class MyReportsView extends VerticalLayout {
         content.setMaxWidth("46rem");
 
         if (reports.isEmpty()) {
-            content.add(new EmptyState("vaadin:file-text-o", "No expense reports yet",
+            content.add(new EmptyState(LucideIcon.FILE_TEXT, "No expense reports yet",
                     "Create your first report to start tracking expenses."));
             add(content);
             return;
@@ -99,24 +97,18 @@ public class MyReportsView extends VerticalLayout {
         applyFilters();
     }
 
-    /** Title + report count + the primary "New report" action. */
+    /** Report count + the primary "New report" action. */
     private Component header() {
-        var title = new H2("My reports");
-        title.addClassName("reports-title");
-
+        // The screen's title lives in the navbar (MainLayout), not here.
         var count = new Span(reports.size() + (reports.size() == 1
                 ? " report" : " reports"));
         count.addClassName("muted");
 
-        var titleColumn = new VerticalLayout(title, count);
-        titleColumn.setPadding(false);
-        titleColumn.setSpacing(false);
-
-        var newReport = new Button("New report", new Icon(VaadinIcon.PLUS),
+        var newReport = new Button("New report", LucideIcon.PLUS.create(),
                 event -> getUI().ifPresent(ui -> ui.navigate(ReportDetailView.class)));
         newReport.addThemeVariants(ButtonVariant.PRIMARY);
 
-        var bar = new HorizontalLayout(titleColumn, newReport);
+        var bar = new HorizontalLayout(count, newReport);
         bar.setWidthFull();
         bar.setAlignItems(FlexComponent.Alignment.CENTER);
         bar.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);

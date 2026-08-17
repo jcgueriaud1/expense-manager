@@ -2,8 +2,11 @@ package com.vaadin.expensemanager.base.ui;
 
 import com.vaadin.browserless.SpringBrowserlessTest;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
+import com.vaadin.flow.component.applayout.DrawerToggle;
 import com.vaadin.flow.component.sidenav.SideNav;
 import com.vaadin.flow.component.sidenav.SideNavItem;
+import com.vaadin.flow.server.menu.MenuConfiguration;
+import com.vaadin.flow.server.menu.MenuEntry;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -12,6 +15,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.List;
+import java.util.Objects;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -110,6 +114,52 @@ class NavigationShellUiTest extends SpringBrowserlessTest {
         assertThat(navs).hasSize(1);
         assertThat(navs.get(0).getLabel()).isNull();
         assertThat(itemLabels(navs.get(0))).containsExactly("Dashboard", "My reports");
+    }
+
+    /**
+     * The drawer toggle follows the drawer: the shell carries one toggle in each
+     * surface and hides the wrong one in CSS off the {@code drawer-opened}
+     * attribute. Which one is <em>visible</em> is a browser concern (covered by
+     * the Playwright pass); what this layer can pin down is the contract the CSS
+     * depends on — both toggles exist, each in the right surface, carrying the
+     * class name the stylesheet keys off and its own state-specific label.
+     */
+    @Test
+    @WithUserDetails(LocalUserSeeder.PLAIN_USER_EMAIL)
+    void shellCarriesAToggleInBothTheDrawerAndTheNavbar() {
+        navigate(DashboardView.class);
+
+        var toggles = $(DrawerToggle.class).all();
+
+        assertThat(toggles).hasSize(2);
+        assertThat(toggles).extracting(DrawerToggle::getClassName)
+                .containsExactlyInAnyOrder("shell-drawer-toggle",
+                        "shell-navbar-toggle");
+        assertThat(toggles).extracting(toggle -> toggle.getAriaLabel().orElseThrow())
+                .containsExactlyInAnyOrder("Collapse menu", "Expand menu");
+    }
+
+    /**
+     * Every {@code @Menu} icon must name a vendored Lucide SVG that actually
+     * exists. These paths can't come from the {@link LucideIcon} enum — an
+     * annotation needs a compile-time constant — so this is what keeps the
+     * literals honest. A typo here renders no icon at all, silently.
+     */
+    @Test
+    @WithUserDetails("admin@vaadin.com")
+    void everyMenuIconResolvesToAVendoredSvg() {
+        navigate(DashboardView.class);
+
+        var icons = MenuConfiguration.getMenuEntries().stream()
+                .map(MenuEntry::icon)
+                .filter(Objects::nonNull)
+                .toList();
+
+        assertThat(icons).isNotEmpty();
+        assertThat(icons).allSatisfy(icon -> assertThat(getClass().getClassLoader()
+                .getResource("META-INF/resources/" + icon))
+                .as("@Menu icon %s has no file behind it", icon)
+                .isNotNull());
     }
 
     private static List<String> itemLabels(SideNav nav) {

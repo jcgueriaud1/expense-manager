@@ -1,5 +1,6 @@
 package com.vaadin.expensemanager.report.ui;
 
+import com.vaadin.expensemanager.base.ui.LucideIcon;
 import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 import java.util.List;
@@ -21,7 +22,6 @@ import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.Span;
-import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.notification.NotificationVariant;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
@@ -248,7 +248,7 @@ final class LineEditorDialog extends Dialog {
         upload.setMaxFiles(1);
         upload.setMaxFileSize((int) ReceiptValidator.MAX_SIZE_BYTES);
         upload.setAcceptedFileTypes("image/jpeg", "image/png", "application/pdf");
-        var uploadButton = new Button("Upload receipt…", VaadinIcon.UPLOAD.create());
+        var uploadButton = new Button("Upload receipt…", LucideIcon.UPLOAD.create());
         upload.setUploadButton(uploadButton);
         // Client-side rejection (wrong type / too big) — surfaced, never silent.
         upload.addFileRejectedListener(event -> notifyError(event.getErrorMessage()));

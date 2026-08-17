@@ -1882,3 +1882,135 @@ Deployment/Observability · UX-spec
 - Owner / next step: documented here and in the test's javadoc; folded the
   IntegerField half of the same class of problem into
   `docs/manual-verification.md`'s Playwright pattern (below).
+
+### F-058 — `setSpacing` takes a CSS value, `setPadding` does not — and the repo's own standard says otherwise
+- Date: 2026-08-13
+- Area: Vaadin
+- Severity: Low
+- Task being attempted: giving the drawer header row a padding of
+  `var(--vaadin-padding-m)` in `MainLayout`, following `docs/theming-layouts.md`'s
+  decision table verbatim: `layout.setPadding("var(--vaadin-padding-m)")`.
+- Expected vs actual: expected the String overload the table documents, by symmetry
+  with `setSpacing("var(--vaadin-gap-m)")` used a few lines away in the same class.
+  Actual: a compile error — `incompatible types: java.lang.String cannot be converted
+  to boolean`. `ThemableLayout` (vaadin-ordered-layout-flow 25.0.7) exposes
+  `setSpacing(boolean)`, `setSpacing(String)`, `setSpacing(float, Unit)` and
+  `getSpacing()`, but for padding only `setPadding(boolean)` / `isPadding()`. There is
+  no `setPadding(String)` on `HorizontalLayout` either.
+- Workaround used: `setPadding(true)` (the theme default), which was the right visual
+  value here anyway. A custom padding value would have to fall back to a CSS class —
+  legitimate under the "API can't express it" rule, but the standard reads as though
+  the API can.
+- Evidence: `javap -cp vaadin-ordered-layout-flow-25.0.7.jar
+  com.vaadin.flow.component.orderedlayout.ThemableLayout` lists only the boolean
+  padding setter; build log `MainLayout.java:[112,27] incompatible types`.
+- Impact: the asymmetry is invisible until it fails to compile, and
+  `docs/theming-layouts.md` documented the non-existent overload in three places
+  (decision table, worked example, the ❌/✅ getStyle comparison) — so following the
+  project standard produced code that could not build. Corrected in that doc as part
+  of this change.
+- Suggested Vaadin/product improvement: add `setPadding(String)` (and
+  `setPadding(float, Unit)`) to `ThemableLayout` to match spacing. The two properties
+  are the same kind of thing and the docs for one read naturally as the docs for both.
+- Owner / next step: doc corrected; `MainLayout` carries a one-line comment at the
+  call site so the next reader doesn't retry the String form.
+
+### F-059 — Aura's `light-dark()` tokens don't follow a subtree's `color-scheme`, so half a section re-themes
+- Date: 2026-08-13
+- Area: Vaadin
+- Severity: Medium
+- Task being attempted: giving the navigation drawer its own dark ground in both
+  colour schemes (the reference look from the Aura demo dashboard), without
+  hand-picking colours. Aura resolves surfaces through CSS `light-dark()` keyed off
+  `color-scheme` (see `ThemeSwitcher`), so the obvious move is
+  `vaadin-app-layout::part(drawer) { color-scheme: dark; }` and let every token
+  re-derive.
+- Expected vs actual: expected background, ink, borders and side-nav colours to flip
+  together. Actual: **only some flipped.** Measured in the running app, at the drawer
+  part vs at `:root`: `--vaadin-background-color` → `oklch(0.23 …)` vs
+  `oklch(0.98 …)` (flipped), but `--vaadin-text-color` → `oklch(0.15 …)` in *both*
+  (did not). The split is mechanical: a token declared as
+  `--vaadin-text-color: light-dark(var(--aura-neutral-light), var(--aura-neutral-dark))`
+  has the `light-dark()` in its own declaration, so it resolves against the element
+  that declares it — `:root`, in light mode — and no descendant `color-scheme` can
+  move it. A token declared by *reference* (`--vaadin-background-color:
+  var(--aura-surface-color-solid)`) stays an unresolved token stream and resolves at
+  the point of use, i.e. inside the subtree. 23 tokens in `aura.css` are the first
+  kind, including `--vaadin-text-color`, `--aura-neutral`, `--aura-accent-color`,
+  `--aura-accent-text-color`, `--vaadin-border-color-secondary` and the `--aura-*-text`
+  palette.
+  The result is the worst of both: a light background with dark-mode ink on it. The
+  drawer's "Dashboard" item rendered light grey on near-white — a contrast failure
+  that the screenshot caught and no console error mentioned.
+- Workaround used: `color-scheme: dark` for the by-reference tokens, plus an explicit
+  pin of the five directly-declared tokens the drawer actually consumes to their
+  `-dark` variant (`--vaadin-text-color: var(--aura-neutral-dark)` etc.). Also note
+  Aura's drawer is transparent by default — `--vaadin-app-layout-drawer-background`
+  is unset and the visible surface is just the page showing through — so the
+  background has to be named explicitly, it cannot be inherited from the flip.
+- Evidence: `docs/../vaadin-blue-inter.css` (the rule and its comment); measurements
+  via `getComputedStyle(drawerPart).getPropertyValue('--vaadin-text-color')` against
+  the same call at `document.documentElement`; token census over
+  `http://localhost:8080/aura/aura.css` — 23 declarations matching
+  `--x: …light-dark(…)`.
+- Impact: "set `color-scheme` on a container to invert a section" is the intuitive
+  reading of a `light-dark()`-based theme, and it half-works — which is worse than
+  not working, because the failure is a silent contrast regression rather than an
+  unstyled element. Anyone theming a sidebar, hero, or footer section in Aura will hit
+  this.
+- Suggested Vaadin/product improvement: declare the scheme-dependent tokens by
+  reference (`--vaadin-text-color: var(--aura-neutral)`, with `--aura-neutral` holding
+  the `light-dark()`) so a subtree `color-scheme` re-derives the whole set — or
+  document a supported "invert this section" primitive (e.g. an `aura-dark` utility
+  class) and say plainly that `color-scheme` alone is not it.
+- Owner / next step: pinned tokens live in `vaadin-blue-inter.css` next to the
+  drawer rule with this finding referenced; worth revisiting on the next Vaadin
+  upgrade in case the token declarations change shape.
+
+### F-060 — Custom icon sets: `Icon` swallows a path, and the sprite form silently strips the stroke attributes
+- Date: 2026-08-14
+- Area: Vaadin
+- Severity: Medium
+- Task being attempted: replacing the app's Vaadin icons with Lucide, vendored as
+  static SVGs under `META-INF/resources/icons/lucide/` (Vaadin 25.2 bundles only
+  Vaadin Icons and Lumo Icons, so a third-party set has to be brought in by hand).
+- Expected vs actual: **two separate silent failures**, both of which render
+  *nothing* or *wrong* with no exception and no console error.
+  1. `new Icon(String)` accepts a path without complaint. `setIcon` splits on `:`
+     and, finding none, prefixes the whole string with the `vaadin` collection — so
+     `new Icon("icons/lucide/inbox.svg")` emits
+     `<vaadin-icon icon="vaadin:icons/lucide/inbox.svg">`, a lookup for a
+     non-existent name in the Vaadin iconset. Blank space, no error. `SvgIcon` is
+     the class that takes a path (it sets `src`), and the two are siblings under
+     `AbstractIcon` with neither assignable to the other. Since `@Menu(icon = …)` is
+     an uninterpreted string that the *application* resolves, changing the
+     annotations without changing the code that consumes them lands exactly here.
+  2. `SvgIcon`'s two source forms are not interchangeable for stroke-drawn icons.
+     The per-file form (`new SvgIcon("icons/lucide/plus.svg")`) fetches the file and
+     copies the source `<svg>`'s `viewBox`, `fill`, `stroke`, `stroke-width`,
+     `stroke-linecap` and `stroke-linejoin` onto the rendered icon. The sprite form
+     (`new SvgIcon("sprite.svg#plus")`) emits `<use href>` and copies **none** of
+     them. Lucide's icons carry `fill="none" stroke="currentColor"
+     stroke-width="2"` on that root element, so via a sprite they lose their stroke
+     and inherit `fill: currentColor` — a filled blob instead of a line drawing.
+     The obvious optimisation (one sprite, one request) is the broken option.
+- Workaround used: one file per icon plus a `LucideIcon` enum that mirrors
+  `VaadinIcon.X.create()` ergonomics, and `new SvgIcon(entry.icon())` in
+  `MainLayout.createSideNavItem`. Because a missing file fails silently too,
+  `LucideIconTest` asserts every enum constant resolves to a real classpath
+  resource and `NavigationShellUiTest` asserts the same for every `@Menu` icon
+  path — the compiler cannot connect a constant to a file named by a runtime
+  string, so a test has to.
+- Evidence: `javap -c` on `Icon`/`SvgIcon`/`AbstractIcon` from
+  vaadin-icons-flow-25.2.1; `@vaadin/icon/src/vaadin-icon-mixin.js` in the dev
+  bundle — the fetch branch assigns `__viewBox/__fill/__stroke/__strokeWidth`, the
+  `__useRef` branch returns before any of them.
+- Impact: three separate ways to get a blank or wrong icon with a green build and a
+  clean console. Anyone adding a non-Vaadin icon set hits at least one.
+- Suggested Vaadin/product improvement: make `Icon(String)` reject (or warn on) a
+  value containing `/` or ending in `.svg` — it can only ever be a mistake — and
+  have the sprite path carry the referenced symbol's root presentation attributes,
+  or document loudly that stroke-based sets need the per-file form. A dev-mode
+  warning when an `SvgIcon` src 404s would catch the third case.
+- Owner / next step: covered by the two tests above; `LucideIcon`'s javadoc records
+  why the set is one-file-per-icon so it doesn't get "optimised" into a sprite.

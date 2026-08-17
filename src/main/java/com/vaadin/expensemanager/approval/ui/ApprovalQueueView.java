@@ -1,5 +1,6 @@
 package com.vaadin.expensemanager.approval.ui;
 
+import com.vaadin.expensemanager.base.ui.LucideIcon;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -10,7 +11,6 @@ import com.vaadin.expensemanager.approval.service.ReviewSummaryDto;
 import com.vaadin.expensemanager.base.ui.EmptyState;
 import com.vaadin.expensemanager.report.ui.ReportViewSupport;
 import com.vaadin.flow.component.Component;
-import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
@@ -41,7 +41,7 @@ import jakarta.annotation.security.RolesAllowed;
  */
 @Route("approvals")
 @PageTitle("Approvals")
-@Menu(title = "Approvals", order = 5, icon = "vaadin:inbox")
+@Menu(title = "Approvals", order = 5, icon = "icons/lucide/inbox.svg")
 @RolesAllowed("ADMIN")
 public class ApprovalQueueView extends VerticalLayout {
 
@@ -62,7 +62,7 @@ public class ApprovalQueueView extends VerticalLayout {
         content.setMaxWidth("46rem");
 
         if (submitted.isEmpty()) {
-            content.add(new EmptyState("vaadin:inbox", "Nothing to review",
+            content.add(new EmptyState(LucideIcon.INBOX, "Nothing to review",
                     "Submitted reports awaiting approval will appear here."));
             add(content);
             return;
@@ -77,17 +77,12 @@ public class ApprovalQueueView extends VerticalLayout {
         add(content);
     }
 
-    /** Title + count of reports awaiting review. */
+    /** Count of reports awaiting review; the title lives in the navbar. */
     private Component header(int count) {
-        var title = new H2("Approvals");
-        title.addClassName("reports-title");
         var subtitle = new Span(count + (count == 1
                 ? " report awaiting review" : " reports awaiting review"));
         subtitle.addClassName("muted");
-        var column = new VerticalLayout(title, subtitle);
-        column.setPadding(false);
-        column.setSpacing(false);
-        return column;
+        return subtitle;
     }
 
     /**

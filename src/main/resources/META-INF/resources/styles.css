@@ -17,6 +17,53 @@
 }
 
 /*
+ * Navigation shell (MainLayout) — the drawer toggle follows the drawer.
+ *
+ * MainLayout puts a toggle in both surfaces: `shell-drawer-toggle` in the drawer
+ * header, `shell-navbar-toggle` in the navbar. Exactly one is ever shown, keyed
+ * off the `drawer-opened` attribute that <vaadin-app-layout> reflects on its own
+ * host — so the swap is pure CSS, with no server round-trip and no state of our
+ * own to keep in sync. `display: none` (not visibility/opacity) also drops the
+ * hidden toggle out of the accessibility tree and the tab order, so only one
+ * toggle is ever reachable. The layout of the drawer header row itself lives in
+ * Java, per docs/theming-layouts.md.
+ */
+vaadin-app-layout[drawer-opened] .shell-navbar-toggle,
+vaadin-app-layout:not([drawer-opened]) .shell-drawer-toggle {
+    display: none;
+}
+
+.shell-app-name,
+.shell-view-title {
+    margin: 0;
+    font-size: var(--aura-font-size-l);
+    /* Both were headings once; as a Span and an H1 they need the weight stated
+       rather than inherited from a UA heading style. */
+    font-weight: var(--aura-font-weight-semibold);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/*
+ * The view title sits at the head of the navbar, taking the space the drawer
+ * toggle leaves — so it lands hard left when the drawer is open and just after
+ * the toggle when it is collapsed, without either state needing its own rule.
+ *
+ * flex: 1 belongs here rather than in Java: the navbar is <vaadin-app-layout>'s
+ * own flex container, not one of our layout components, so there is no
+ * expand(child) to call. Growing the title is also what holds the user menu at
+ * the trailing edge — and the min-width override is what lets it actually
+ * shrink: a flex item's floor is its content size, so without it a long title
+ * would push the user menu off the row instead of ellipsing.
+ */
+.shell-view-title {
+    flex: 1;
+    min-width: 0;
+    padding-inline-start: var(--vaadin-padding-s);
+}
+
+/*
  * Report views (MyReportsView, ReportDetailView) — decoration and typography the
  * layout Java API can't express, per docs/theming-layouts.md. Structure (flex,
  * gap, padding, alignment, expand) stays in Java; these classes only carry
