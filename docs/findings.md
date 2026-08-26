@@ -2221,8 +2221,16 @@ Deployment/Observability · UX-spec
   `docs/theming-layouts.md` to say padding is boolean-only and custom values go in the
   scoped CSS class. Vaadin's — give `setPadding` the same String/(float, Unit)
   overloads `setSpacing` has; the asymmetry has no obvious justification.
-- Owner / next step: fix the document. Not fixed in the spike branch, which is never
-  merged — needs its own change on `main`.
+- Owner / next step: **Fixed** — PR #148 (`fix-f065-theming-layouts` → `main`), raised
+  separately from the spike branch, which is never merged. All three bad occurrences are
+  gone: the decision-table row now says there is no Java API and points at the scoped CSS
+  class, the ✅ example uses `setPadding(false)` + `addClassName(...)`, and the ❌
+  counter-example's fix comment points at CSS rather than at the missing setter. A new
+  "The spacing/padding asymmetry" section shows the real signatures so the next reader
+  sees why, and the CSS fallback table gains a "Custom padding on any layout" row.
+  Verified: `grep -rn 'setPadding("' src/main/java/` returns nothing, so the document and
+  the codebase now agree. Still open upstream — Vaadin giving `setPadding` the same
+  `String` / `(float, Unit)` overloads `setSpacing` has would remove the trap at source.
 
 ### F-066 — `figma-to-vaadin` has no "this view already exists" branch, so on a mature app it generates a rival implementation
 - Date: 2026-08-26
