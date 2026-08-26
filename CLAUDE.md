@@ -60,7 +60,12 @@ Default vocabulary — each role's label string equals its name: `needs-triage`,
 
 ### Design source of truth
 
-The visual design lives in Figma, and `.agent-context` at the repo root records the
+The visual design lives in [Figma](https://www.figma.com/design/Irsp3cgi1WX3GiLGpJZECa/Expense-Manager?node-id=88-12278)
+— file `Irsp3cgi1WX3GiLGpJZECa`, page `88:12278` ("Visual Design"). `/figma-survey`
+resolves a view or component name against that page's frames, so the key belongs here
+rather than in an issue body.
+
+`.agent-context` at the repo root records the
 four preferences the `figma-to-vaadin` skill resolves — layout approach,
 architecture, sample data, verification mode — so a run reads them instead of
 asking. Change a value there, not in the skill. The Figma-facing skills
