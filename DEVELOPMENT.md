@@ -7,6 +7,34 @@
   PostgreSQL — Docker Compose for local, Testcontainers for tests. No H2, ever
   (ADR-0004).
 
+### Figma access (only for design work)
+
+The visual design lives in Figma, and the design-application agent skills read it
+through a **remote Figma MCP server**. The server is declared in
+[`.mcp.json`](.mcp.json), so it is project-scoped — every developer who opens this
+repo gets the entry, and nobody has to configure it by hand.
+
+What you do need to do, **once per machine**:
+
+1. Run `/mcp` in Claude Code and authenticate the `Figma` server in the browser
+   window it opens. The token persists; you won't be asked again.
+2. Have a **Figma seat** on the Expense Manager file. The MCP server authenticates
+   as you — no seat, no access, regardless of the MCP setup.
+
+Without both, the Figma-facing skills — `figma-to-vaadin`, `figma-to-aura-theme`,
+`figma-visual-verification` — fail in a way that reads as a bug rather than as a
+missing credential: the design lookup returns nothing and the agent carries on
+against a guess. If a design task starts producing layout invented from thin air,
+check `/mcp` before debugging anything else.
+
+Nothing else in this repo needs Figma. Building, running and testing the app work
+exactly the same without it.
+
+Note there is deliberately **no `Vaadin` MCP server entry**. The Vaadin docs tools
+(`search_vaadin_docs`, `get_full_document`, `get_component_java_api`,
+`get_theme_css_properties`) come from the `vaadin-skills` plugin instead; two
+identically-named tool sets would make the skills' bare tool references ambiguous.
+
 ## Build & Run Commands
 
 ```bash

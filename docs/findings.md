@@ -1882,3 +1882,72 @@ Deployment/Observability · UX-spec
 - Owner / next step: documented here and in the test's javadoc; folded the
   IntegerField half of the same class of problem into
   `docs/manual-verification.md`'s Playwright pattern (below).
+
+### F-059 — A project-scoped MCP server can be committed but not *used*: the same session that adds it can never call it
+- Date: 2026-08-26
+- Area: Tooling/Template
+- Severity: Medium
+- Task being attempted: issue #142 — set up the Figma → Vaadin toolchain, whose
+  acceptance criterion is a smoke test (`get_design_context` on node `88-12278`)
+  proving the setup works rather than merely being present.
+- Expected vs actual: expected that writing the `Figma` entry into `.mcp.json` — the
+  project-scoped file, chosen precisely so every dev gets the server without hand
+  configuration — would make the server reachable. Actual: `claude mcp list` reports
+  it as `⏸ Pending approval (run \`claude\` to approve)`. A project-scoped server is
+  gated on two things the agent that wrote the config cannot do: the user approving
+  the newly-appeared entry, and an interactive OAuth round-trip via `/mcp`. The tool
+  namespace for the current session was fixed at startup, so even after approval no
+  `mcp__Figma__*` tool exists until the session restarts.
+- Workaround used: none available in-session. Everything else in the issue was
+  completed and committed; the smoke test was handed back to the user as an explicit
+  blocked item rather than reported as done or quietly skipped.
+- Evidence: `claude mcp list` output above; `.mcp.json` at this commit.
+- Impact: this is the general shape of "an agent sets up its own tooling". Config
+  changes that alter the *tool namespace* — MCP servers above all — are always at
+  least one session-boundary and one human approval away from being exercisable, so
+  an issue that both configures a server and requires proof it works cannot be closed
+  in one pass. The failure is worse when unnoticed: the skills that depend on the
+  server degrade to guessing from layer names rather than erroring, so an unauthenticated
+  run produces plausible-looking layout invented from nothing. That's why
+  `DEVELOPMENT.md` now names the symptom ("layout invented from thin air → check
+  `/mcp` first") instead of just the setup step.
+- Suggested Vaadin/product improvement: not Vaadin's — Claude Code's. Two things would
+  help: (a) a way for a session to re-read `.mcp.json` and pick up newly approved
+  servers without a restart, and (b) making a *pending* server visible to the model as
+  a named, unusable tool rather than as absence, so "the server isn't authenticated"
+  is distinguishable from "this capability doesn't exist". Today both look identical.
+- Owner / next step: user to approve the `Figma` entry and authenticate via `/mcp`,
+  then re-run the smoke test on this branch and post the node `88-12278` report to
+  issue #142. Splitting "configure" from "prove it works" into two issues would have
+  made this a non-event.
+
+### F-060 — A vendored skill's own reference file doesn't exist upstream, and the skill gives no sign of it
+- Date: 2026-08-26
+- Area: AI
+- Severity: Low
+- Task being attempted: issue #142 — copying `figma-to-aura-theme` from
+  `juuso-vaadin/figma-to-vaadin-skill` at commit `3a9289c` as a project-owned skill.
+- Expected vs actual: expected the skill's bundled references to come across with it.
+  Actual: `figma-to-aura-theme/SKILL.md` instructs the agent three separate times to
+  consult `property-values.md` for the Aura named-colour, background-colour and
+  curated-font tables — the tables that decide every value it emits — and no such file
+  exists at that commit. The whole repo is four `SKILL.md` files plus three
+  `references/layouts-*.md` belonging to a different skill.
+- Workaround used: recorded the gap in the skill's own `## Provenance` section, with
+  the substitute source: `get_theme_css_properties theme=aura` via the `vaadin-skills`
+  plugin.
+- Evidence: `git ls-files` at `3a9289c15df9e7a7659f0d92fee204ad1dc65c14`;
+  `.agents/skills/figma-to-aura-theme/SKILL.md`, the "see `property-values.md`" lines.
+- Impact: the specific failure mode is quiet. An agent told "find the closest named
+  colour in `property-values.md`" and unable to open it does not stop — it matches
+  against remembered colour names instead, and emits a `--aura-accent-color-light`
+  that looks deliberate and cites a table nobody can check. Every value the skill
+  produces has this property. More generally: copying a skill is not copying a file,
+  and a dangling reference inside one is invisible until the step that needs it runs.
+- Suggested Vaadin/product improvement: upstream should either ship `property-values.md`
+  or stop referencing it. Beyond that, a skill that depends on a bundled reference
+  should say what to do when it's missing — "look it up with X" — rather than assuming
+  presence; and skill-vendoring tooling should validate that in-skill relative links
+  resolve, the way a link checker does for docs.
+- Owner / next step: noted here and in the skill's Provenance. Worth reporting upstream
+  once the spike (issue #142's follow-up 1) shows whether the skill is usable without it.
