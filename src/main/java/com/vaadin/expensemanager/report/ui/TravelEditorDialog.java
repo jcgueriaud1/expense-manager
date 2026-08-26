@@ -75,6 +75,16 @@ import static com.vaadin.expensemanager.report.ui.ReportViewSupport.generatedLin
  */
 final class TravelEditorDialog extends Dialog {
 
+    /**
+     * The departure/return pickers' granularity — also the gap the range bounds are
+     * shifted by, since the trip rule is strict where {@code setMin}/{@code setMax}
+     * are inclusive (issue #140).
+     */
+    private static final Duration TRIP_STEP = Duration.ofMinutes(15);
+
+    /** The one wording for the range rule, wherever it surfaces. */
+    private static final String RANGE_RULE = "Return must be after the departure";
+
     private final Binder<TravelFormModel> binder = new Binder<>();
     private final TravelFormModel model = new TravelFormModel();
     private final ErrorSummary errorSummary = new ErrorSummary();
@@ -103,21 +113,25 @@ final class TravelEditorDialog extends Dialog {
         addClassName("travel-dialog");
 
         var departure = new DateTimePicker("Departure");
-        departure.setStep(Duration.ofMinutes(15));
+        departure.setStep(TRIP_STEP);
         departure.setRequiredIndicatorVisible(true);
         departure.setI18n(dateTimeErrorMessages());
         var returnAt = new DateTimePicker("Return");
-        returnAt.setStep(Duration.ofMinutes(15));
+        returnAt.setStep(TRIP_STEP);
         returnAt.setRequiredIndicatorVisible(true);
         returnAt.setI18n(dateTimeErrorMessages());
 
         // Keep the range valid from the pickers themselves: once a departure is
-        // chosen the return overlay can't go earlier than it, and vice versa — so
-        // the "Return must be after the departure" error only ever appears if the
-        // user types an invalid date/time by hand (the overlay can't produce one).
+        // chosen the return overlay can't reach back to it, and vice versa. The
+        // bounds are shifted by one step because the trip rule is *strict* (a return
+        // equal to the departure is no trip) while setMin/setMax are inclusive —
+        // unshifted, the overlay offers the same instant on both sides and the user
+        // walks into the rule with no way to see it coming (issue #140).
         // Registered before readBean so an edited trip's values initialise them.
-        departure.addValueChangeListener(event -> returnAt.setMin(event.getValue()));
-        returnAt.addValueChangeListener(event -> departure.setMax(event.getValue()));
+        departure.addValueChangeListener(event ->
+                returnAt.setMin(shiftedBy(event.getValue(), TRIP_STEP)));
+        returnAt.addValueChangeListener(event ->
+                departure.setMax(shiftedBy(event.getValue(), TRIP_STEP.negated())));
 
         // Destination country: Finland (domestic) + every country with a foreign
         // rate for the trip's year. The list depends on the departure year, so it is
@@ -450,11 +464,27 @@ final class TravelEditorDialog extends Dialog {
      * input as invalid) or types an unparseable value — which surfaced as an empty
      * bullet in the error summary (issue #85). The required-field message stays with
      * the binder's {@code asRequired}.
+     *
+     * <p>The min/max messages are the <em>range rule</em>: the two pickers bound each
+     * other, so a departure past its max and a return before its min are the same
+     * violation read from either end, and both say so in the same words the server
+     * uses (issue #140).
      */
     private static DateTimePickerI18n dateTimeErrorMessages() {
         return new DateTimePickerI18n()
                 .setIncompleteInputErrorMessage("Enter both a date and a time")
-                .setBadInputErrorMessage("Enter a valid date and time");
+                .setBadInputErrorMessage("Enter a valid date and time")
+                .setMinErrorMessage(RANGE_RULE)
+                .setMaxErrorMessage(RANGE_RULE);
+    }
+
+    /**
+     * {@code value} moved by {@code step}, or {@code null} when the field is empty —
+     * which clears the opposite picker's bound rather than pinning it to an instant
+     * derived from nothing.
+     */
+    private static LocalDateTime shiftedBy(LocalDateTime value, Duration step) {
+        return value == null ? null : value.plus(step);
     }
 
     // ------------------------------------- clearing an override on recalculation

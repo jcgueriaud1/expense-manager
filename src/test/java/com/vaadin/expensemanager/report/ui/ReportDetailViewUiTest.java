@@ -1757,23 +1757,57 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findDateTimePicker().withLabel("Departure").setValue(DEP);
         findDateTimePicker().withLabel("Return").setValue(DEP.plusHours(11));
 
-        // The overlay can no longer offer an invalid range: the return can't go
-        // before the departure, nor the departure after the return.
+        // The overlay can no longer offer an invalid range: the return can't reach
+        // back to the departure, nor the departure forward to the return. The bounds
+        // sit one 15-minute step clear of each other, not on the other's instant —
+        // setMin/setMax are inclusive while the trip rule is strict, so an unshifted
+        // bound still offers the same instant on both sides (issue #140).
         var ret = (DateTimePicker) findDateTimePicker().withLabel("Return")
                 .getComponent();
         var dep = (DateTimePicker) findDateTimePicker().withLabel("Departure")
                 .getComponent();
-        assertThat(ret.getMin()).isEqualTo(DEP);
-        assertThat(dep.getMax()).isEqualTo(DEP.plusHours(11));
+        assertThat(ret.getMin()).isEqualTo(DEP.plusMinutes(15));
+        assertThat(dep.getMax()).isEqualTo(DEP.plusHours(11).minusMinutes(15));
+    }
+
+    @Test
+    void aReturnEqualToTheDepartureIsRefusedAndSaysWhy() {
+        // The reported case: same date *and* same time on both sides. The tester
+        // refuses to type it at all now that the return's min sits a step past the
+        // departure, so set it straight on the component — the way a crafted client
+        // would — and prove the value still never reaches a save silently: the
+        // binder's constraint validation lands the rule in the dialog's error
+        // summary, not in the generic "something went wrong" dialog (issue #140).
+        navigate(ReportDetailView.class);
+
+        findButton().withText("Insert travel info").click();
+        findDateTimePicker().withLabel("Departure").setValue(DEP);
+        findComboBox(String.class).withLabel("Destination country")
+                .selectItem("Finland (domestic)");
+        findTextField().withLabel("Destinations").setValue("Helsinki");
+        findTextField().withLabel("Travel purpose").setValue("Client visit");
+
+        var ret = (DateTimePicker) findDateTimePicker().withLabel("Return")
+                .getComponent();
+        ret.setValue(DEP);
+
+        findButton().withText("Save trip").click();
+
+        var text = UI.getCurrent().getElement().getTextRecursively();
+        assertThat(text).contains("Return must be after the departure");
+        assertThat(text).doesNotContain("Something went wrong");
+        // The dialog stays open and the trip is not committed.
+        assertThat(findButton().withText("Save trip").exists()).isTrue();
+        assertThat(findSpan().withText("Per diem allowance").exists()).isFalse();
     }
 
     @Test
     void anIncompleteTripShowsTheErrorSummaryAndGeneratesNothing() {
-        // The reciprocal min/max on the pickers means an invalid *range* can't be
-        // produced through the UI (see the constraint test above); the return-
-        // before-departure guard itself is covered at the domain/service layers.
-        // Here we prove the always-enabled Save + error-summary rule (ADR-0020) on
-        // the reachable invalid case: missing required fields.
+        // The reciprocal min/max on the pickers keeps the *overlay* from producing an
+        // invalid range (see the constraint test above), but a hand-typed one still
+        // reaches Save — covered by the range-rule tests above. Here we prove the
+        // always-enabled Save + error-summary rule (ADR-0020) on the other invalid
+        // case: missing required fields.
         navigate(ReportDetailView.class);
 
         findButton().withText("Insert travel info").click();
@@ -1803,6 +1837,12 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
                     .as(label + " incomplete-input message").isNotBlank();
             assertThat(picker.getI18n().getBadInputErrorMessage())
                     .as(label + " bad-input message").isNotBlank();
+            // The range bounds are constraints too (issue #140) — unnamed, they'd
+            // reach the summary as the same blank bullet issue #85 fixed.
+            assertThat(picker.getI18n().getMinErrorMessage())
+                    .as(label + " min message").isNotBlank();
+            assertThat(picker.getI18n().getMaxErrorMessage())
+                    .as(label + " max message").isNotBlank();
         }
     }
 

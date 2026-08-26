@@ -5,6 +5,8 @@ import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDateTime;
 
+import com.vaadin.expensemanager.base.DomainRuleException;
+
 /**
  * Pure, stateless domain service that turns trip inputs + rate config into an
  * allowance (Phase 4.2, ADR-0006). No Spring, no database — a function of its
@@ -28,8 +30,9 @@ import java.time.LocalDateTime;
  * the leftover at the partial rate — which become the {@code PER_DIEM_FULL} and
  * {@code PER_DIEM_PARTIAL} generated lines (issue #124). The thresholds and amounts
  * come from the trip-year {@link DomesticPerDiemDto} rate (Slice 1). A return that
- * is not strictly after departure is rejected — the caller surfaces the message
- * (ADR-0020).
+ * is not strictly after departure is rejected as a {@link DomainRuleException} — a
+ * rule the user can fix, so the caller lands the message in its error summary
+ * instead of the generic technical dialog (ADR-0020, issue #86, issue #140).
  *
  * <p><strong>The other three trip outputs (Phase 4.3).</strong> A trip may also
  * earn a {@linkplain #kilometreAllowance kilometre allowance} (km × the year's
@@ -64,8 +67,10 @@ public final class AllowanceCalculator {
      *                    allowance (earns nothing)
      * @param freeLunch   whether a free meal was provided (halves the per-day rates)
      * @param rate        the trip-year domestic per-diem rate (required)
-     * @throws IllegalArgumentException if an argument is {@code null} or the
-     *                                  return is not after the departure
+     * @throws IllegalArgumentException if an argument is {@code null} or the rate
+     *                                  is missing — a technical failure
+     * @throws DomainRuleException      if the return is not after the departure —
+     *                                  a rule the user can act on
      */
     public DomesticPerDiemResult domesticPerDiem(LocalDateTime departure,
             LocalDateTime returnAt, boolean notEligible, boolean freeLunch,
@@ -78,8 +83,7 @@ public final class AllowanceCalculator {
             throw new IllegalArgumentException("No per-diem rate for the trip year");
         }
         if (!returnAt.isAfter(departure)) {
-            throw new IllegalArgumentException(
-                    "Return must be after the departure");
+            throw new DomainRuleException("Return must be after the departure");
         }
         if (notEligible) {
             return DomesticPerDiemResult.none();
@@ -139,8 +143,10 @@ public final class AllowanceCalculator {
      * @param rate              the destination country's trip-year rate (required)
      * @param fullDayMinHours   the year's full-day threshold (hours) for day counting
      * @param partialDayMinHours the year's partial-day threshold (hours) for day counting
-     * @throws IllegalArgumentException if an argument is {@code null} or the return
-     *                                  is not after the departure
+     * @throws IllegalArgumentException if an argument is {@code null} or the rate
+     *                                  is missing — a technical failure
+     * @throws DomainRuleException      if the return is not after the departure —
+     *                                  a rule the user can act on
      */
     public PerDiemComponent foreignPerDiem(LocalDateTime departure,
             LocalDateTime returnAt, boolean notEligible, ForeignPerDiemDto rate,
@@ -154,8 +160,7 @@ public final class AllowanceCalculator {
                     "No foreign per-diem rate for the destination country");
         }
         if (!returnAt.isAfter(departure)) {
-            throw new IllegalArgumentException(
-                    "Return must be after the departure");
+            throw new DomainRuleException("Return must be after the departure");
         }
         if (notEligible) {
             return PerDiemComponent.none();
