@@ -58,6 +58,16 @@ Default vocabulary — each role's label string equals its name: `needs-triage`,
 `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See
 `docs/agents/triage-labels.md`.
 
+### Design source of truth
+
+The visual design lives in Figma, and `.agent-context` at the repo root records the
+four preferences the `figma-to-vaadin` skill resolves — layout approach,
+architecture, sample data, verification mode — so a run reads them instead of
+asking. Change a value there, not in the skill. The Figma-facing skills
+(`figma-to-vaadin`, `figma-to-aura-theme`, `figma-visual-verification`) are
+project-owned copies with a `## Provenance` section at the bottom of each; they
+need the project-scoped Figma MCP server, see `DEVELOPMENT.md`.
+
 ### Domain docs
 
 Single-context. Glossary at `docs/glossary.md` (the `CONTEXT.md` equivalent for

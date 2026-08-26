@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "Vaadin": {
+    "Figma": {
       "type": "http",
-      "url": "https://mcp.vaadin.com/docs"
+      "url": "https://mcp.figma.com/mcp"
     },
     "playwright": {
       "command": "npx",
