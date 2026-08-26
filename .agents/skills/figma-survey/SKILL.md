@@ -1,8 +1,8 @@
 ---
 name: figma-survey
-description: "Survey one Figma frame against what the app already builds, and produce the component mapping a spec needs."
+description: "Survey one Figma frame against what a Vaadin app already builds, and produce the component mapping a spec needs."
 disable-model-invocation: true
-argument-hint: "[view or component]"
+argument-hint: "[view or component] [figma url]"
 ---
 
 # Figma survey
@@ -11,27 +11,33 @@ A **survey** reads two things — the design frame, and whatever the app already
 for it — and produces one artifact: a **component mapping** whose every row declares
 where its decision came from.
 
-The survey ends at the mapping. `/to-spec` publishes it as an issue,
-`/implement-use-case` builds from that issue, `/figma-visual-verification` checks the
-result against the frame. Writing Java here would strand the mapping in a conversation
-nobody else can read, so the survey's output is context, shaped to slot into
-`/to-spec`'s sections.
+The survey ends at that mapping. Its output is a written summary, not code: the point
+is to establish what should be built and why, so the reasoning survives into whatever
+record the project keeps work in and can be reviewed before anyone writes Java.
+Implementing here would strand the mapping in a conversation nobody else can read, and
+would hide the design's expensive judgement calls inside a diff.
 
-**The design:** file `Irsp3cgi1WX3GiLGpJZECa`, page `88:12278` ("Visual Design").
-Authentication and the project-scoped MCP server: [`DEVELOPMENT.md`](../../../DEVELOPMENT.md).
+Applies to Vaadin Flow (Java) on the Aura theme.
 
 ## Steps
 
 ### 1. Resolve the target
 
 `$ARGUMENTS` names a view or a component in whatever words came to hand —
-`"Add Expense"`, `LineEditorDialog`, `report detail`. Resolve it against **both** ends:
+`"Add Expense"`, `LineEditorDialog`, `report detail` — and may include a Figma URL.
+
+Fix the design file first: take `fileKey` and `nodeId` from a URL of the form
+`figma.com/design/:fileKey/:name?node-id=1-2`. Absent a URL, ask for one once, then
+check whether the project records a design file (its agent instructions are the usual
+home) before asking again.
+
+Then resolve the target against **both** ends:
 
 - **Design:** `get_metadata` on the page to list frame names, then match.
 - **Code:** step 2's ladder.
 
-Name both resolutions back to the user before going further. Ask only when two
-candidates are genuinely indistinguishable.
+Name both resolutions back to the user. Ask only when two candidates are genuinely
+indistinguishable.
 
 **Done when** one Figma node id is fixed and the code side is either a named class or
 an explicit `none`.
@@ -41,7 +47,7 @@ an explicit `none`.
 Climb the ladder and stop at the first rung that hits:
 
 1. `@Route` values — the strongest signal, and cheap to enumerate.
-2. Class names under `src/main/java/**/ui/`.
+2. Class names in the project's view packages.
 3. A grep for the design's distinctive strings (labels, section headings).
 
 **Report which rung hit.** "Matched by route" and "matched by a string grep" are
@@ -54,8 +60,8 @@ implementation* empty.
 ### 3. Read the design
 
 `get_design_context` on the **frame**, never the page: a page node returns
-"you have nothing selected", which names a precondition you did not violate (F-061),
-and a page's `get_metadata` exceeds the token cap outright.
+"you have nothing selected", which names a precondition you did not violate, and a
+page's `get_metadata` exceeds the token cap outright.
 
 Fetch the frame's screenshot once — step 5 needs to see it. Pass
 `excludeScreenshot: true` on any child-node call, so the mapping keeps the context.
@@ -78,11 +84,13 @@ what lets a reviewer tell evidence from judgement in a single pass:
 - **`annotation`** — Figma named the component and it stands. The common case; leave
   *Why* empty.
 - **`override`** — Figma named a component and the design contradicts it. Record the
-  contradiction, not just the choice. The annotations carry a component name but not
-  its accent scoping, so a button annotated `theme="primary"` whose Figma variant is
-  `Color=Accent neutral` renders blue where the design paints it near-black; the row
-  reads `Button` + `PRIMARY` + `aura-accent-neutral`. Check the layer name and the
-  rendered fill before trusting a colour.
+  contradiction, not just the choice. Annotations carry a component name but not its
+  accent scoping, so a button annotated `theme="primary"` whose Figma variant is
+  `Color=Accent neutral` renders in the accent colour where the design paints it
+  near-black; that row reads `Button` + `PRIMARY` + `aura-accent-neutral`. Check the
+  layer name and the rendered fill before trusting a colour. Watch for variants that
+  are Lumo-only and silently inert under Aura, such as `tertiary-inline`, `contrast`
+  and `icon`.
 - **`invented`** — no annotation, or no component fits. Propose the composition
   (a layout plus a scoped CSS class) and say plainly that it is judgement. A card whose
   content is a list of peer rows with dividers does not fit `Card`'s
@@ -101,12 +109,18 @@ Record the Vaadin version you researched against.
 Every visual difference goes to exactly one of two destinations, because global and
 view theming are separate decisions with separate owners:
 
-- **Global theming** — the difference is a token or theme-level mismatch. Compare
-  against the scale in [`vaadin-gotchas.md`](../../../docs/vaadin-gotchas.md). It joins
-  the standing theming issue and **never** the view's ticket, so the next survey does
-  not re-litigate the same radius.
-- **View styling** — the difference is decoration local to this view. It becomes a
-  scoped CSS class, per [`theming-layouts.md`](../../../docs/theming-layouts.md).
+- **Global theming** — the difference is a token or theme-level mismatch. It belongs
+  to the theme's own backlog and **never** to the view's ticket, so the next survey
+  does not re-litigate the same radius.
+- **View styling** — the difference is decoration local to this view, and becomes a
+  scoped, role-named CSS class using theme tokens.
+
+Deciding which requires the theme's resolved token values. Use the project's record of
+them if it keeps one; otherwise read `--vaadin-radius-*`, `--vaadin-padding-*`,
+`--vaadin-gap-*` and `--aura-font-size-*` from a running app with `getComputedStyle`,
+since Aura ships them as `calc()`/`round()` expressions resolved at render time. A
+design value that no single theme input can produce is a global question by
+construction.
 
 The design's reference code arrives threaded with `--lumo-*` properties, because that
 is genuinely how the shared Aura kit names its variables. Each one ships a plausible
@@ -128,35 +142,42 @@ Three kinds of thing the mapping cannot absorb:
   showing an editable report title, in an app whose report has no title, is not a
   restyle; buried in the delta it gets reviewed and estimated as one. Decide it here,
   in the survey conversation — a new field, or an explicit "out of scope, use X
-  instead". Do not hand it to the implementer undecided.
-- **Open global decisions** — check `docs/adr/` for a decision covering the theme and
-  the token scale. Absent one, record the question *and* the assumption you proceeded
-  under, so a reviewer sees the assumption rather than inheriting it.
+  instead". Hand the implementer a decision, not a question.
+- **Open global decisions** — check the project's decision records for one covering the
+  theme and the token scale. Absent one, record the question *and* the assumption you
+  proceeded under, so a reviewer sees the assumption rather than inheriting it.
 
 **Done when** every gap carries a decision and every open global question carries its
 assumption.
 
-### 7. Assemble and hand off
+### 7. Assemble the survey
 
-Arrange the survey under `/to-spec`'s own section names, so it publishes without
-reshaping:
+Write it up under these headings:
 
-| `/to-spec` section | Survey content |
+| Heading | Content |
 |---|---|
-| Problem Statement | how this view diverges from the design — *Current implementation* and *Delta* |
-| Solution | the mapping table; proposed compositions for `invented` rows |
-| Implementation Decisions | the *Why* behind every `override` and `invented` row; **Global theming** vs **View styling**; open global decisions and their assumptions |
-| Testing Decisions | the acceptance checklist |
-| Out of Scope | what the frame shows that is not this ticket — a navbar belonging to `MainLayout`, a global theming item |
-| Further Notes | Vaadin version, which components' Java API was read, the Figma node ids |
+| Target | the Figma node, the matched code, and the rung that matched it |
+| Current implementation | what the existing class already does — empty on a greenfield survey |
+| Delta | numbered, each item checkable |
+| Component mapping | the table from step 4 |
+| Global theming | token and theme-level mismatches, for the theme's backlog |
+| View styling | view-local decoration |
+| Domain gaps | each with its decision |
+| Open decisions | each with the assumption taken |
+| Acceptance criteria | the checklist below |
+| Research notes | Vaadin version, which components' Java API was read, the Figma node ids |
 
-The acceptance checklist is what `/implement-use-case` uses as its spine and
-`/figma-visual-verification` uses as its pass condition: the component chosen per
-element, each delta item as its own line, and finally
-`figma-visual-verification against node <id> reports no high findings`.
+The acceptance checklist is what implementation aims at and what a later visual check
+grades against: the component chosen per element, each delta item as its own line, and
+finally *a visual verification pass against the frame reports no high-severity
+differences*.
 
-**Done when** the content sits under those headings and the user is told to run
-`/to-spec` next.
+Hand the assembled survey to whatever the project records work in — an issue, a spec,
+a ticket — so implementation proceeds from that record rather than from this
+conversation.
+
+**Done when** every heading above is filled or explicitly marked empty, and the survey
+has been handed over.
 
 ## Figma → Vaadin quick reference
 
@@ -173,22 +194,19 @@ Annotations override this table; it covers layers that carry none.
 | Text layer | `Span` |
 | Heading | `H1`…`H6`, by the design's text style |
 | Badge / status label | `Badge` |
-| Icon named `lumo:*` | `LumoIcon.*` — a supported 25.2 icon set, in `com.vaadin.flow.theme.lumo`, not beside `VaadinIcon` |
+| Icon named `lumo:*` | `LumoIcon.*` — a supported icon set, in `com.vaadin.flow.theme.lumo`, not beside `VaadinIcon` |
 
 ## Provenance
 
-- **Replaces:** `figma-to-vaadin`, this repo's project-owned copy of
-  [`juuso-vaadin/figma-to-vaadin-skill`](https://github.com/juuso-vaadin/figma-to-vaadin-skill)
-  at commit `3a9289c`, now deleted.
+- **Descends from:** [`juuso-vaadin/figma-to-vaadin-skill`](https://github.com/juuso-vaadin/figma-to-vaadin-skill)
+  at commit `3a9289c`, whose `figma-to-vaadin` this replaces.
 - **Why:** that skill's workflow was unconditionally *implement*, with no step asking
-  whether the view already existed. Run against this app it produced a second, thinner
-  implementation of a view already shipping — and the thinner one looked closer to the
-  design because it did less (finding F-066). The per-view work here is reconciliation,
-  so the skill produces a mapping and the existing `/to-spec` →
-  `/implement-use-case` chain does the rest.
-- **Original**, not vendored: absent from `skills-lock.json`, and not managed by
-  `skills.sh`.
-- **Kept from the deleted skill:** the Figma → Vaadin quick reference, and the
-  `--lumo-*` hazard in step 5 — the one project override that is about *reading* Figma
-  rather than about writing Vaadin. Its remaining overrides duplicated `CLAUDE.md`, and
-  its layout gotchas moved to `docs/vaadin-gotchas.md`.
+  whether the view already existed. Run against an app that already had the screen, it
+  produced a second, thinner implementation — and the thinner one looked closer to the
+  design because it did less. Where a view already exists the work is reconciliation,
+  so this skill produces a mapping and stops.
+- **Original**, not vendored: not managed by `skills.sh`, and absent from
+  `skills-lock.json`.
+- **Kept from the skill it replaces:** the Figma → Vaadin quick reference, and the
+  `--lumo-*` hazard in step 5 — the one guard that is about *reading* Figma rather than
+  about writing Vaadin.

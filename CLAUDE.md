@@ -5,7 +5,9 @@ React/Hilla), real Postgres from day one, deployed as a Docker container.
 
 Orientation: `docs/plan.md` (phased build plan), `docs/glossary.md` (domain
 language), `docs/adr/` (architecture decisions, see `docs/adr/README.md`),
-`docs/findings.md` (friction/gaps log — a first-class deliverable).
+`docs/findings.md` (friction/gaps log — a first-class deliverable),
+`docs/vaadin-gotchas.md` (behaviour no config confesses, and this app's resolved
+Aura token scale — consult it before comparing a design's pixel values to tokens).
 
 ## Theming — Aura, never Lumo
 
