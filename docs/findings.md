@@ -1916,10 +1916,10 @@ Deployment/Observability · UX-spec
   servers without a restart, and (b) making a *pending* server visible to the model as
   a named, unusable tool rather than as absence, so "the server isn't authenticated"
   is distinguishable from "this capability doesn't exist". Today both look identical.
-- Owner / next step: user to approve the `Figma` entry and authenticate via `/mcp`,
-  then re-run the smoke test on this branch and post the node `88-12278` report to
-  issue #142. Splitting "configure" from "prove it works" into two issues would have
-  made this a non-event.
+- Owner / next step: resolved the only way it could be — the user approved the entry
+  and authenticated, and the smoke test then ran in the following session (see F-061
+  for what it found). Splitting "configure" from "prove it works" into two issues
+  would have made this a non-event.
 
 ### F-060 — A vendored skill's own reference file doesn't exist upstream, and the skill gives no sign of it
 - Date: 2026-08-26
@@ -1951,3 +1951,80 @@ Deployment/Observability · UX-spec
   resolve, the way a link checker does for docs.
 - Owner / next step: noted here and in the skill's Provenance. Worth reporting upstream
   once the spike (issue #142's follow-up 1) shows whether the skill is usable without it.
+
+### F-061 — `get_design_context` on a page node fails with "you have nothing selected", which is not the problem
+- Date: 2026-08-26
+- Area: Tooling/Template
+- Severity: Medium
+- Task being attempted: issue #142's acceptance smoke test — `get_design_context` on
+  node `88-12278`, the node in the design URL the issue was written against.
+- Expected vs actual: expected design context for that node, or a clear refusal.
+  Actual: `You currently have nothing selected. You need to select a layer first
+  before using this tool.` The `nodeId` **was** supplied and **was** valid — the real
+  cause is that `88-12278` is a *canvas* (a page), and `get_design_context` accepts
+  only layers. On a page node it silently discards the argument and falls back to the
+  desktop app's current selection, then reports the fallback's failure as if it were
+  the caller's mistake. `get_metadata` accepts the same node without complaint, which
+  is how the page's structure was read instead.
+- Workaround used: call `get_metadata` on the page for the hierarchy, then
+  `get_design_context` on individual frames inside it (proved on `213:1721`, the "Add
+  Expense" dialog — full output, with per-component Vaadin annotations).
+- Evidence: Figma Debug UUID `3eddcf4c-ebc5-40c2-903b-83efba47800f`. The same call
+  against frame `213:1721` succeeds.
+- Impact: the error names a precondition the caller did not violate and cannot fix
+  from an MCP client — there is no way to "select a layer" over the remote server, and
+  an agent has no selection at all. It reads as "the integration is broken" rather
+  than "wrong node type", so the obvious next move is to re-authenticate or re-check
+  the MCP setup — exactly the wrong direction. Worse for an agent working from a
+  pasted URL: a designer who copies a link while a *page* is active hands over a node
+  id that every design-to-code skill will choke on, with an error pointing nowhere
+  near the cause. Cost here was a wrong-turn diagnosis on a task whose whole purpose
+  was proving the setup worked.
+- Suggested Vaadin/product improvement: Figma's — when `nodeId` resolves to a node
+  type the tool cannot handle, say so ("node 88:12278 is a CANVAS; get_design_context
+  requires a FRAME/COMPONENT/INSTANCE — call get_metadata to list its children"), and
+  never silently substitute the current selection for an explicitly-passed argument.
+  Falling back to a different input than the one supplied is the root problem; the
+  misleading message is the symptom.
+- Owner / next step: reported in the issue #142 smoke-test comment. Worth folding the
+  "page node → get_metadata first" rule into `figma-to-vaadin` step 1 if a second run
+  hits it; upstream's step 1 already suggests `get_metadata` as the fallback for
+  truncated responses, but not for this failure.
+
+### F-062 — The Figma Aura kit emits `--lumo-*` custom properties, which are undefined in an Aura app
+- Date: 2026-08-26
+- Area: AI
+- Severity: High
+- Task being attempted: issue #142's smoke test — reading `get_design_context` output
+  for the "Add Expense" dialog to see what a real design-to-code run would produce.
+- Expected vs actual: expected an Aura-themed design to yield `--aura-*` / `--vaadin-*`
+  tokens. Actual: the reference code is threaded with `--lumo-*` — `--lumo-font-family`,
+  `--lumo-font-size-m`, `--lumo-border-radius-m`, `--lumo-border-radius-l` — every one
+  written with a hardcoded fallback, e.g.
+  `rounded-[var(--lumo-border-radius-m,9px)]`. The variables genuinely are named that
+  way in the shared "Aura / Vaadin Design System" Figma library (the
+  `figma-to-aura-theme` skill notes the kit "may label some variables with `lumo-`
+  prefixes"), so this is faithful output, not a bug in the export.
+- Workaround used: the project-owned `figma-to-vaadin` copy carries a **Project
+  overrides** section forbidding `--lumo-*` and naming the `--aura-*` / `--vaadin-*`
+  replacements, written before this run and confirmed necessary by it.
+- Evidence: `get_design_context` on node `213:1721`; `CLAUDE.md`'s Aura-not-Lumo rule;
+  `docs/theming-layouts.md`.
+- Impact: this is the worst possible shape for a wrong value. `--lumo-*` is undefined
+  under Aura, so it contributes nothing — but every occurrence ships with a plausible
+  hardcoded fallback, so the CSS *renders*, at a frozen literal that looks right today
+  and silently stops tracking the theme forever. Nothing errors, nothing looks broken,
+  and dark mode is where it surfaces — months later, as "some corners are the wrong
+  colour". Upstream's own gotcha list warns about exactly this pattern
+  (`var(--name, fallback)` where the name doesn't exist) without noticing that the
+  Figma kit it reads from is a systematic source of it. Any run that pastes the
+  reference code through without the override would seed it across every view.
+- Suggested Vaadin/product improvement: rename the variables in the Figma Aura library
+  to their `--aura-*` / `--vaadin-*` equivalents, or have the design-to-code path map
+  the `lumo-` prefixed kit variables to real Aura properties the way
+  `figma-to-aura-theme` says a human should. Failing that, `figma-to-vaadin` should
+  state the hazard itself — it is not an app-specific preference, it applies to every
+  Aura project consuming this kit.
+- Owner / next step: guard is already in the project copy of the skill. Re-check after
+  the spike (issue #142 follow-up 1) to see whether the override actually holds under
+  a full run, and report upstream if it does not.
