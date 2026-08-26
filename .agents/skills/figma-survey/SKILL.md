@@ -195,18 +195,3 @@ Annotations override this table; it covers layers that carry none.
 | Heading | `H1`…`H6`, by the design's text style |
 | Badge / status label | `Badge` |
 | Icon named `lumo:*` | `LumoIcon.*` — a supported icon set, in `com.vaadin.flow.theme.lumo`, not beside `VaadinIcon` |
-
-## Provenance
-
-- **Descends from:** [`juuso-vaadin/figma-to-vaadin-skill`](https://github.com/juuso-vaadin/figma-to-vaadin-skill)
-  at commit `3a9289c`, whose `figma-to-vaadin` this replaces.
-- **Why:** that skill's workflow was unconditionally *implement*, with no step asking
-  whether the view already existed. Run against an app that already had the screen, it
-  produced a second, thinner implementation — and the thinner one looked closer to the
-  design because it did less. Where a view already exists the work is reconciliation,
-  so this skill produces a mapping and stops.
-- **Original**, not vendored: not managed by `skills.sh`, and absent from
-  `skills-lock.json`.
-- **Kept from the skill it replaces:** the Figma → Vaadin quick reference, and the
-  `--lumo-*` hazard in step 5 — the one guard that is about *reading* Figma rather than
-  about writing Vaadin.
