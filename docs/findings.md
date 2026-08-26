@@ -1922,6 +1922,7 @@ Deployment/Observability · UX-spec
   technical failure and shown as the generic error dialog (issue #86's split). A
   client constraint should never be the only thing standing between the user and a
   rule — the server rule it mirrors has to be user-facing too.
+
 ### F-059 — A project-scoped MCP server can be committed but not *used*: the same session that adds it can never call it
 - Date: 2026-08-26
 - Area: Tooling/Template
@@ -1992,11 +1993,29 @@ Deployment/Observability · UX-spec
   should say what to do when it's missing — "look it up with X" — rather than assuming
   presence; and skill-vendoring tooling should validate that in-skill relative links
   resolve, the way a link checker does for docs.
-- Owner / next step: noted here and in the skill's Provenance. Worth reporting upstream
-  once the spike (issue #142's follow-up 1) shows whether the skill is usable without it.
+- Owner / next step: **Answered by the spike (issue #143).** The skill *is* usable
+  without `property-values.md` — but only via a substitute it never mentions, and the
+  substitute the Provenance section suggested is not sufficient on its own.
+  `get_theme_css_properties theme=aura` supplies the *defaults* (base-font-size 14,
+  contrast 1, surface level 1 / opacity 0.5, overlay opacity 0.85, and "accent defaults
+  to `var(--aura-blue)`") but carries **no palette hex values, no named light/dark
+  accent pairs, no background table and no curated font list** — precisely the four
+  tables the skill cites. What worked instead: read Aura's own computed properties out
+  of the *running app*, where the formulas are visible
+  (`--vaadin-radius-m = round(baseRadius*2px + 3px, 1px)`,
+  `--vaadin-gap-m = round(baseSize*0.75*1px, 1px)`,
+  `--aura-font-size-m = round(baseFontSize/16 * 1rem, 0.0625rem)`), and resolve palette
+  colours through a canvas probe. That is how the spike established, without guessing,
+  that this design is stock Aura: `#3266e4` is exactly `oklch(0.55 0.2 264)` =
+  `--aura-blue`, and `#b3329d` is exactly the default `--vaadin-user-color-2`.
+  **No values were invented.** The luck is that the design needed no colour matching at
+  all — had its accent been custom, the skill's own path offered only an invented named
+  pairing. Two of the skill's stated value sets are also wrong: it claims
+  `--aura-base-radius` takes the discrete set `-1, 0, 3, 4, 7` when the docs give a
+  0–10 range with a default of 3 (`-1` is outside it); its density set 12/16/20 is a
+  subset of the documented 12–24. Report upstream, and add the
+  "measure the running app" technique to the project copy.
 
-<<<<<<< HEAD
-=======
 ### F-061 — `get_design_context` on a page node fails with "you have nothing selected", which is not the problem
 - Date: 2026-08-26
 - Area: Tooling/Template
@@ -2070,7 +2089,217 @@ Deployment/Observability · UX-spec
   `figma-to-aura-theme` says a human should. Failing that, `figma-to-vaadin` should
   state the hazard itself — it is not an app-specific preference, it applies to every
   Aura project consuming this kit.
-- Owner / next step: guard is already in the project copy of the skill. Re-check after
-  the spike (issue #142 follow-up 1) to see whether the override actually holds under
-  a full run, and report upstream if it does not.
->>>>>>> 9c326ad (Issue #142 — smoke test findings: F-061, F-062)
+- Owner / next step: **Re-checked by the spike (issue #143): the guard holds.** A full
+  run over both frames produced **zero** `--lumo-*` properties, zero `LumoUtility`, zero
+  `LUMO_*` variants and zero `getStyle().set(...)` in the generated Java and CSS. But it
+  is doing constant work, not guarding a rare case: both nodes' `get_design_context`
+  output is saturated with `--lumo-*` — several dozen occurrences across the two frames,
+  every one carrying a hardcoded fallback, across four properties (`--lumo-font-family`,
+  `--lumo-font-size-m/-s/-l`, `--lumo-border-radius-m/-l`). Every text node carries at
+  least the font-family and font-size pair, so the count scales with the frame. The
+  override earns its
+  place on literally every run, and any project consuming this kit without an equivalent
+  rule will seed frozen literals across its whole UI. Worth reporting upstream — the
+  hazard belongs in `figma-to-vaadin` itself, not in each project's copy. A separate
+  wrinkle found alongside it: `LumoIcon` is a *third* `lumo`-named thing, and unlike the
+  other two it is legitimate — a supported Vaadin 25.2 icon set, present on this Aura
+  app's classpath via `vaadin-lumo-theme-25.2.1.jar`, and what the Figma annotations
+  correctly prescribe (`lumo:plus`, `lumo:edit`, `lumo:calendar`, …). An agent
+  pattern-matching on "lumo" would wrongly swap in `VaadinIcon` and change the rendered
+  icon size. It also lives in `com.vaadin.flow.theme.lumo`, not beside `VaadinIcon` in
+  `com.vaadin.flow.component.icon` — one compile error's worth of trap.
+
+### F-063 — A Figma file that *consumes* the Aura kit as a library hides its variables from the skill's own mode-detection instruction
+- Date: 2026-08-26
+- Area: AI
+- Severity: High
+- Task being attempted: issue #143's spike — Step 1 of `figma-to-aura-theme`, which
+  decides `color-scheme` by asking whether the file has one mode or two. The skill's
+  literal instruction: "If the file has **multiple modes** (e.g. light/dark), use
+  `use_figma` instead, and read each variable's value across all of its modes in one
+  pass (`variable.valuesByMode`)".
+- Expected vs actual: expected the documented `use_figma` route to enumerate the
+  design's modes. Actual: the obvious implementation —
+  `figma.variables.getLocalVariableCollectionsAsync()` — returns **only the file's own
+  local collections**. In the Expense Manager file that is one collection ("Collection
+  1", 1 mode, 9 variables, none of them Aura's). Every Aura variable is **remote**,
+  living in the shared "Aura colors" / "Aura sizes" libraries. An agent following the
+  instruction literally finds one mode and concludes `color-scheme: light`. The truth
+  is that "Aura colors" is a remote collection with **two** modes, Light and Dark.
+- Workaround used: don't enumerate collections — enumerate *bindings*. Walk a node's
+  `boundVariables`, resolve each id with `getVariableByIdAsync`, then
+  `getVariableCollectionByIdAsync`. Remote collections and their `valuesByMode` are
+  fully readable that way; 34 bound variables resolved across three collections.
+- Evidence: issue #143 spike, file `Irsp3cgi1WX3GiLGpJZECa`. `getLocalVariableCollections`
+  → `[{name: "Collection 1", remote: false, modes: ["Mode 1"], varCount: 9}]`. The
+  binding walk → `{name: "Aura colors", remote: true, modes: ["Light", "Dark"]}`.
+- Impact: the failure is silent and inverts the single most visible theme decision. A
+  design that ships both schemes gets an app that only ever renders light, and nothing
+  errors — the skill's own rule ("If only one mode exists → implement that mode only")
+  fires confidently on a wrong premise. It hits *every* file that consumes the shared
+  Aura kit as a library, which is how the kit is meant to be consumed, so this is the
+  normal case and not an edge one. Two aggravating factors: you must run the expensive
+  `use_figma` path merely to discover whether you needed it, and `use_figma` is a
+  **write** tool — the skill routes a read-only variable query through the one Figma
+  tool that can mutate the design file.
+- Suggested Vaadin/product improvement: the skill should say to resolve variables from
+  a node's `boundVariables` rather than from local collections, and should note that
+  `get_variable_defs` already flattens aliases to the active mode's value (which is why
+  it is useless for mode detection). Better still, Figma should expose a read-only
+  variables-with-modes call so design-to-code never needs the write tool for this.
+- Owner / next step: reported here; the binding-walk script is in the spike report,
+  `docs/figma-toolchain-spike.md`. Worth folding into the project copy of
+  `figma-to-aura-theme` before issue #144 depends on it.
+
+### F-064 — The design's own spacing, radius and type values systematically miss the Aura token scale
+- Date: 2026-08-26
+- Area: UX-spec
+- Severity: Medium
+- Task being attempted: issue #143's spike — implementing Figma nodes `116:4444` and
+  `213:1721` with `--vaadin-*` / `--aura-*` tokens, as `docs/theming-layouts.md`
+  requires ("use tokens — not hard-coded px").
+- Expected vs actual: expected a design drawn from the Aura Figma kit to land on Aura's
+  token scale. Actual: it splits cleanly in two. Everything inherited from a **kit
+  component** lands exactly on a token; everything the designer **drew by hand** lands
+  between tokens. Measured against the real scale (radius s/m/l = 5/9/15 px, padding
+  and gap xs…xl = 4/8/12/16/24 px, font-size xs…xl = 12/13/14/16/18 px):
+  | Design value | Where | Nearest tokens | Match |
+  |---|---|---|---|
+  | 9 px | field radius | `--vaadin-radius-m` = 9 | ✅ |
+  | 14 px | field label / input | `--aura-font-size-m` = 14 | ✅ |
+  | 13 px | Net/VAT label | `--aura-font-size-s` = 13 | ✅ |
+  | 12 px | row subtitle, section label | `--aura-font-size-xs` = 12 | ✅ |
+  | 16 px | totals amount | `--aura-font-size-l` = 16 | ✅ |
+  | 34 px | button height | derived from base-size 16 | ✅ |
+  | **12 px** | card radius | m = 9, l = 15 | ❌ between |
+  | **20 px** | card padding, card gap | l = 16, xl = 24 | ❌ between |
+  | **40 px** | section gap | xl = 24 | ❌ far off |
+  | **24 px** | report title | font xl = **18**, the top of the scale | ❌ exceeds |
+  | **15 px** | expense row title | m = 14, l = 16 | ❌ between |
+- Workaround used: token values taken throughout, accepting a 1–5 px divergence per
+  card and heading, and recorded in the spike report rather than hard-coding raw px.
+- Evidence: issue #143 spike; token values read from the running app with
+  `getComputedStyle`; design values from `get_design_context` on both nodes.
+- Impact: this is a standing tax on every per-view issue, not a one-off. Each view has
+  to choose between (a) tokens, and being visibly a few pixels off the design on every
+  card and heading, (b) raw px, which renders correctly today and silently stops
+  tracking the theme — the exact failure mode F-062 describes, and (c) inventing a
+  project-level custom-property scale for the design's own values. Without a decision
+  recorded up front, different views will make different choices and the app drifts.
+  The title is the sharpest case: 24 px has no Aura token at all, because Aura's type
+  scale stops at 18 px, so *every* page heading needs an answer.
+- Suggested Vaadin/product improvement: ours, not Vaadin's — pick option (c) and define
+  the handful of extra properties once, or get the design corrected to the kit's scale.
+  Vaadin's side: the Aura Figma kit could expose the size variables for radius/padding
+  so a designer drawing a card picks a token instead of typing `12`.
+- Owner / next step: needs a decision (an ADR) before the per-view issues start.
+
+### F-065 — `docs/theming-layouts.md` prescribes `setPadding(String)`, which does not exist
+- Date: 2026-08-26
+- Area: Docs
+- Severity: Medium
+- Task being attempted: issue #143's spike — writing card padding the way this repo's
+  binding layout standard says to.
+- Expected vs actual: `docs/theming-layouts.md` documents
+  `layout.setPadding("var(--vaadin-padding-m)")` in **three** places — the decision
+  table row "Custom padding value | accepts any CSS value", the ✅ Java example, and the
+  ❌ counter-example's fix comment. Actual: it does not compile.
+  `ThemableLayout` (vaadin-ordered-layout-flow 25.2.1) declares
+  `setSpacing(boolean)`, `setSpacing(String)`, `setSpacing(float, Unit)`,
+  `getSpacing()` — and for padding only `setPadding(boolean)`. There is no String
+  overload, no `getPadding()`, no `(float, Unit)`. The API is asymmetric; the document
+  assumed it was symmetric.
+- Workaround used: `setPadding(false)` plus the padding value in the scoped CSS class,
+  which the same document's "Falling back to CSS" section already allows.
+- Evidence: `javap` on `com/vaadin/flow/component/orderedlayout/ThemableLayout.class`
+  from `vaadin-ordered-layout-flow-25.2.1.jar`; compile errors in the spike at
+  `SpikeItemCard.java:36` and `SpikeTotalsBox.java:33`.
+- Impact: low blast radius so far but a bad shape. Production code calls
+  `setSpacing(String)` 12 times and `setPadding(String)` zero times — because it
+  cannot — so the error has sat in the standard undetected since it was written, purely
+  because nobody followed that row. It is exactly the kind of instruction an agent
+  *does* follow literally: the document is named as binding authority by
+  `CLAUDE.md` and by the project copy of `figma-to-vaadin`, so every future generated
+  view starts by trying the one API call that fails.
+- Suggested Vaadin/product improvement: ours — fix the three places in
+  `docs/theming-layouts.md` to say padding is boolean-only and custom values go in the
+  scoped CSS class. Vaadin's — give `setPadding` the same String/(float, Unit)
+  overloads `setSpacing` has; the asymmetry has no obvious justification.
+- Owner / next step: **Fixed** — PR #148 (`fix-f065-theming-layouts` → `main`), raised
+  separately from the spike branch, which is never merged. All three bad occurrences are
+  gone: the decision-table row now says there is no Java API and points at the scoped CSS
+  class, the ✅ example uses `setPadding(false)` + `addClassName(...)`, and the ❌
+  counter-example's fix comment points at CSS rather than at the missing setter. A new
+  "The spacing/padding asymmetry" section shows the real signatures so the next reader
+  sees why, and the CSS fallback table gains a "Custom padding on any layout" row.
+  Verified: `grep -rn 'setPadding("' src/main/java/` returns nothing, so the document and
+  the codebase now agree. Still open upstream — Vaadin giving `setPadding` the same
+  `String` / `(float, Unit)` overloads `setSpacing` has would remove the trap at source.
+
+### F-066 — `figma-to-vaadin` has no "this view already exists" branch, so on a mature app it generates a rival implementation
+- Date: 2026-08-26
+- Area: AI
+- Severity: High
+- Task being attempted: issue #143's spike — running `figma-to-vaadin` against the two
+  frames the design provides for screens this app already ships.
+- Expected vs actual: expected a design-to-code skill aimed at an existing codebase to
+  reconcile with what is there. Actual: its workflow is unconditionally *implement* —
+  fetch context, check annotations, research components, resolve preferences, write
+  code, verify. No step asks whether the route, view or dialog already exists. Figma
+  node `116:4444` is the report detail screen, which the app implements in
+  `report/ui/ReportDetailView.java` (75 KB); node `213:1721` is "Add Expense", which
+  the app implements in `report/ui/LineEditorDialog.java` (20 KB). Run as written, the
+  skill produces a second, thinner implementation of both.
+- Workaround used: the spike's output was written to a `report.ui.spike` package at
+  `/spike/report/<id>`, deliberately parallel to the real views, and the useful output
+  treated as the **delta** rather than the code.
+- Evidence: issue #143 spike; `docs/figma-toolchain-spike.md` lists the delta.
+- Impact: the generated view *looks* closer to the design than the real one, because it
+  does far less — no review mode, no optimistic locking, no receipt validation, no
+  quantity overrides, no status transitions. That is a genuinely dangerous comparison to
+  put in front of a reviewer: the honest reading is "the design is simpler than the
+  app", not "the generated code is better". Left unnoticed, the natural next step is to
+  keep the generated file, and a 75 KB view's behaviour is quietly lost. The framing
+  matters for the whole `#142` follow-up series: the per-view issues are **restyling and
+  reconciliation** tasks against existing views, and this skill is built for greenfield.
+- Suggested Vaadin/product improvement: add a step between "fetch design context" and
+  "implement" — search the codebase for an existing view serving the same route or
+  entity, and if one exists, produce a diff against it rather than a new class. Failing
+  that, the skill should at least say which of the two it is doing.
+- Owner / next step: the per-view issues should be written as "change view X to match
+  frame Y", never "implement frame Y". Worth adding the guard to the project copy.
+
+### F-067 — Figma's Vaadin annotations record the button *variant* but drop its accent scoping, and the skill's own precedence rule then points the wrong way
+- Date: 2026-08-26
+- Area: AI
+- Severity: Medium
+- Task being attempted: issue #143's spike — mapping the design's Save and Submit
+  buttons to Vaadin.
+- Expected vs actual: the design paints both buttons near-black (`#0a0b0d`, bound to
+  the kit's `Accent colors/Accent neutral`), and the Figma **variant name** is
+  `Color=Accent neutral`. The **annotation** on the same node says
+  `Vaadin component: <vaadin-button theme="primary">`. Under Aura, `PRIMARY` alone
+  renders in the accent colour — blue. So the annotation is a faithful record of the
+  variant and a wrong record of the colour, and following it produces a blue button
+  where the design is black.
+- Workaround used: `ButtonVariant.PRIMARY` plus Aura's `aura-accent-neutral` utility
+  class, which scopes the accent for that subtree. Verified in the browser: the
+  rendered background is `oklch(0.15 0.0038 248)` with white text.
+- Evidence: `get_design_context` on nodes `213:1721` and `116:4446`; annotations on
+  `132:384` / `132:385`; the design's own fill `bg-[var(--accent-colors\/accent-neutral,#0a0b0d)]`.
+- Impact: the skill's step 2 says "Annotations override guesses from layer names" — a
+  sound rule that is exactly backwards here, because the **layer name** carries the
+  information the annotation lost. The same pattern appears twice more in these two
+  frames: node `143:2109` is annotated `theme="tertiary icon"`, and `icon` is Lumo-only
+  and silently does nothing under Aura (F-017); and Unit Price is annotated
+  `<vaadin-text-field>` when it is a currency amount the app already edits with a
+  `BigDecimalField`. So three of the annotations in two frames need overriding. They
+  remain far better than guessing — every input carries a component name — but they
+  cannot be treated as final.
+- Suggested Vaadin/product improvement: Figma's Vaadin kit should emit the accent
+  scoping alongside the theme variant (`theme="primary" class="aura-accent-neutral"`),
+  since the variant axis is literally named `Color=`. The skill should soften
+  "annotations override" to "annotations override layer names for *component choice*;
+  check the layer name and the rendered fill for *colour*".
+- Owner / next step: captured in `docs/figma-toolchain-spike.md`; worth a note in the
+  project copy's Project overrides section next to the existing `LUMO_*` rule.
