@@ -888,6 +888,32 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
         assertThat(service.listMine()).isEmpty();
     }
 
+    // The dialog's Save routes a DomainRuleException to its error summary and lets a
+    // plain IllegalArgumentException fall through as a technical failure (issue #86).
+    // An invalid trip range is the user's to fix, so the preview must reject it as the
+    // former — unmarked, it reached the user as "something went wrong" (issue #140).
+    @Test
+    void previewRejectsAnInvalidTripRangeAsADomainRule() {
+        assertThatThrownBy(() -> service.previewTravel(
+                domesticTravel(null, DEP, DEP, false, false)))
+                .isInstanceOf(DomainRuleException.class)
+                .hasMessageContaining("Return must be after the departure");
+
+        assertThatThrownBy(() -> service.previewTravel(
+                domesticTravel(null, DEP, DEP.minusHours(1), false, false)))
+                .isInstanceOf(DomainRuleException.class)
+                .hasMessageContaining("Return must be after the departure");
+
+        // A foreign destination costs the per-diem down its own path, which carried
+        // its own copy of the same throw.
+        assertThatThrownBy(() -> service.previewTravel(
+                foreignTravel(null, DEP, DEP, "Germany", false)))
+                .isInstanceOf(DomainRuleException.class)
+                .hasMessageContaining("Return must be after the departure");
+
+        assertThat(service.listMine()).isEmpty();
+    }
+
     @Test
     void previewSuppressesTheMealAllowanceWhenEligibleForAPerDiem() {
         // The mirror case (issue #93): an eligible trip earns the per-diem (€54.00)
