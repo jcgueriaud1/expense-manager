@@ -21,7 +21,7 @@ not hard-coded px.
 | Custom spacing value | `layout.setSpacing("var(--vaadin-gap-l)")` — accepts any CSS value |
 | No spacing | `layout.setSpacing(false)` |
 | Default theme padding | `layout.setPadding(true)` — uses `--vaadin-padding` |
-| Custom padding value | `layout.setPadding("var(--vaadin-padding-m)")` |
+| Custom padding value | **No Java API** — `setPadding` is boolean-only. Use `setPadding(false)` + `padding` in the scoped CSS class (F-065) |
 | No padding | `layout.setPadding(false)` |
 | Cross-axis alignment | `layout.setAlignItems(...)` / `layout.setDefaultHorizontalComponentAlignment(...)` |
 | Main-axis distribution | `layout.setJustifyContentMode(...)` |
@@ -45,10 +45,12 @@ unsuffixed `--vaadin-padding` / `--vaadin-gap` custom property to use in your ow
 sized token, or a fallback: `var(--vaadin-gap-m, 0.75rem)`.
 
 ```java
-// ✅ Spacing/padding with the layout Java API
+// ✅ Custom spacing with the layout Java API; padding has no String overload,
+//    so it goes in the scoped CSS class instead (see the asymmetry note below)
 HorizontalLayout header = new HorizontalLayout();
 header.setSpacing("var(--vaadin-gap-l)");
-header.setPadding("var(--vaadin-padding-m)");
+header.setPadding(false);
+header.addClassName("view-header");   // .view-header { padding: var(--vaadin-padding-m); }
 header.setWidthFull();
 header.setAlignItems(FlexComponent.Alignment.CENTER);
 header.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
@@ -61,19 +63,52 @@ sidebar.expand(contentArea);
 // ❌ Don't use the style API for things the layout API covers
 layout.getStyle().set("display", "flex");
 layout.getStyle().set("gap", "16px");      // → setSpacing("var(--vaadin-gap-m)")
-layout.getStyle().set("padding", "16px");  // → setPadding("var(--vaadin-padding-m)")
+layout.getStyle().set("padding", "16px");  // → a CSS class: padding: var(--vaadin-padding-m);
 ```
+
+### The spacing/padding asymmetry (F-065)
+
+`ThemableLayout` does **not** treat the two symmetrically, and it is easy to assume it does:
+
+```java
+// Spacing — four ways to set it
+void setSpacing(boolean);
+void setSpacing(String);            // ✅ any CSS value
+void setSpacing(float, Unit);
+String getSpacing();
+
+// Padding — one way, and no getter for a value
+void setPadding(boolean);           // ❌ there is no setPadding(String)
+boolean isPadding();
+
+// Margin — same as padding
+void setMargin(boolean);
+boolean isMargin();
+```
+
+So `setPadding(true)` gives you the theme's default padding and `setPadding(false)` gives you
+none; **any other value is a CSS-class job**, exactly like the decoration cases below. The same
+holds for margin — and margin on a layout is its own trap: it sits *outside* the component's
+measured box, so it breaks `setSizeFull()` / `expand()` height math. A component can measure
+"correct" and still visually overflow its parent. Space a layout from its container with padding
+on a wrapper, or by targeting the component's own `::part(...)` — never with margin.
+
+This document told you otherwise until 2026-08-26. `setPadding("var(--vaadin-padding-m)")`
+appeared here in three places and has never compiled; it went unnoticed because production code
+uses `setSpacing(String)` freely and simply never tried the padding form.
 
 ## Falling back to CSS
 
 When the layout API can't express a need — decoration (border, radius, background, shadow),
-positioning, truncation, 2-D grid, typography/colour on a non-component element — add a
+a custom padding value, positioning, truncation, 2-D grid, typography/colour on a
+non-component element — add a
 scoped CSS class with `addClassName("descriptive-name")` and write the rule in `styles.css`.
 Use `--vaadin-*` / `--aura-*` custom properties rather than hard-coded values.
 
 | Need | CSS |
 |---|---|
 | Custom gap on a non-Vaadin-layout container | `gap: var(--vaadin-gap-m);` |
+| Custom padding on any layout (no Java API, F-065) | `padding: var(--vaadin-padding-m);` |
 | 2-D grid (rows AND columns) | `display: grid; grid-template-columns: ...; gap: var(--vaadin-gap-m);` |
 | Aspect ratio | `aspect-ratio: 16 / 9;` |
 | Sticky / absolute positioning | `position: sticky; top: 0;` |
