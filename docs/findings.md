@@ -1883,6 +1883,46 @@ Deployment/Observability · UX-spec
   IntegerField half of the same class of problem into
   `docs/manual-verification.md`'s Playwright pattern (below).
 
+### F-058 — `setMin`/`setMax` are inclusive, so they cannot express a strict range — and the boundary value fails silently
+- Date: 2026-08-25
+- Area: Vaadin
+- Severity: Medium
+- Task being attempted: fixing issue #140 — a trip whose departure and return carry
+  the same date *and* time. The trip rule is strict (`returnAt.isAfter(departureAt)`),
+  and `TravelEditorDialog` guarded it the obvious way: each picker bounds the other,
+  `returnAt.setMin(departure)` / `departure.setMax(returnAt)`.
+- Expected vs actual: expected the reciprocal bounds to make an invalid range
+  unreachable through the UI — which is what the code's own comment claimed ("the
+  overlay can't produce one"). Actual: `setMin`/`setMax` are **inclusive** ("the
+  minimum date and time that is allowed to be set"), so the equal instant is a value
+  the overlay happily offers on both sides. Half the rule was enforced; the boundary
+  — the only value a strict rule and an inclusive bound disagree about — was not.
+- Workaround used: shift the bounds by one picker step —
+  `returnAt.setMin(departure.plus(TRIP_STEP))` and the mirror — so the inclusive
+  bound lands where the strict rule starts. Works because the field has a step; a
+  continuous field would have no correct value to shift by.
+- Evidence: issue #140. `DateTimePicker.setMin` javadoc (25.2.1); the equal instant
+  reached `AllowanceCalculator` and threw. The repo's own regression test
+  (`choosingADepartureConstrainsTheReturnPickerRangeAndViceVersa`) asserted
+  `ret.getMin()).isEqualTo(DEP)` — it encoded the gap rather than catching it.
+- Impact: the failure is invisible at the call site. `setMin(departure)` reads as
+  "the return can't be the departure", the overlay looks constrained, and every
+  value except one is handled — so the gap survives review and a passing test, and
+  surfaces as a user hitting a rule the UI told them they were obeying. Any strict
+  range guarded this way has the same hole: date pickers, number fields (`setMin`
+  on `IntegerField`/`BigDecimalField` is inclusive too), time pickers.
+- Suggested Vaadin/product improvement: give the constraint APIs an exclusive form —
+  `setMinExclusive(...)` — or at minimum say "inclusive" in the javadoc's first line
+  rather than leaving it to be inferred from "allowed to be set". A strict range is
+  not an exotic requirement (a trip, a booking, a date range of any positive length),
+  and today every app expressing one has to know the step and do this arithmetic.
+- Owner / next step: fixed in this repo (#140). The paired lesson is ours, not
+  Vaadin's: the client-side bound was the *only* guard the user ever saw, because the
+  server-side rule threw a plain `IllegalArgumentException` and so was bucketed as a
+  technical failure and shown as the generic error dialog (issue #86's split). A
+  client constraint should never be the only thing standing between the user and a
+  rule — the server rule it mirrors has to be user-facing too.
+
 ### F-059 — A project-scoped MCP server can be committed but not *used*: the same session that adds it can never call it
 - Date: 2026-08-26
 - Area: Tooling/Template

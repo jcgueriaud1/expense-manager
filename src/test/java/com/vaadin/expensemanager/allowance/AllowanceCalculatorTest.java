@@ -3,6 +3,8 @@ package com.vaadin.expensemanager.allowance;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+import com.vaadin.expensemanager.base.DomainRuleException;
+
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -114,19 +116,34 @@ class AllowanceCalculatorTest {
         assertThat(result.partial().isEarned()).isFalse();
     }
 
+    // The range rule is a DomainRuleException, not a plain IllegalArgumentException:
+    // the editors catch that type specifically to route the message to their error
+    // summary, and an unmarked one falls through to the generic technical dialog the
+    // user cannot act on (issue #86, issue #140).
     @Test
-    void returnBeforeDepartureIsRejected() {
+    void returnBeforeDepartureIsRejectedAsADomainRule() {
         assertThatThrownBy(() -> calculator.domesticPerDiem(START,
                 START.minusHours(1), false, false, RATE))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(DomainRuleException.class)
                 .hasMessageContaining("Return must be after");
     }
 
     @Test
-    void returnEqualToDepartureIsRejected() {
+    void returnEqualToDepartureIsRejectedAsADomainRule() {
         assertThatThrownBy(() -> calculator.domesticPerDiem(START, START, false,
                 false, RATE))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(DomainRuleException.class)
+                .hasMessageContaining("Return must be after");
+    }
+
+    // The other half of that split: a missing rate is a technical failure, so it must
+    // stay unmarked and reach the generic dialog rather than the error summary.
+    @Test
+    void aMissingRateStaysATechnicalFailure() {
+        assertThatThrownBy(() -> calculator.domesticPerDiem(START,
+                START.plusHours(11), false, false, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .isNotInstanceOf(DomainRuleException.class);
     }
 
     @Test
@@ -405,10 +422,20 @@ class AllowanceCalculatorTest {
     void foreignPerDiemRejectsReturnBeforeDepartureAndNullDates() {
         assertThatThrownBy(() -> calculator.foreignPerDiem(START, START.minusHours(1),
                 false, GERMANY, 10, 6))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(DomainRuleException.class)
                 .hasMessageContaining("Return must be after");
         assertThatThrownBy(() -> calculator.foreignPerDiem(null, START, false, GERMANY,
                 10, 6)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    // A foreign trip reaches a different code path than a domestic one, so it gets
+    // the equal-instant case of its own (issue #140).
+    @Test
+    void foreignPerDiemRejectsReturnEqualToDepartureAsADomainRule() {
+        assertThatThrownBy(() -> calculator.foreignPerDiem(START, START, false,
+                GERMANY, 10, 6))
+                .isInstanceOf(DomainRuleException.class)
+                .hasMessageContaining("Return must be after");
     }
 
     // --- Parking (Phase 4.3) ---
