@@ -3,6 +3,11 @@
 One file per component **that exists in this app**. Nothing speculative: if it is not in
 `src/main/java` or `styles.css` today, it does not get a file.
 
+**Maintained by `/figma-component-spec`.** Run it in the same change that builds or
+alters a component; `audit` mode backfills missing specs and flags ones that have drifted
+from their source. `/figma-survey` reads these and reports a component with no spec as a
+gap, but never writes them.
+
 A spec records what the source cannot tell you — when to use the component, when not to,
 which tokens it is entitled to, and which states must be covered. It does **not**
 duplicate the constructor signature or the class javadoc; those are readable from the

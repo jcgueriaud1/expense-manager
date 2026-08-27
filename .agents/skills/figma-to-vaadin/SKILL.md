@@ -151,28 +151,13 @@ instead of inventing new sample data.
 
 ### 5b. Update the component spec
 
-If the project keeps per-component design specs (a `components/` directory inside its
-design-spec folder — the project's agent instructions name it), **update the spec for
-every component this change created or altered**, in the same change as the code. A spec
-written later is a spec written from memory.
+If the project keeps per-component design specs, **invoke `figma-component-spec` for
+every component this change created or altered**, before Step 6 — in the same change as
+the code, because a spec written later is a spec written from memory. That skill owns the
+template, the mandatory all-states rule and the staleness audit; do not restate them
+here, and do not write the spec by hand instead.
 
-Follow the template the project's own `components/README.md` defines. Where there is
-none, record at least: when to use the component and when to reach for its sibling
-instead; its parts; the tokens it is entitled to; its **states** — default, hover, active,
-focus, disabled, error — and the shortest correct usage.
-
-**Fill in every state, and write "n/a" where one cannot occur rather than leaving it
-blank.** A blank row reads as "not checked" and a missing row reads as "no such state";
-neither is a claim anyone can act on. This is the section that catches the most: a state
-the design never drew is a state nobody verified, and framework state styling is often
-invisible to the obvious check — an audit reading `background-color` will report a
-disabled control as identical to an enabled one if the theme dims it with `opacity`.
-
-Do not restate the constructor signature or the class javadoc; those are readable from
-the source and go stale here. Record what the source cannot say.
-
-**Done when** every component this change touched has a spec whose states are all
-accounted for, and no spec duplicates what the source already states.
+**Done when** every component this change touched has an up-to-date spec.
 
 ### 6. Test
 
@@ -282,12 +267,11 @@ avatar.getStyle().set("--vaadin-avatar-size", "48px");
   - Step 6 now invokes `figma-visual-verification` (this repo's renamed copy of upstream's
     `vaadin-visual-verification`).
   - `compatibility:` no longer claims a Vaadin MCP server is required.
-  - Added **Step 5b — Update the component spec**, so a view's change also updates the
-    per-component design spec in `docs/design/components/` rather than leaving that layer
-    to rot. Upstream has no component-spec concept at all: it ends at code plus
-    verification, which is why the same "is this a card?" question can be answered
-    differently by every view. The mandatory all-states rule (write `n/a`, never blank)
-    is local too — issue #144 reported a button's states as verified when hover was
-    untested and the disabled check was reading a property the theme does not touch.
+  - Added **Step 5b — Update the component spec**, delegating to this project's
+    `figma-component-spec` skill so a view's change also updates
+    `docs/design/components/` rather than leaving that layer to rot. Upstream has no
+    component-spec concept at all: it ends at code plus verification, which is why the
+    same "is this a card?" question can be answered differently by every view. Kept as a
+    pointer rather than a copy of the rules, so the two cannot drift.
 - **Not copied at all:** upstream's `figma-to-lumo-theme` — this app is Aura, and
   `CLAUDE.md` forbids `--lumo-*`.
