@@ -9,7 +9,8 @@ import com.vaadin.expensemanager.allowance.AllowanceRateService;
 import com.vaadin.expensemanager.allowance.ForeignPerDiemDto;
 import com.vaadin.expensemanager.base.ui.DashboardView;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
-import com.vaadin.flow.component.sidenav.SideNavItem;
+import com.vaadin.expensemanager.base.ui.NavGroup;
+import com.vaadin.flow.spring.security.AuthenticationContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -46,6 +47,10 @@ class AllowanceRatesViewUiTest extends SpringBrowserlessTest implements Locators
         POSTGRES.start();
     }
 
+    /** Resolves the signed-in user for {@code navEntryLabels()}. */
+    @Autowired
+    protected AuthenticationContext authenticationContext;
+
     @Autowired
     private AllowanceRateService service;
 
@@ -72,14 +77,14 @@ class AllowanceRatesViewUiTest extends SpringBrowserlessTest implements Locators
     @WithUserDetails("admin@vaadin.com")
     void adminSeesMenuEntry() {
         navigate(DashboardView.class);
-        assertThat(menuItemPaths()).contains("allowance-rates");
+        assertThat(navEntryLabels()).contains("Allowance rates");
     }
 
     @Test
     @WithUserDetails(LocalUserSeeder.PLAIN_USER_EMAIL)
     void userSeesNoMenuEntry() {
         navigate(DashboardView.class);
-        assertThat(menuItemPaths()).doesNotContain("allowance-rates");
+        assertThat(navEntryLabels()).doesNotContain("Allowance rates");
     }
 
     @Test
@@ -138,10 +143,18 @@ class AllowanceRatesViewUiTest extends SpringBrowserlessTest implements Locators
         assertThat(service.availableYears()).containsExactly(2027, 2026);
     }
 
-    /** The auto-registered {@code @Menu} entry paths currently in the side nav. */
-    private List<String> menuItemPaths() {
-        return find(SideNavItem.class).all().stream()
-                .map(SideNavItem::getPath)
+    /**
+     * The navigation entries the signed-in user can reach, by label (#146).
+     *
+     * <p>Was the {@code @Menu}-generated side-nav paths. The nav is now
+     * hand-authored in {@code NavGroup} and two of its three groups render as
+     * menus, whose items the browserless tester cannot see (F-071) — so this
+     * asks the model the shell renders from, and the rendered menu is left to
+     * visual verification.
+     */
+    private List<String> navEntryLabels() {
+        return NavGroup.allVisibleTo(authenticationContext).stream()
+                .map(NavGroup.NavItem::label)
                 .toList();
     }
 }

@@ -347,3 +347,305 @@ vaadin-dialog.receipt-preview-dialog::part(overlay) {
         border-radius: 0;
     }
 }
+
+/* ============================================================================
+ * App shell — the coral header bar and the content card (issue #146).
+ *
+ * Replaces the AppLayout drawer/navbar. Structure that a Vaadin layout API
+ * could express is in Java (MainLayout, AppHeader); everything here is
+ * decoration, geometry and typography the API cannot reach, per
+ * docs/theming-layouts.md.
+ *
+ * The design's own values, and the decisions taken where Aura's scale cannot
+ * produce them, are in docs/design/components/app-shell.md. The px literals
+ * below are exactly those recorded off-scale values — each is the design's,
+ * and none has a token within reach.
+ * ==========================================================================*/
+
+.app-shell {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+/* ---- The bar ---- */
+
+.app-header {
+    /*
+     * Design 116:3876: a flat coral fill under a left-to-right gradient wash.
+     * Aura has no gradient token, so the wash is written out; the base colour
+     * is --em-header-color, which the status states below re-point at a real
+     * Aura palette token.
+     */
+    background:
+        linear-gradient(90deg, rgb(0 0 0 / 0.1) 0%, rgb(255 255 255 / 0.1) 100%),
+        var(--em-header-color);
+    color: var(--em-header-text-color);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: var(--em-card-padding);        /* design 20 */
+    overflow: hidden;                            /* clips the illustration */
+    /*
+     * White on coral is 3.0:1 — the focus ring must not also be the accent
+     * blue, which is 1.6:1 against this bar. See app-shell.md.
+     */
+    --vaadin-focus-ring-color: var(--em-header-text-color);
+}
+
+.app-header--home { height: 350px; }
+.app-header--default,
+.app-header--approved,
+.app-header--in-progress,
+.app-header--rejected { height: 120px; }
+
+.app-header--approved { --em-header-color: var(--aura-green); }
+.app-header--in-progress { --em-header-color: var(--aura-blue); }
+.app-header--rejected { --em-header-color: var(--aura-red); }
+
+.app-header__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--vaadin-gap-m);
+    width: 100%;
+    max-width: 1400px;                           /* design's inner row */
+    padding-inline: var(--vaadin-padding-l);
+}
+
+/* ---- Logo ---- */
+
+.app-header__logo {
+    display: flex;
+    align-items: center;
+    gap: var(--vaadin-gap-s);                    /* design 10 */
+    color: inherit;
+    text-decoration: none;
+    font-size: var(--aura-font-size-l);          /* design 16 */
+    font-weight: var(--aura-font-weight-semibold);
+    white-space: nowrap;
+}
+
+/* ---- Nav ---- */
+
+.app-nav {
+    display: flex;
+    align-items: center;
+    gap: var(--vaadin-gap-s);                    /* design 10 */
+}
+
+/*
+ * One pill, two element types: a RouterLink where the group has a single
+ * destination, a Button opening a menu where it has several. They must be
+ * indistinguishable, so every button-ish default is overridden here rather
+ * than left to the theme.
+ */
+.app-nav__item,
+vaadin-button.app-nav__item {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 100px;                        /* design's pill */
+    color: var(--em-header-text-color);
+    font-size: var(--aura-font-size-l);          /* design 16 */
+    font-weight: var(--aura-font-weight-semibold);
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+    /* Design 15/10; the nearest scale steps, 1–2px off. */
+    padding-inline: var(--vaadin-padding-l);
+    padding-block: var(--vaadin-padding-s);
+}
+
+vaadin-button.app-nav__item {
+    --vaadin-button-background: transparent;
+    --vaadin-button-text-color: var(--em-header-text-color);
+    --vaadin-button-border-width: 0;
+    --vaadin-button-shadow: none;
+    --vaadin-button-font-weight: var(--aura-font-weight-semibold);
+    height: auto;
+    min-height: auto;
+    min-width: auto;
+}
+
+.app-nav__item--active,
+vaadin-button.app-nav__item--active {
+    background: rgb(0 0 0 / 0.2);                /* design's selected pill */
+    --vaadin-button-background: rgb(0 0 0 / 0.2);
+}
+
+/* Links inside the group menus: menu items, not blue links. */
+vaadin-context-menu-item > a[router-link] {
+    display: block;
+    width: 100%;
+    color: inherit;
+    text-decoration: none;
+}
+
+/* ---- Account menu ---- */
+
+.app-header__account {
+    --vaadin-button-background: transparent;
+    --vaadin-button-border-width: 0;
+    --vaadin-button-shadow: none;
+}
+
+.app-header__account vaadin-menu-bar-button {
+    padding: 0;
+}
+
+/*
+ * Aura draws a dropdown chevron beside any menu-bar item that opens a submenu.
+ * The design's header has the avatar alone, so it goes — the avatar is the
+ * affordance, and aria-haspopup still announces the menu.
+ */
+.app-header__account vaadin-menu-bar-button::part(suffix) {
+    display: none;
+}
+
+.app-header__account vaadin-avatar {
+    width: 40px;                                 /* design; Avatar's own is 32 */
+    height: 40px;
+}
+
+/* ---- The greeting hero (HOME only) ---- */
+
+.app-header__hero {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    flex: 1;
+    width: 100%;
+    max-width: 1400px;
+    padding-inline: var(--vaadin-padding-l);
+    padding-bottom: 60px;                        /* design */
+    min-height: 0;
+}
+
+.app-header__hero-text {
+    display: flex;
+    flex-direction: column;
+    gap: var(--em-card-padding);                 /* design 20 */
+}
+
+.app-header__greeting {
+    margin: 0;
+    font-size: 50px;                             /* design; beyond the type scale */
+    line-height: 60px;
+    font-weight: var(--aura-font-weight-semibold);
+}
+
+.app-header__message {
+    font-size: 20px;                             /* design; beyond the type scale */
+    font-weight: var(--aura-font-weight-medium);
+}
+
+.app-header__illustration {
+    width: 441px;                                /* the asset's own geometry */
+    height: 236px;
+    flex-shrink: 0;
+    /*
+     * The design sits the illustration on the bar's bottom edge. That edge is
+     * not where the bar ends here: the content card tucks 35px under it, so the
+     * *visible* bottom is 35px higher. Dropping the illustration by the
+     * difference between the hero's 60px bottom padding and that overlap lands
+     * it exactly on the card's top edge, which is the line the design draws it
+     * against.
+     */
+    margin-bottom: -25px;
+    align-self: flex-end;
+}
+
+/* ---- The content card ---- */
+
+.app-shell__card {
+    background: var(--aura-background-color);
+    border-radius: var(--em-card-radius) var(--em-card-radius) 0 0;
+    margin-top: -35px;                           /* design's overlap */
+    position: relative;                          /* over the bar, not under */
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.app-shell__content {
+    width: 100%;
+    max-width: 900px;                            /* design's 900-in-1800 column */
+    margin-inline: auto;
+    padding-top: 80px;                           /* design's page inset */
+    padding-inline: var(--vaadin-padding-l);
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ----------------------------------------------------------------------------
+ * Small screens — undesigned (#145 §3). The bar has to do the drawer's old job,
+ * so nothing hides: the three links wrap onto their own row rather than
+ * collapsing behind a toggle. The hero is what breaks first, so its
+ * illustration goes and the greeting drops to a size that fits 360px.
+ * --------------------------------------------------------------------------*/
+
+@media (max-width: 700px) {
+    .app-header--home,
+    .app-header--default,
+    .app-header--approved,
+    .app-header--in-progress,
+    .app-header--rejected {
+        height: auto;
+    }
+
+    .app-header {
+        padding-top: var(--vaadin-padding-m);
+        padding-bottom: var(--vaadin-padding-xl);
+    }
+
+    .app-header__row {
+        flex-wrap: wrap;
+        justify-content: space-between;
+        row-gap: var(--vaadin-gap-s);
+        padding-inline: var(--vaadin-padding-m);
+    }
+
+    /*
+     * Three labels do not fit one 360px row — at the smallest width the third
+     * was clipped by the bar's overflow. They wrap instead: nothing is hidden,
+     * which is the whole point of keeping them in the bar rather than behind a
+     * toggle.
+     */
+    .app-nav {
+        order: 3;
+        width: 100%;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        gap: var(--vaadin-gap-xs);
+    }
+
+    .app-nav__item,
+    vaadin-button.app-nav__item {
+        font-size: var(--aura-font-size-m);
+        padding-inline: var(--vaadin-padding-s);
+        padding-block: var(--vaadin-padding-xs);
+    }
+
+    .app-header__hero {
+        padding-inline: var(--vaadin-padding-m);
+        padding-bottom: var(--vaadin-padding-l);
+        padding-top: var(--vaadin-padding-l);
+    }
+
+    .app-header__illustration { display: none; }
+
+    .app-header__greeting {
+        font-size: var(--em-font-size-title);    /* 24 */
+        line-height: 1.2;
+    }
+
+    .app-header__message { font-size: var(--aura-font-size-l); }
+
+    .app-shell__card { margin-top: -20px; }
+
+    .app-shell__content {
+        padding-top: var(--em-section-gap);       /* 40 */
+        padding-inline: var(--vaadin-padding-m);
+    }
+}

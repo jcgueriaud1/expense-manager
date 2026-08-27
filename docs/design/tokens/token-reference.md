@@ -30,19 +30,27 @@ The complete list — everything else is Aura stock.
 | Property | Value | Why |
 |---|---|---|
 | `color-scheme` | `light dark` | follow the OS preference; **load-bearing for ThemeSwitcher's "System"** |
-| `--aura-app-layout-radius` | `12px` | design's content-panel radius; Aura derives 15 |
 | `--em-card-radius` | `12px` | off-scale: between `radius-m` 9 and `radius-l` 15 |
 | `--em-card-padding` | `20px` | off-scale: between `padding-l` 16 and `padding-xl` 24 |
 | `--em-section-gap` | `40px` | off-scale: beyond `gap-xl` 24 |
 | `--em-font-size-title` | `24px` | off-scale: beyond `font-size-xl` 18 |
+| `--em-header-color` | `#f16c4e` | the shell bar's brand coral; bound to no design variable, and no Aura hue is near it |
+| `--em-header-text-color` | `#ffffff` | the bar's label colour — pinned, **not** `--aura-accent-contrast-color`, which tracks the accent rather than the bar |
 
 Plus one rule scoping `--aura-accent-color-light/-dark` to `--aura-neutral-*` on
 non-tertiary buttons. All in
 `src/main/resources/META-INF/resources/aura-theme.css`.
 
-**`--em-*` is a bounded escape hatch, not a parallel scale.** Adding a fifth is a
-decision for this folder, not a per-view convenience. Expect them unreferenced until
-per-view work consumes them.
+`--aura-app-layout-radius` was here until #146 and is not any more: it styles
+`AppLayout`'s content area, and the shell no longer uses `AppLayout`. The design's 12px
+content-panel radius is now applied through `--em-card-radius`, which is the same value.
+
+**`--em-*` is a bounded escape hatch, not a parallel scale.** Adding another is a
+decision for this folder, not a per-view convenience. The two the shell added are colour,
+not scale — the shell's geometry (heights, the 900px column, the 35px overlap) is written
+as literals in its own CSS rules, because a custom property for a single use is where a
+parallel scale starts. Each is listed in
+[`../components/app-shell.md`](../components/app-shell.md).
 
 ## Radius
 
@@ -51,7 +59,7 @@ per-view work consumes them.
 | `--vaadin-radius-s` | 5 | small inline blocks — technical detail |
 | `--vaadin-radius-m` | 9 | fields, buttons, error summary, history entry, preview |
 | `--vaadin-radius-l` | 15 | cards, callouts |
-| `--em-card-radius` | 12 | where the design's 12px card radius is required |
+| `--em-card-radius` | 12 | where the design's 12px card radius is required — including the shell's content card |
 
 ## Spacing
 

@@ -49,14 +49,14 @@ class ExpenseTypeViewUiTest extends AbstractReferenceDataViewUiTest {
     @WithUserDetails("admin@vaadin.com")
     void adminSeesMenuEntry() {
         navigate(DashboardView.class);
-        assertThat(menuItemPaths()).contains("expense-types");
+        assertThat(navEntryLabels()).contains("Expense types");
     }
 
     @Test
     @WithUserDetails(LocalUserSeeder.PLAIN_USER_EMAIL)
     void userSeesNoMenuEntry() {
         navigate(DashboardView.class);
-        assertThat(menuItemPaths()).doesNotContain("expense-types");
+        assertThat(navEntryLabels()).doesNotContain("Expense types");
     }
 
     @Test

@@ -51,6 +51,45 @@ Deep-link straight to the screen you want — an unauthenticated hit redirects t
 - `/report/<id>` — a single report (a path segment, e.g. `/report/5`; the
   bare `/report` opens a fresh transient report).
 
+### The shell moved in #146 — three things a run depends on
+
+The drawer, the drawer toggle and the side nav are gone; the shell is a coral top bar
+over a content card ([`design/components/app-shell.md`](design/components/app-shell.md)).
+Three habits break:
+
+- **Signing out is a menu item, not a button.** It lives behind the avatar, so
+  `findButton("Sign out")` and any selector looking for a `vaadin-button` finds nothing.
+  Click the avatar first — `vaadin-menu-bar-button[first-visible]`, since the MenuBar
+  also renders a hidden overflow button and a bare `vaadin-menu-bar-button` selector is
+  ambiguous — then `vaadin-menu-bar-item:has-text("Sign out")`. This is the step that
+  matters most: switching between the user and the admin is how most runs begin.
+- **The colour-scheme switcher moved with it.** Avatar → **Colour theme** → System /
+  Light / Dark, two levels of `vaadin-menu-bar-item`. To skip the clicks when you only
+  need the pixels, set `document.documentElement.style.colorScheme` directly and clear
+  `localStorage['expense-manager.color-scheme']`.
+- **Navigating between sections goes through the nav pills.** `My Expenses` is a link;
+  `Admin Tasks` and `Reference Tables` are buttons that open a menu of links
+  (`vaadin-button:has-text("Admin Tasks")`, then the item). Deep-linking is still
+  cheaper — prefer it.
+
+The current group is readable without a screenshot, which makes it a cheap assertion:
+
+```js
+[...document.querySelectorAll('.app-nav__item')]
+    .map(e => e.textContent.trim() + '=' + e.getAttribute('aria-current'))
+```
+
+### Editing CSS while the app is running
+
+`./mvnw` serves the theme from `target/classes`, not from `src`, so an edit to
+`META-INF/resources/styles.css` changes nothing until the resource is copied — and the
+page reloads looking exactly as before, which reads as "my rule is wrong" rather than
+"my rule is not there". Copy it and reload:
+
+```bash
+cp src/main/resources/META-INF/resources/*.css target/classes/META-INF/resources/
+```
+
 ## Lever 2 — Cheap Playwright interaction pattern
 
 The dominant cost of a Playwright run is **large `browser_snapshot`

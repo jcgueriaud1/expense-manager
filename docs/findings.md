@@ -2391,3 +2391,72 @@ Deployment/Observability · UX-spec
 - Owner / next step: recorded in `docs/design/foundations/typography.md` and as
   ADR-0025 decision 4. The design fix is the designer's; raise the stray families and
   the design's own 12px "S" step (against Aura's 13px `s`) with them.
+
+### F-070 — Spring Security proxies the view, so the class the navigation chain reports is a CGLIB subclass and `Class` equality silently matches nothing
+- Date: 2026-08-27
+- Area: Vaadin
+- Severity: Medium
+- Task being attempted: issue #146 — lighting the correct nav group for the current
+  route, by matching `AfterNavigationEvent.getActiveChain().get(0).getClass()` against
+  the view classes a `NavGroup` lists.
+- Expected vs actual: expected `MyReportsView.class`. Actual
+  `MyReportsView$$SpringCGLIB$$0` — every view in this app carries `@RolesAllowed` or
+  `@PermitAll` at class level (ADR-0008), so Spring method security proxies it. The
+  `equals` comparison matched nothing at all, for every route.
+- Workaround used: `isAssignableFrom` instead of `equals` in `NavGroup#contains`, with
+  the reason written next to it so nobody "simplifies" it back.
+- Evidence: a temporary probe printing the chain's class from `MainLayout#afterNavigation`
+  on the running app — `view=class com.vaadin.expensemanager.report.ui.MyReportsView$$SpringCGLIB$$0`.
+  The failing assertion was `NavigationShellUiTest#currentGroupFollowsTheGroupNotTheRoute`.
+- Impact: this is a **silent, total** failure of a feature that has no error path: the nav
+  simply never marks anything current, and every route looks like an unclassified one.
+  There is no exception, no log line, and no compile-time signal — the types are correct.
+  Two things made it easy to walk into. First, the code it replaced never met it:
+  `MenuEntry#menuClass()` reports the *declared* class, so the old `@Menu`-driven side
+  nav compared proxies to nothing. Second, a browserless test reproduces it exactly, but
+  only if the test asserts the *current* state rather than the presence of the items —
+  the four tests that only checked which links render all passed.
+- Suggested Vaadin/product improvement: Vaadin's — `AfterNavigationEvent` (and
+  `getActiveChain()`) could expose the *route target* class rather than the runtime one,
+  or offer `getNavigationTarget()` alongside, since the router already knows the
+  registered class. Failing that, the Flow/Spring docs should say plainly that a view
+  annotated for method security arrives proxied, next to the security annotations that
+  cause it. This will bite anything that keys off the view class — analytics, per-view
+  layout switches, breadcrumbs.
+- Owner / next step: fixed in `NavGroup#contains`, and covered by
+  `NavigationShellUiTest#currentGroupFollowsTheGroupNotTheRoute`. Worth reporting
+  upstream to Flow.
+
+### F-071 — A `ContextMenu`'s items are invisible to the browserless tester, so navigation behind a menu cannot be asserted from the rendered tree
+- Date: 2026-08-27
+- Area: Verification
+- Severity: Low
+- Task being attempted: issue #146 — replacing four view tests that asserted "an admin
+  sees this view in the navigation, a plain user does not" against the old `SideNavItem`
+  list.
+- Expected vs actual: expected `find(RouterLink.class).all()` to return the links inside
+  the two nav group menus. Actual: it returns only the two links in the light DOM (the
+  logo and the single-entry group). A `ContextMenu`'s items are attached as a virtual
+  child of its target and never appear in the component tree the tester walks, open or
+  closed.
+- Workaround used: assert against the model the shell renders from —
+  `NavGroup.allVisibleTo(authenticationContext)` — and leave the rendered menu to visual
+  verification. The access filtering itself is unit-tested against the real
+  `AccessAnnotationChecker` in `NavGroupTest`.
+- Evidence: a probe test on the running Spring context printing every discoverable
+  `RouterLink` while signed in as an admin: two results, where the bar renders eight
+  destinations.
+- Impact: modest but worth knowing before designing the assertion, not after. The
+  practical rule: anything an overlay owns — `ContextMenu`, `MenuBar` submenus, `Dialog`
+  content before it opens — is outside what a browserless test can see, so a test that
+  needs it either drives the component's own API or moves the guarantee into a model that
+  can be tested directly. Choosing the latter is not a weaker test here, but it does move
+  the "did we render it" half onto the visual pass, which is worth saying out loud rather
+  than quietly losing.
+- Suggested Vaadin/product improvement: Vaadin's — the browserless tester could expose
+  overlay content through the owning component (a `find(..., withinOverlayOf(menu))`
+  scope, or simply including virtual children in the walk). The `MenuBar` API is
+  reachable from Java (`getItems().getSubMenu()`), so the information exists; only the
+  locator DSL cannot reach it.
+- Owner / next step: recorded here; the four tests now assert the model. Worth raising
+  with the browserless-testing maintainers.

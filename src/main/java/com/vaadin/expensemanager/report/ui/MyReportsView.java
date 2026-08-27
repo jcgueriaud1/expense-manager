@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Locale;
 
 import com.vaadin.expensemanager.base.ui.EmptyState;
+import com.vaadin.expensemanager.base.ui.HasHeaderState;
+import com.vaadin.expensemanager.base.ui.HeaderState;
 import com.vaadin.expensemanager.report.domain.ReportStatus;
 import com.vaadin.expensemanager.report.service.ExpenseReportService;
 import com.vaadin.expensemanager.report.service.ReportSummaryDto;
@@ -21,7 +23,6 @@ import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
-import com.vaadin.flow.router.Menu;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.router.RouterLink;
@@ -55,9 +56,8 @@ import static com.vaadin.expensemanager.report.ui.ReportViewSupport.statusBadge;
  */
 @Route("reports")
 @PageTitle("My reports")
-@Menu(title = "My reports", order = 1, icon = "vaadin:file-text-o")
 @PermitAll
-public class MyReportsView extends VerticalLayout {
+public class MyReportsView extends VerticalLayout implements HasHeaderState {
 
     private static final Locale LABEL_LOCALE = Locale.ENGLISH;
 
@@ -249,5 +249,31 @@ public class MyReportsView extends VerticalLayout {
                 .distinct()
                 .sorted(Comparator.reverseOrder())
                 .toList();
+    }
+
+    /**
+     * The report list is the one screen the design gives the tall header
+     * (#146) — it is where a greeting belongs.
+     */
+    @Override
+    public HeaderState headerState() {
+        return HeaderState.HOME;
+    }
+
+    /**
+     * The hero's status line, over the same set the "Needs your attention"
+     * section groups: the reports whose status still lets the owner act.
+     */
+    @Override
+    public String headerMessage() {
+        var waiting = reports.stream()
+                .filter(dto -> dto.status().isEditable())
+                .count();
+        if (waiting == 0) {
+            return "Nothing needs your attention right now";
+        }
+        return waiting == 1
+                ? "1 item needs your attention, get to it soon"
+                : waiting + " items need your attention, get to it soon";
     }
 }

@@ -14,7 +14,6 @@ import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.data.binder.Binder;
-import com.vaadin.flow.router.Menu;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 
@@ -41,7 +40,6 @@ import static com.vaadin.expensemanager.reference.ui.ReferenceViewSupport.format
  */
 @Route("expense-types")
 @PageTitle("Expense types")
-@Menu(title = "Expense types", order = 3, icon = "vaadin:tags")
 @RolesAllowed("ADMIN")
 public class ExpenseTypeView extends ReferenceConfigView<ExpenseTypeDto> {
 

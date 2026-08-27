@@ -8,7 +8,8 @@ import com.vaadin.browserless.locator.Locators;
 import com.vaadin.expensemanager.reference.ReferenceDataService;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.grid.GridLocator;
-import com.vaadin.flow.component.sidenav.SideNavItem;
+import com.vaadin.expensemanager.base.ui.NavGroup;
+import com.vaadin.flow.spring.security.AuthenticationContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -63,6 +64,10 @@ abstract class AbstractReferenceDataViewUiTest extends SpringBrowserlessTest
      * Phase 2.3 line editor exists). The tests run as {@code admin@vaadin.com}, so
      * its {@code @RolesAllowed("ADMIN")} reads succeed.
      */
+    /** Resolves the signed-in user for {@code navEntryLabels()}. */
+    @Autowired
+    protected AuthenticationContext authenticationContext;
+
     @Autowired
     protected ReferenceDataService service;
 
@@ -87,10 +92,18 @@ abstract class AbstractReferenceDataViewUiTest extends SpringBrowserlessTest
         return find(Button.class, cell).withAriaLabel(ariaLabel).single();
     }
 
-    /** The auto-registered {@code @Menu} entry paths currently in the side nav. */
-    protected List<String> menuItemPaths() {
-        return find(SideNavItem.class).all().stream()
-                .map(SideNavItem::getPath)
+    /**
+     * The navigation entries the signed-in user can reach, by label (#146).
+     *
+     * <p>Was the {@code @Menu}-generated side-nav paths. The nav is now
+     * hand-authored in {@code NavGroup} and two of its three groups render as
+     * menus, whose items the browserless tester cannot see (F-071) — so this
+     * asks the model the shell renders from, and the rendered menu is left to
+     * visual verification.
+     */
+    protected List<String> navEntryLabels() {
+        return NavGroup.allVisibleTo(authenticationContext).stream()
+                .map(NavGroup.NavItem::label)
                 .toList();
     }
 }

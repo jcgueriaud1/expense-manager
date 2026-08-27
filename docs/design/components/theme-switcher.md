@@ -2,19 +2,25 @@
 
 **Category:** shared Java component
 **Origin:** code
-**Implementation:** conforms
+**Implementation:** unaudited
 **Code:** `com.vaadin.expensemanager.base.ui.ThemeSwitcher`
 **Design:** — never designed. Exists so a user can override the OS colour scheme
 
 ## Overview
 
-The navbar control letting a user override the colour scheme: follow the OS ("System"), or
-force Light / Dark. One instance, in the app shell. Not for per-view use.
+The control letting a user override the colour scheme: follow the OS ("System"), or force
+Light / Dark. One instance, in the app shell. Not for per-view use.
+
+**A menu group, not a component (#146).** It was a `MenuBar` of its own in the
+`AppLayout` navbar until the shell redesign, which left no room beside the three nav
+links — so it installs its three choices into the avatar menu instead. Dark mode is a
+requirement, so it could not simply go with the drawer that held it.
 
 ## Anatomy
 
-A `MenuBar` with an `ADJUST` icon trigger (`aria-label="Change colour theme"`) and a
-submenu of three items: **System**, **Light**, **Dark**.
+A **Colour theme** item added to a given `SubMenu`, opening a submenu of three checkable
+items: **System**, **Light**, **Dark**. It owns no element of its own — the avatar menu
+in [`app-shell.md`](app-shell.md) is its host.
 
 ## Tokens used
 
@@ -27,15 +33,16 @@ re-themes the whole UI live, with no page reload.
 ## API
 
 ```java
-new ThemeSwitcher()
+ThemeSwitcher.addTo(subMenu);   // returns the "Colour theme" MenuItem
 public static final String STORAGE_KEY = "expense-manager.color-scheme";
+public static final String LABEL = "Colour theme";
 ```
 
 ## States
 
 | State | Behaviour |
 |---|---|
-| default | the persisted choice is pre-selected |
+| default | the persisted choice is pre-selected, and ticked |
 | hover / active / focus | stock Aura menu-bar |
 | disabled | n/a |
 | error | n/a |
@@ -67,11 +74,14 @@ a reload never flashes the wrong scheme.
 ## Code example
 
 ```java
-addToNavbar(new DrawerToggle(), createUserMenu(currentUserProvider));  // holds the switcher
+var menu = menuBar.addItem(avatar).getSubMenu();
+menu.addItem(userName).setEnabled(false);
+ThemeSwitcher.addTo(menu);
+menu.addItem("Sign out", event -> authenticationContext.logout());
 ```
 
 ## Cross-references
 
-[`app-shell.md`](app-shell.md) ·
+[`app-shell.md`](app-shell.md) — the avatar menu that hosts it ·
 [`../foundations/color.md`](../foundations/color.md) ·
 [`../tokens/token-reference.md`](../tokens/token-reference.md) — `color-scheme` is listed as set-by-this-app

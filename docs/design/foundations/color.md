@@ -19,6 +19,10 @@ Naming rules (`--aura-*` vs `--vaadin-*`, and the `--lumo-*` ban) are in
 | `--vaadin-user-color-2` | `#b3329d` | default | default | both agree | **settled** |
 | Background colour | no variable bound | default | default | design does not say | **settled** |
 | `--aura-contrast-level` | not specified | default (1) | default | both agree | **settled** |
+| App-shell bar colour | `#f16c4e`, bound to no variable | — | `--em-header-color: #f16c4e` | design | **settled** (#146) |
+| App-shell bar text | `aura-accent-contrast-color` (`#ffffff`) | — | `--em-header-text-color: #ffffff`, pinned | app | **settled** (#146) |
+| White on the bar, 16px text | 3.00:1 | — | shipped as drawn, below the AA floor | design, overriding decision 3 | **settled** (#146), **open** with the designer as #145 |
+| Header status tints | `--aura-green` / `--aura-blue` / `--aura-red` | — | as bound | design | **settled** (#146) |
 
 ## Resolved values
 
@@ -58,5 +62,23 @@ its `Accent color` variable aliases `Accent colors/Blue` in both Light and Dark 
 - **Customise with the `-light`/`-dark` suffixed properties; *apply* with the unsuffixed
   one.** `--aura-accent-color` is a `light-dark()` function of the pair, so setting only
   one half leaves the other scheme on the old value.
-- **Contrast floor outranks the design** (ADR-0025 decision 3). The primary button
-  measures 19.7:1 in light and 12.6:1 in dark.
+- **Contrast floor outranks the design** (ADR-0025 decision 3) — with **one recorded
+  exception**, the app-shell bar. The primary button measures 19.7:1 in light and 12.6:1
+  in dark.
+
+## The one exception to the contrast floor
+
+The design's coral app-shell bar carries white 16px nav links at **3.00:1** (2.70–3.64:1
+across its gradient wash), against the 4.5:1 AA needs for text that size. Its green
+`APPROVED` tint is 3.50:1 and fails the same way; the blue (5.05:1) and red (4.55:1)
+tints pass.
+
+It shipped as drawn on an explicit call in #146, which is a deliberate override of
+decision 3 rather than an oversight, and #145 carries the question back to the designer.
+Two accessible alternatives were measured and declined: darkening the coral to `#bf533c`
+(white reaches 4.60:1 at the same hue), or keeping the coral and taking Aura's own
+computed contrast colour, a near-black at 5.6:1.
+
+**This is one bar, not a precedent.** Every other surface keeps the floor, and a new
+white-on-saturated pairing is a bug unless it is measured and recorded the same way. The
+full record is in [`../components/app-shell.md`](../components/app-shell.md).
