@@ -6,8 +6,8 @@ React/Hilla), real Postgres from day one, deployed as a Docker container.
 Orientation: `docs/plan.md` (phased build plan), `docs/glossary.md` (domain
 language), `docs/adr/` (architecture decisions, see `docs/adr/README.md`),
 `docs/findings.md` (friction/gaps log — a first-class deliverable),
-`docs/vaadin-gotchas.md` (behaviour no config confesses, and this app's resolved
-Aura token scale — consult it before comparing a design's pixel values to tokens).
+`docs/vaadin-gotchas.md` (behaviour no config confesses, and this app's theme
+record — consult it before comparing a design's values to the app's).
 
 ## Theming — Aura, never Lumo
 
@@ -70,10 +70,18 @@ rather than in an issue body.
 `.agent-context` at the repo root records the
 four preferences the `figma-to-vaadin` skill resolves — layout approach,
 architecture, sample data, verification mode — so a run reads them instead of
-asking. Change a value there, not in the skill. The Figma-facing skills
-(`figma-to-vaadin`, `figma-to-aura-theme`, `figma-visual-verification`) are
-project-owned copies with a `## Provenance` section at the bottom of each; they
-need the project-scoped Figma MCP server, see `DEVELOPMENT.md`.
+asking. Change a value there, not in the skill. `figma-to-vaadin` and
+`figma-visual-verification` are project-owned copies of upstream skills, with a
+`## Provenance` section at the bottom of each; `figma-survey` and `figma-theme`
+are this project's own. All four need the project-scoped Figma MCP server, see
+`DEVELOPMENT.md`.
+
+**Theme record.** `/figma-theme` settles the global theme against the design and
+writes the record — decided values, the resolved token scale, and the design
+values the scale cannot produce — to `docs/vaadin-gotchas.md`, which already
+carries the token-scale section. `/figma-survey` reads it to tell a settled
+choice from a real finding, so a difference it has decided is never a per-view
+question.
 
 ### Domain docs
 

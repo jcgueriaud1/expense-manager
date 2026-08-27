@@ -21,8 +21,8 @@ What you do need to do, **once per machine**:
 2. Have a **Figma seat** on the Expense Manager file. The MCP server authenticates
    as you — no seat, no access, regardless of the MCP setup.
 
-Without both, the Figma-facing skills — `figma-to-vaadin`, `figma-to-aura-theme`,
-`figma-visual-verification` — fail in a way that reads as a bug rather than as a
+Without both, the Figma-facing skills — `figma-survey`, `figma-theme`,
+`figma-to-vaadin`, `figma-visual-verification` — fail in a way that reads as a bug rather than as a
 missing credential: the design lookup returns nothing and the agent carries on
 against a guess. If a design task starts producing layout invented from thin air,
 check `/mcp` before debugging anything else.
