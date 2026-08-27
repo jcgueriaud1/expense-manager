@@ -16,25 +16,69 @@ source and would go stale here.
 
 ## Inventory
 
-| Component | Category | Status |
-|---|---|---|
-| [`button.md`](button.md) | themed Vaadin primitive | settled |
-| [`badge.md`](badge.md) | themed Vaadin primitive | settled |
-| [`report-card.md`](report-card.md) | composite | settled, pending per-view revision |
-| [`expense-line-card.md`](expense-line-card.md) | composite | settled, pending per-view revision |
-| [`travel-card.md`](travel-card.md) | composite | settled, pending per-view revision |
-| [`totals-card.md`](totals-card.md) | composite | settled, pending per-view revision |
-| [`status-callout.md`](status-callout.md) | composite | settled |
-| [`status-history.md`](status-history.md) | composite | settled |
-| [`error-summary.md`](error-summary.md) | shared Java component | settled |
-| [`editor-dialog.md`](editor-dialog.md) | shared Java component | settled |
-| [`empty-state.md`](empty-state.md) | shared Java component | settled |
-| [`theme-switcher.md`](theme-switcher.md) | shared Java component | settled |
-| [`app-shell.md`](app-shell.md) | shell | **open — #146 replaces it** |
+| Component | Category | Origin | Implementation |
+|---|---|---|---|
+| [`button.md`](button.md) | themed primitive | design | conforms |
+| [`badge.md`](badge.md) | themed primitive | design | conforms |
+| [`report-card.md`](report-card.md) | composite | design | unaudited |
+| [`expense-line-card.md`](expense-line-card.md) | composite | design | **drifted** |
+| [`travel-card.md`](travel-card.md) | composite | design | **drifted** |
+| [`totals-card.md`](totals-card.md) | composite | design | **drifted** |
+| [`status-callout.md`](status-callout.md) | composite | **unresolved** | unaudited |
+| [`status-history.md`](status-history.md) | composite | design | **drifted** |
+| [`error-summary.md`](error-summary.md) | shared Java component | code | conforms |
+| [`editor-dialog.md`](editor-dialog.md) | shared Java component | code | conforms |
+| [`empty-state.md`](empty-state.md) | shared Java component | code | conforms |
+| [`theme-switcher.md`](theme-switcher.md) | shared Java component | code | conforms |
+| [`app-shell.md`](app-shell.md) | shell | design | **drifted** structurally → #146 |
 
-"pending per-view revision" means the component works and is token-correct, but its
-spacing has not yet been reconciled against the design's own card padding and radius —
-that is each view's own issue.
+## The two axes
+
+They are independent, and collapsing them into one status field hides which problem you
+have.
+
+**Origin — where the spec came from, and therefore which side is authoritative:**
+
+| Origin | Meaning | Direction of authority |
+|---|---|---|
+| `design` | the design specifies this component | **the spec is the contract.** Code conforms to it; a difference is a bug in the code. *Never* edit the spec to match the code |
+| `code` | the app invented it; the design never drew it | **the code is the source.** The spec documents it, and updating the spec when the code changes is correct |
+| `unresolved` | not yet established | treat as `design` and find out |
+
+The split matters because "never edit a spec to match what you built" is right for a
+design-origin component and wrong for a code-origin one. `ErrorSummary` came from ADR-0020
+and the GOV.UK pattern, `EmptyState` from ADR-0017, `EditorDialog` from F-045 — there is no
+design contract for any of them, so the code is what a spec can be checked against. If a
+code-origin component later gets designed, origin flips to `design` and
+[ADR-0025](../../adr/0025-figma-design-source-of-truth.md) takes over: the design wins.
+
+**Implementation — whether the code matches, which is *derived, not declared*:**
+
+| Value | Meaning |
+|---|---|
+| `none` | the spec is ahead of the code; nothing implements it yet |
+| `conforms` | no mechanical divergence found |
+| `drifted` | the code and the spec disagree; the spec carries a **Divergence** section naming what and who owns closing it |
+| `unaudited` | no comparison has been made |
+
+**This field belongs to an audit, not to a human.** A hand-kept conformance field goes
+stale silently, which is the failure it exists to catch. `conforms` should be read as "no
+mechanical divergence found" and no more — an audit can tell that a token is missing from
+a table, not that the right component was chosen for the design's intent.
+
+> **The values above were assessed by hand during issue #144.** No audit tooling exists
+> yet, so treat every `conforms` as provisional and both `unaudited` rows as literally
+> that. Two specs also predate any check of their design counterpart: `status-callout` was
+> written from the stylesheet alone, and `report-card` describes the report *list*, whose
+> frame has never been surveyed.
+
+## Who writes these
+
+| Origin | Author |
+|---|---|
+| `design` | `/figma-survey`, scoped to a view or a component |
+| `code` | whoever builds the component — `implement-use-case` |
+| either, once implemented | the audit sets `Implementation` and adds or clears **Divergence** |
 
 ## Template
 
@@ -45,8 +89,10 @@ say so rather than dropping the heading silently.
 # <Name>
 
 **Category:** themed Vaadin primitive | composite | shared Java component | shell
-**Status:** settled | open
-**Source:** <path(s)>
+**Origin:** design | code | unresolved
+**Implementation:** none | conforms | drifted | unaudited      <- set by the audit
+**Code:** <path(s) and CSS classes> — or an em dash if nothing implements it yet
+**Design:** <node id > layer name> — or an em dash, with why, if never designed
 
 ## Overview
 When to use it. When *not* to — the sibling it is confused with.
@@ -66,6 +112,9 @@ cannot occur, and never leave a row blank.
 
 ## Code example
 The shortest correct usage.
+
+## Divergence
+Only when Implementation is `drifted`: what differs, and who owns closing it.
 
 ## Cross-references
 Related components, and the ADR or finding behind any non-obvious choice.

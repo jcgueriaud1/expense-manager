@@ -1,8 +1,10 @@
 # Report card
 
 **Category:** composite (CSS on a `RouterLink`)
-**Status:** settled, pending per-view revision
-**Source:** `styles.css` — `.report-card*`; `MyReportsView`
+**Origin:** design
+**Implementation:** unaudited — the design's list frame has not been surveyed
+**Code:** `styles.css` — `.report-card*`; `MyReportsView`
+**Design:** **unresolved.** Frame `116:4444` is the report *detail*; the list is a separate frame
 
 ## Overview
 

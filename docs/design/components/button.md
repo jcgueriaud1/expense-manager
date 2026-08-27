@@ -1,8 +1,10 @@
 # Button
 
 **Category:** themed Vaadin primitive
-**Status:** settled
-**Source:** `src/main/resources/META-INF/resources/aura-theme.css` (the accent rule); `com.vaadin.flow.component.button.Button`
+**Origin:** design
+**Implementation:** conforms
+**Code:** `aura-theme.css` (the accent rule); `com.vaadin.flow.component.button.Button`
+**Design:** node `116:4444` › `Button (primary)`, `Submit`
 
 ## Overview
 

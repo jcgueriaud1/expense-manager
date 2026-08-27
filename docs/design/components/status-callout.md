@@ -1,8 +1,10 @@
 # Status callout
 
 **Category:** composite (CSS)
-**Status:** settled
-**Source:** `styles.css` — `.status-callout*`; `ReportDetailView`
+**Origin:** **unresolved**
+**Implementation:** unaudited — origin not established
+**Code:** `styles.css` — `.status-callout*`; `ReportDetailView`
+**Design:** **unresolved.** No callout was found in frame `116:4444`, but absence in one frame is not proof
 
 ## Overview
 

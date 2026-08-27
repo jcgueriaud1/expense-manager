@@ -1,8 +1,10 @@
 # Badge
 
 **Category:** themed Vaadin primitive
-**Status:** settled
-**Source:** `ReportViewSupport.statusBadge`; `com.vaadin.flow.component.badge.Badge` (Vaadin 25.1+)
+**Origin:** design
+**Implementation:** conforms
+**Code:** `ReportViewSupport.statusBadge`; `com.vaadin.flow.component.badge.Badge`
+**Design:** node `116:4444` › `Badge` (the Draft pill)
 
 ## Overview
 

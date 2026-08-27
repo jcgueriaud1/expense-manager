@@ -1,8 +1,10 @@
 # Expense line card
 
 **Category:** composite (CSS)
-**Status:** settled, pending per-view revision
-**Source:** `styles.css` — `.line-card`, `.line-*`, `.category-dot`, `.clickable`; `ReportDetailView`, `LineEditorDialog`
+**Origin:** design
+**Implementation:** drifted — see [Divergence](#divergence)
+**Code:** `styles.css` — `.line-card`, `.line-*`, `.category-dot`; `ReportDetailView`, `LineEditorDialog`
+**Design:** node `116:4444` › `expense-item-card`
 
 ## Overview
 
@@ -51,7 +53,6 @@ The swatch colour comes from `ReportViewSupport.categoryColor`, which hashes the
 type name onto the six saturated palette hues so a type reads the same colour throughout
 a report. Colour is decoration only — the type name always renders as text (ADR-0020).
 
-**Pending per-view revision:** design draws 12px radius / 20px padding; currently 15/16.
 
 ## API
 
@@ -79,6 +80,21 @@ dot.getStyle().set("--category-color", ReportViewSupport.categoryColor(typeName)
 
 Setting a custom property through `getStyle()` is legitimate here — it is passing a
 *value*, not styling around a layout API.
+
+## Divergence
+
+| | Design | Code |
+|---|---|---|
+| Radius | 12 px | `--vaadin-radius-l` — 15 px |
+| Padding | 20 px | `--vaadin-padding-l` — 16 px |
+
+Tokens for the design's values exist and are defined — `--em-card-radius`,
+`--em-card-padding` — and are deliberately unreferenced until per-view work consumes
+them.
+
+**Owner:** the per-view issue for this component's view. Not a bug to fix in passing: the
+foundations settled the values, and switching each consumer is per-view work with its own
+visual verification.
 
 ## Cross-references
 

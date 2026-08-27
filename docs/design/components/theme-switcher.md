@@ -1,8 +1,10 @@
 # Theme switcher
 
 **Category:** shared Java component
-**Status:** settled
-**Source:** `com.vaadin.expensemanager.base.ui.ThemeSwitcher`
+**Origin:** code
+**Implementation:** conforms
+**Code:** `com.vaadin.expensemanager.base.ui.ThemeSwitcher`
+**Design:** — never designed. Exists so a user can override the OS colour scheme
 
 ## Overview
 

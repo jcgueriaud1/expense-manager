@@ -1,8 +1,10 @@
 # Error summary
 
 **Category:** shared Java component
-**Status:** settled
-**Source:** `com.vaadin.expensemanager.base.ui.ErrorSummary`; `styles.css` — `.error-summary*`, `.summary-heading`
+**Origin:** code
+**Implementation:** conforms
+**Code:** `com.vaadin.expensemanager.base.ui.ErrorSummary`; `styles.css` — `.error-summary*`
+**Design:** — never designed. Behaviour adapted from the GOV.UK error-summary pattern (ADR-0020, F-045, F-050)
 
 ## Overview
 

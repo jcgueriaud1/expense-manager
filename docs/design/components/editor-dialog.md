@@ -1,8 +1,10 @@
 # Editor dialog
 
 **Category:** shared Java component
-**Status:** settled
-**Source:** `com.vaadin.expensemanager.base.ui.EditorDialog`; `styles.css` — `vaadin-dialog.receipt-preview-dialog`
+**Origin:** code
+**Implementation:** conforms
+**Code:** `com.vaadin.expensemanager.base.ui.EditorDialog`; `styles.css` — `vaadin-dialog.receipt-preview-dialog`
+**Design:** — never designed. Exists to replace a copy-pasted scaffold (F-045)
 
 ## Overview
 

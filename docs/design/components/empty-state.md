@@ -1,8 +1,10 @@
 # Empty state
 
 **Category:** shared Java component
-**Status:** settled
-**Source:** `com.vaadin.expensemanager.base.ui.EmptyState`; `styles.css` — `.no-results`
+**Origin:** code
+**Implementation:** conforms
+**Code:** `com.vaadin.expensemanager.base.ui.EmptyState`; `styles.css` — `.no-results`
+**Design:** — never designed. A shared UX-state primitive (ADR-0017)
 
 ## Overview
 

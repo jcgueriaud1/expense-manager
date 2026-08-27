@@ -292,6 +292,21 @@ tokens used; API; states; the shortest correct example; cross-references. Do not
 constructor signature or a class comment — that is duplication which will disagree with the
 source within a release. Record intent, precedent and entitlement.
 
+**Stamp the origin, and only write the origin you are entitled to.** A spec this skill
+writes is **design origin**: the design specifies the component, so the spec is the
+contract and code conforms to it. Record the design node it came from.
+
+A component that exists in code but which the design never drew — an error summary, an
+empty state, a shared dialog scaffold invented to satisfy an accessibility rule — is
+**code origin**, and it is *not* yours to author. There is nothing in the design to read,
+so a spec written here would be invention. Report it as a gap for whoever builds and owns
+that component; the code is the authority there, not the design.
+
+**Do not set the implementation state.** Whether the code conforms to what you just wrote
+is a comparison, and an audit makes it — a survey asserting `conforms` is asserting
+something it did not check. Leave it `none` where nothing implements the spec yet and
+`unaudited` otherwise, and let the audit flip it.
+
 **States are mandatory: default, hover, active, focus, disabled, error.** Write `n/a` with
 the reason where one cannot occur; never leave a row blank and never drop the row. A blank
 reads as "not checked" and a missing row as "no such state", and both are

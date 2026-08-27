@@ -1,8 +1,10 @@
 # Status history
 
 **Category:** composite (CSS)
-**Status:** settled
-**Source:** `styles.css` — `.status-history*`; `ReportDetailView`
+**Origin:** design
+**Implementation:** drifted — see [Divergence](#divergence)
+**Code:** `styles.css` — `.status-history*`; `ReportDetailView`
+**Design:** node `116:4444` › `status-history-box`
 
 ## Overview
 
@@ -65,6 +67,21 @@ entry.addClassName("status-history-entry");
 label.addClassName("status-history-label");
 comment.addClassName("status-history-comment");
 ```
+
+## Divergence
+
+| | Design | Code |
+|---|---|---|
+| Radius | 12 px | `--vaadin-radius-l` — 15 px |
+| Padding | 20 px | `--vaadin-padding-l` — 16 px |
+
+Tokens for the design's values exist and are defined — `--em-card-radius`,
+`--em-card-padding` — and are deliberately unreferenced until per-view work consumes
+them.
+
+**Owner:** the per-view issue for this component's view. Not a bug to fix in passing: the
+foundations settled the values, and switching each consumer is per-view work with its own
+visual verification.
 
 ## Cross-references
 

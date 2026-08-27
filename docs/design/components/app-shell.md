@@ -1,8 +1,10 @@
 # App shell
 
 **Category:** shell
-**Status:** **open — #146 replaces it**
-**Source:** `com.vaadin.expensemanager.base.ui.MainLayout`; `aura-theme.css` — the `vaadin-side-nav` rules
+**Origin:** design
+**Implementation:** drifted **structurally** — see [What the design asks for instead](#what-the-design-asks-for-instead)
+**Code:** `com.vaadin.expensemanager.base.ui.MainLayout`; `aura-theme.css` — the `vaadin-side-nav` rules
+**Design:** node `116:4444` › `Header` — a top bar, where the app has a drawer
 
 ## Overview
 

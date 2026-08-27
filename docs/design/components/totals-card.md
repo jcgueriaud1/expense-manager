@@ -1,8 +1,10 @@
 # Totals card
 
 **Category:** composite (CSS)
-**Status:** settled, pending per-view revision
-**Source:** `styles.css` — `.totals-*`, `.detail-actions`; `ReportDetailView`
+**Origin:** design
+**Implementation:** drifted — see [Divergence](#divergence)
+**Code:** `styles.css` — `.totals-*`, `.detail-actions`; `ReportDetailView`
+**Design:** node `116:4444` › `totals-box`
 
 ## Overview
 
@@ -39,7 +41,6 @@ Save / Submit / Delete.
 figure list, tighter than any padding token, and it tracks the font size because it is in
 `rem`. Not an off-scale design value — a typographic detail.
 
-**Pending per-view revision:** design draws 12px radius / 20px padding; currently 15/16.
 
 ## API
 
@@ -67,6 +68,21 @@ totals.addClassName("totals-card");
 totals.add(row("Net", net), row("VAT", vat));
 grand.addClassNames("totals-total-row", "totals-grand");
 ```
+
+## Divergence
+
+| | Design | Code |
+|---|---|---|
+| Radius | 12 px | `--vaadin-radius-l` — 15 px |
+| Padding | 20 px | `--vaadin-padding-l` — 16 px |
+
+Tokens for the design's values exist and are defined — `--em-card-radius`,
+`--em-card-padding` — and are deliberately unreferenced until per-view work consumes
+them.
+
+**Owner:** the per-view issue for this component's view. Not a bug to fix in passing: the
+foundations settled the values, and switching each consumer is per-view work with its own
+visual verification.
 
 ## Cross-references
 
