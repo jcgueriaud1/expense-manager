@@ -122,6 +122,9 @@ It changes what counts as a finding:
   record stops being believed. Name it as settled and move on.
 - **No record at all** means the theme was never settled. Say so in the survey — it
   bounds what the survey can conclude — and treat every global difference as open.
+- **A component on this frame with no spec** is itself a finding, reported once with the
+  view's other gaps. It is the gap that lets the same question be answered differently by
+  each view, so it belongs in the survey rather than being silently absorbed.
 
 Route what remains to exactly one of two destinations, because a difference affecting
 more than one screen has a different owner than one affecting this screen alone:

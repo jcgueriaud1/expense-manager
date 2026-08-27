@@ -201,30 +201,46 @@ The record holds the values a later run looks up. It is **data**, refreshed when
 theme changes or the Vaadin version moves — distinct from whatever the project writes
 to hold a decision's *rationale*, which is prose written once and left alone.
 
-Three sections, and a survey reads all three:
+**The record gets its own directory**, named by the project's agent instructions — a
+record nothing points at is a record no survey finds. Reuse that directory if it exists;
+otherwise create it.
 
-| Section | Content |
+Do **not** append the record to a document that exists for another purpose, even one that
+already carries part of it. A spec and a log have different lifecycles — the record is
+data refreshed on a version bump, a gotchas or findings file is append-only history — and
+merging them buries the spec in a file nobody would think to open. If part of the record
+already lives in such a file, **move** it; one copy, in the right place.
+
+Write **one file per concern**, not one long document, because that is how a later run
+arrives: it is asking "what is the typography?", not "what did the last run decide?".
+
+| File | Content |
 |---|---|
-| Decided values | one row per property from step 4: the decided value, which side it came from, and **settled** or **open** |
-| Resolved token scale | step 3's formulas, the table they produce at the decided inputs, the Vaadin version, and the refresh trigger — re-measure after a version bump |
-| Off-scale values | step 5's list: the value, where it appears, its nearest token, the decision, and its status |
+| `foundations/color.md` | accent, neutral, palette, semantic colour |
+| `foundations/typography.md` | family, base size, weights, the type scale, text roles |
+| `foundations/spacing.md` | density, the padding/gap scale |
+| `foundations/radius.md` | corner radii |
+| `foundations/elevation.md` | shadows, surfaces |
+| `foundations/motion.md` | transitions — say so explicitly if the design specifies none |
+| `tokens/token-reference.md` | step 3's formulas, the table they produce at the decided inputs, the Vaadin version, the refresh trigger, and every property the app sets |
 
-**Give the record its own home** — a directory the project keeps for the design spec,
-with one file per concern (colour, typography, spacing, radius, elevation, motion) rather
-than one long document. Then make the project's agent instructions name that path: a
-record nothing points at is a record no survey finds.
+**Every foundation file carries its own two tables**, drawn from the concern's share of
+steps 4 and 5:
 
-Do **not** append it to a document that exists for another purpose, even one that already
-carries the token scale. A spec and a log have different lifecycles — the record is data
-refreshed on a version bump, a gotchas or findings file is append-only history — and
-merging them buries the spec inside a file nobody would think to open. Move the token
-scale into the new home instead; one copy, in the right place.
+- **Decisions** — one row per property: design value, app value, decided value, which
+  side it came from, and **settled** or **open**.
+- **Off-scale** — the value, where it appears, its nearest token, and the decision taken.
 
-Split by **concern**, because that is how a later run arrives: it is asking "what is the
-typography?", not "what did the last run decide?". Each concern file carries its own
-decided values, its own off-scale values, and a pointer to the resolved scale. Where the
-project also keeps per-component specs, the same directory is their home.
+A concern with no divergence still gets a file saying so; absence recorded is what stops
+the next survey re-deriving it. Skip a concern only when the target framework has no such
+axis.
 
-**Done when** all three sections exist, every row in the decided and off-scale tables
-carries **settled** or **open**, the record has its own path rather than a section inside
-an unrelated document, and the project's agent instructions name that path.
+If the project keeps **per-component specs**, they live in `components/` in the same
+directory. Writing them is not this skill's job — this skill settles the *global* theme —
+but check whether the directory exists, and say so in the summary if it does not, because
+a foundations layer with no component layer is where per-view drift restarts.
+
+**Done when** every concern has a file, each with its decisions and off-scale tables and
+every row marked **settled** or **open**; the resolved scale has one home and only one;
+the record sits in its own directory rather than inside a document that exists for
+another purpose; and the project's agent instructions name that directory.
