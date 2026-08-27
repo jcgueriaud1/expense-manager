@@ -19,7 +19,7 @@ import com.vaadin.flow.component.page.WebStorage;
  * <p>The scheme is applied with Flow's {@link com.vaadin.flow.component.page.Page#setColorScheme
  * Page.setColorScheme}, which sets an inline {@code color-scheme} on the document
  * root. That wins over the {@code html { color-scheme: light dark }} default that
- * the Aura theme establishes (see {@code META-INF/resources/vaadin-blue-inter.css}).
+ * the Aura theme establishes (see {@code META-INF/resources/aura-theme.css}).
  * Because Aura resolves every surface colour through the CSS {@code light-dark()}
  * function keyed off that property, flipping it re-themes the whole UI live — no
  * page reload. "System" resets to {@link ColorScheme.Value#NORMAL}, clearing the
