@@ -1,253 +1,124 @@
 ---
 name: figma-theme
-description: "Settle a Vaadin Aura app's global theme against a Figma design: decide every divergence, write the CSS, and leave the record a per-view survey reads."
+description: "Apply a settled design spec to a Vaadin Aura app's global theme: write only what differs from the theme's defaults, prove it in the browser, and refresh the resolved token values the spec records."
 disable-model-invocation: true
-argument-hint: "[figma url]"
+argument-hint: "[nothing — the spec is the input]"
 ---
 
 # Figma theme
 
-A design and an app each carry a whole theme, and they rarely agree. This skill
-reconciles the two: it reads the design's global variables, compares them against what
-the app's theme already sets, turns every **divergence** into a decision the user makes,
-writes the resulting CSS, and leaves behind **the record** — the values a later run
-looks up instead of deciding again.
+This skill **applies** the global theme. It does not decide it.
 
-The record is what makes this worth doing twice. A per-view survey that reads it can
-tell a settled choice from a real finding; without one, every view re-raises the same
-font mismatch forever.
+The deciding happened in a theme-scoped `figma-survey`: that read the design's variables,
+put every divergence to the user, and wrote the answers into the project's design spec.
+This skill reads that spec and turns it into CSS — a single bounded artifact whose
+correctness is checkable in a browser.
 
-Unlike a survey, this ends in code: the theme is a single bounded artifact whose
-correctness is checkable in a browser, so the expensive part is the decision, not the
-CSS.
+Splitting the two matters because the expensive part is the decision, not the CSS, and a
+decision made while writing the stylesheet is a decision nobody reviewed. If the spec does
+not exist, or its rows are still **open**, stop and say so: applying an unsettled spec
+just moves the guessing into a file that looks authoritative.
 
-Applies to Vaadin Flow (Java) on the Aura theme.
+Applies to Vaadin Flow (Java) on the Aura theme. Aura is the precondition —
+`@StyleSheet(Aura.STYLESHEET)` marks it, and an app on the classic Lumo theme is out of
+scope.
 
 ## Steps
 
-### 1. Fix both ends
+### 1. Read the spec, and refuse an unsettled one
 
-**Design.** `$ARGUMENTS` may carry a Figma URL. Take `fileKey` and `nodeId` from one
-of the form `figma.com/design/:fileKey/:name?node-id=1-2`. Absent a URL, ask for one once, then
-check whether the project records a design file (its agent instructions are the usual
-home) before asking again. Pick a frame that exercises the whole theme — an app shell
-or a dashboard, showing nav, fields, buttons and cards — because step 2 resolves
-variables through the nodes that frame contains, and an unbound variable is invisible.
+Read the design spec at the path the project's agent instructions name: the foundations
+files for the decided values and the off-scale decisions, and the token reference for the
+inputs and formulas.
 
-**App.** Aura is the precondition: `@StyleSheet(Aura.STYLESHEET)` marks it, and an app
-on the classic Lumo theme is out of scope — say so and stop. Find the stylesheet the
-app's own theme entry point imports and list every property it sets.
+Check three things before writing anything:
 
-**Record.** Read the project's theme record if it has one; its values are the baseline
-this run revises. No record means nothing has been settled yet, which makes every
-divergence in step 4 open by default.
+- **Every row that this run would apply is marked settled.** An **open** row is an
+  undecided question; implementing it silently converts a deferral into a fact. List the
+  open rows and stop.
+- **The spec's framework version matches the app's.** The formulas are internals with no
+  compatibility promise, so a spec resolved against another version may be describing a
+  scale the app no longer has.
+- **The spec is not empty.** No spec means no theme survey has run. Say so and stop —
+  the survey is the prerequisite, not an optional first draft.
 
-**Done when** one Figma frame id is fixed, every property the app's theme sets is
-listed, and the record is either read or its absence noted.
+**Done when** the spec has been read, its version checked against the app's, and every row
+in scope confirmed settled — or the run has stopped with the open rows named.
 
-### 2. Read the design's global variables, in every mode
+### 2. Fix the app end
 
-Resolve variables through **bindings**, not through the file's collections. A design
-that consumes the Aura kit as a library has **remote** variables:
-`getLocalVariableCollectionsAsync()` returns the file's own collections only —
-typically one unrelated collection with one mode — so an agent that trusts it concludes
-the design ships a single mode when the kit's collection carries Light and Dark. That
-failure is silent and it inverts the most visible decision in the theme. Consuming the
-kit as a library is the normal case, not an edge one.
+Find the stylesheet the app's theme entry point imports, and list every property it
+currently sets. That list is what step 3 diffs against: some declarations will be replaced,
+some deleted outright, and knowing which is which is the difference between a rewrite and
+an edit.
 
-The binding walk: collect `boundVariables` across the frame's subtree, resolve each id
-with `getVariableByIdAsync`, resolve its collection with `getVariableCollectionByIdAsync`,
-and read `valuesByMode` keyed by the collection's mode names. Remote collections and
-their modes are fully readable this way.
+Note anything in the file that is **not** a theme value — component rules, selector
+overrides. Those are not this skill's business unless the spec decides them, and a rewrite
+that quietly drops them is how a nav ends up unstyled.
 
-`get_variable_defs` flattens aliases to the active mode's value and takes no mode
-parameter, which is why it cannot answer this. The binding walk needs `use_figma`, which
-mandates loading its own guidance before the first call; do that, and keep the run
-read-only — it is the one Figma tool that can mutate the design file.
+**Done when** every property the app's theme sets is listed, and non-token rules in the
+file are identified as out of scope or explicitly in it.
 
-Capture, for every mode:
+### 3. Write the CSS
 
-| Design variable | Aura property |
-|---|---|
-| accent colour | `--aura-accent-color-light` / `--aura-accent-color-dark` |
-| background colour | `--aura-background-color-light` / `--aura-background-color-dark` |
-| font family | `--aura-font-family` |
-| base font size | `--aura-base-font-size` |
-| user colours 0–9 | `--vaadin-user-color-0` … `--vaadin-user-color-9` |
-| field border tint / border colour | `--vaadin-input-field-border-color`, plus `--vaadin-input-field-border-width`, which it needs beside it |
+**Set only what differs from the theme's own default.** Look each default up rather than
+recalling it — a default recalled from memory produces a declaration that looks
+theme-driven while only re-asserting what was already true, or quietly misses the real
+default. A file full of restated defaults hides the handful of properties that actually
+differ.
 
-The kit labels some variables with `lumo-` prefixes (`lumo-font-family`,
-`lumo-font-size-m`). Those are the Aura inputs under an older name; a `lumo-` variable
-with no Aura counterpart carries nothing.
+So a value the spec settled *in favour of the framework default* becomes a **deletion**,
+not a declaration. Expect the file to shrink.
 
-Two modes means `color-scheme: light dark`; one mode means that scheme alone, and
-leaves the other scheme's accent and background to derive — keep the hue and move the
-lightness, and mark it derived, since it is your value and not the design's.
+Edit the app's existing stylesheet in place; a second file competing with the first is how
+two sources of truth start. A webfont needs its `@import` at the top of that file — but
+check whether the theme already bundles the family before adding one, because an
+unnecessary import is a network request for a font that was already there.
 
-Whatever no variable binds is inferred from the frame instead: component heights and
-spacing give `--aura-base-size`, corner rounding gives `--aura-base-radius`, card
-elevation gives `--aura-surface-level`, a gap between the layout and the viewport edge
-gives `--aura-app-layout-inset`. A dark nav against light content is `color-scheme: dark`
-with `--aura-content-color-scheme: light`.
+Three things to carry across rather than lose:
 
-**Done when** every variable in the table has a value per mode or is explicitly absent,
-the mode count is stated, and every unbound property carries either an inferred value or
-an explicit "the design does not say".
+- **A declaration another component depends on.** Where a Java component's behaviour reads
+  a theme property, dropping that property breaks the component silently. Find out before
+  deleting; a comment in the file saying why a line exists is a warning, not decoration.
+- **Rules for a part of the UI the spec has not reached yet.** Comment-mark them as pending
+  their own issue rather than deleting them, so the app is not left unstyled in between.
+- **A comment explaining a non-obvious line.** If you cannot restate why it is there, that
+  is a reason to keep it and ask.
 
-### 3. Resolve the app's token scale
+**Done when** every settled value from the spec is applied, no property is set to its own
+default, and nothing was deleted whose purpose you could not name.
 
-Aura derives radius, padding, gap and font-size from three inputs —
-`--aura-base-radius`, `--aura-base-size`, `--aura-base-font-size` — through
-`calc()`/`round()` expressions resolved at render time. The resulting values exist only
-in a browser, so read them from the running app.
+### 4. Prove it, then refresh the resolved values
 
-`getComputedStyle(document.documentElement).getPropertyValue('--vaadin-radius-m')`
-returns the expression with its `var()`s substituted but not evaluated: that is the
-formula. For the number, apply the token to a probe element
-(`el.style.borderRadius = 'var(--vaadin-radius-m)'`) and read the used value back. Do
-both for every `--vaadin-radius-*`, `--vaadin-padding-*`, `--vaadin-gap-*` and
-`--aura-font-size-*`.
+Reload the running app and read the tokens back. **The resolved numbers must equal what the
+decided inputs predict through the spec's formulas.** That check is cheap, and it is the
+difference between CSS that was written and CSS that works.
 
-**The formulas are the reference.** The numbers are true only for today's inputs and go
-stale the moment step 6 changes one; the formulas hold across a theme change and go
-stale only on a Vaadin upgrade. Where a step's expression cannot be read, mark its
-multiplier unverified rather than inferring it from one sample.
+Then exercise what the theme cannot prove by inspection:
 
-Where the record already carries the formulas for this Vaadin version, use them and
-skip the measurement.
+- **Both colour schemes**, on more than one screen. A theme is a claim about every screen,
+  and the scheme nobody looks at is where a frozen literal surfaces.
+- **Any live scheme switch the app offers.** Where a control resets to the OS preference,
+  that usually works by *clearing* an inline property so the stylesheet's own declaration
+  applies again — so the test is that the reset resolves to the stylesheet's value, not
+  that the declaration is present in the file.
+- **The states the spec records but a static frame cannot show** — hover, disabled, focus.
+  Read what the theme actually changes: it may express hover as a pseudo-element overlay
+  and disabled as `opacity` on the host, leaving `background-color` and `color` identical
+  in both. An audit reading those two properties reports no difference having measured
+  nothing. Diff the full computed style between two states when unsure which property
+  moves.
 
-**Done when** each of the three scales has its formulas, the Vaadin version they hold
-for is noted, and every unverified step is marked.
+**Then write the measurements back.** The spec's *resolved values* table is this skill's to
+own, because only a running app produces it: record the numbers at the decided inputs, the
+framework version they hold for, and the refresh trigger. Where the spec quotes a measured
+figure elsewhere — a contrast ratio in a component file — this run either confirms it or
+corrects it.
 
-### 4. Turn every divergence into a decision
+Finally, say what this run **staled**. Changing an input moves every derived value, so any
+component spec quoting a resolved number is now suspect even though its token names are
+still correct. Recommend a component-spec refresh; do not perform it here.
 
-One row per property where the design and the app disagree. Properties that already
-agree need no row and no question.
-
-| Property | Design | App | Winner | Status | Why |
-|---|---|---|---|---|---|
-
-Neither side is right by default. The app's value may be a deliberate choice the design
-never saw — a larger base font size for readability, a looser density for touch targets
-— and the design's value may be the brand. So carry a recommendation into every row and
-put the whole table to the user in **one** pass, so they confirm judgements rather than
-answer a drip of questions.
-
-`Status` is what a later run reads:
-
-- **settled** — decided, whichever side won. A survey that meets this difference again
-  names it as settled and moves on.
-- **open** — deferred. A survey may raise it again, and should.
-
-A divergence resolved in the app's favour is **settled**, not absent. That row is the
-whole reason the record exists: it is what stops the next survey reporting the app's
-own font as a mismatch.
-
-An app with no theme file of its own diverges nowhere — every design value wins, and
-every row is settled by construction.
-
-**Done when** every property from step 2 is either identical on both sides or carries a
-winner and a status the user chose.
-
-### 5. Name the values the derivation cannot produce
-
-Solve the formulas backwards, and the design's raw pixel values will disagree with each
-other. A 9 px field radius asks for `baseRadius = 3` (`2·3+3`); a 12 px card radius in
-the same design asks for `baseRadius = 1.33` (`1.5·1.33+10`), and at 1.33 the field
-renders 6 px. No single input satisfies both: the design has left Aura's derivation.
-Expect this wherever a designer drew by hand rather than placing a kit component.
-
-Two shapes, across radius, padding/gap and font-size alike:
-
-- **between** — the value sits between two steps of the scale (a 12 px radius; a 20 px
-  padding).
-- **beyond** — the value is off the end of it (a 24 px heading where the type scale
-  stops at 18 px).
-
-Each is a global decision, and taking it here is the point: a view that meets one alone
-will invent an answer, and the next view will invent a different one. Decide each from:
-
-- correct the design back to the scale;
-- override the derived property directly, globally;
-- define one extra project-level custom property, and use it everywhere the design uses
-  that value;
-- accept the nearest token and its visible divergence.
-
-**Done when** every off-scale design value is listed with where it appears, its nearest
-token, the decision taken, and a status from step 4's two.
-
-### 6. Write the theme CSS
-
-Set only what differs from the Aura default. Look each default up with
-`get_theme_css_properties theme=aura` at the app's Vaadin version — a default recalled
-from memory produces a declaration that looks theme-driven while only re-asserting what
-was already true, or quietly misses the real default.
-
-Edit the app's existing theme stylesheet in place; a second file competing with the
-first is how two sources of truth start. A webfont needs its `@import` at the top of
-that file.
-
-Then confirm in the browser: reload the running app and re-read step 3's tokens. The
-resolved numbers must equal what the decided inputs predict through the formulas. That
-check is cheap, and it is the difference between CSS that was written and CSS that
-works.
-
-**Done when** every winner from step 4 and every override from step 5 is in the CSS, no
-property is set to its own default, and the re-read tokens match the predicted values.
-
-### 7. Write the record
-
-The record holds the values a later run looks up. It is **data**, refreshed when the
-theme changes or the Vaadin version moves — distinct from whatever the project writes
-to hold a decision's *rationale*, which is prose written once and left alone.
-
-**The record gets its own directory**, named by the project's agent instructions — a
-record nothing points at is a record no survey finds. Reuse that directory if it exists;
-otherwise create it.
-
-Do **not** append the record to a document that exists for another purpose, even one that
-already carries part of it. A spec and a log have different lifecycles — the record is
-data refreshed on a version bump, a gotchas or findings file is append-only history — and
-merging them buries the spec in a file nobody would think to open. If part of the record
-already lives in such a file, **move** it; one copy, in the right place.
-
-Write **one file per concern**, not one long document, because that is how a later run
-arrives: it is asking "what is the typography?", not "what did the last run decide?".
-
-| File | Content |
-|---|---|
-| `foundations/color.md` | accent, neutral, palette, semantic colour |
-| `foundations/typography.md` | family, base size, weights, the type scale, text roles |
-| `foundations/spacing.md` | density, the padding/gap scale |
-| `foundations/radius.md` | corner radii |
-| `foundations/elevation.md` | shadows, surfaces |
-| `foundations/motion.md` | transitions — say so explicitly if the design specifies none |
-| `tokens/token-reference.md` | step 3's formulas, the table they produce at the decided inputs, the Vaadin version, the refresh trigger, and every property the app sets |
-
-**Every foundation file carries its own two tables**, drawn from the concern's share of
-steps 4 and 5:
-
-- **Decisions** — one row per property: design value, app value, decided value, which
-  side it came from, and **settled** or **open**.
-- **Off-scale** — the value, where it appears, its nearest token, and the decision taken.
-
-A concern with no divergence still gets a file saying so; absence recorded is what stops
-the next survey re-deriving it. Skip a concern only when the target framework has no such
-axis.
-
-If the project keeps **per-component specs**, they live in `components/` in the same
-directory. Writing them is not this skill's job — this skill settles the *global* theme —
-but two things about them belong in the summary:
-
-- **Say so if the directory does not exist.** A foundations layer with no component layer
-  is where per-view drift restarts: the foundations can settle what a radius is without
-  ever settling which element is entitled to it.
-- **Warn that this run may have staled them.** Changing an input moves every derived
-  value, so any component spec quoting a *resolved* number (`--vaadin-radius-m` (9)) or a
-  measured figure (a contrast ratio) is now suspect even though its token names are still
-  correct. Recommend a component-spec audit as the follow-up; do not perform it here.
-
-**Done when** every concern has a file, each with its decisions and off-scale tables and
-every row marked **settled** or **open**; the resolved scale has one home and only one;
-the record sits in its own directory rather than inside a document that exists for
-another purpose; and the project's agent instructions name that directory.
+**Done when** the re-read tokens match the predicted values, both schemes and every state
+the spec records have been exercised, the resolved-values table is written back, and the
+staled figures are named.

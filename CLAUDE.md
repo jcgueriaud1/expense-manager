@@ -73,24 +73,31 @@ four preferences the `figma-to-vaadin` skill resolves — layout approach,
 architecture, sample data, verification mode — so a run reads them instead of
 asking. Change a value there, not in the skill. `figma-to-vaadin` and
 `figma-visual-verification` are project-owned copies of upstream skills, with a
-`## Provenance` section at the bottom of each; `figma-survey`, `figma-theme` and
-`figma-component-spec` are this project's own. All except
-`figma-component-spec`'s audit mode need the project-scoped Figma MCP server, see
+`## Provenance` section at the bottom of each; `figma-survey` and `figma-theme`
+are this project's own. All need the project-scoped Figma MCP server, see
 `DEVELOPMENT.md`.
 
-**The design spec** lives in `docs/design/`, and three skills divide it by scope:
+**The design spec** lives in `docs/design/` and is the **contract**, not a record of
+what was built. One skill writes it, and everything else conforms to it:
 
-- `/figma-theme` settles the **global** theme against the design and writes
-  `docs/design/foundations/` and `docs/design/tokens/token-reference.md` — decided
-  values, the resolved token scale, and the design values the scale cannot produce.
-  It also writes the theme CSS, so it changes how every screen renders.
-- `/figma-component-spec` writes and maintains `docs/design/components/` — one file
-  per component that exists. Run it in the same change that builds or alters a
-  component; `audit` mode backfills what is missing and flags specs that have gone
-  stale against their source.
-- `/figma-survey` **reads** both and writes neither: it tells a settled choice from
-  a real finding, so a difference already decided is never a per-view question, and
-  it reports a component with no spec as a gap.
+- `/figma-survey` **writes the spec.** Scoped `theme`, it reads the design's global
+  variables across every mode, puts each divergence to you in one pass, and writes
+  `docs/design/foundations/` plus the inputs in `tokens/`. Scoped to a view or a
+  component, it writes `docs/design/components/` — one file per component, states
+  included. It also produces the **delta** for a ticket. It writes no CSS and no
+  Java.
+- `/figma-theme` **applies** the global theme: it reads the settled spec, writes only
+  what differs from the Aura defaults, proves it in the browser, and writes the
+  *resolved values* table back — the one part of the spec only a running app can
+  produce. It refuses a spec whose rows are still **open**.
+- **Implementation conforms.** Take tokens and states from a component's spec file
+  rather than choosing values; a difference is a bug in the code. Never edit a spec
+  to match what you just built — that turns the contract into a transcript and hides
+  the drift. If a component has no spec, or the design moved, run `/figma-survey`.
+
+Order matters: run the `theme` survey, then `/figma-theme`, before any per-view work.
+It decides the font family and base size, which reflow every screen, so spacing
+tuned against the old scale is thrown away.
 
 ### Domain docs
 

@@ -60,14 +60,24 @@ one project-level property, or accepting the nearest token. Without this split,
 "the design is the source of truth" would have made the app render three font
 families and would have promoted every stray pixel to a requirement.
 
-**5. Global visual decisions are settled once, in the theme record, before any
-per-view work.** [`docs/design/`](../design/) holds the spec:
-`foundations/` carries the decided values and off-scale values per concern, each
-marked **settled** or **open**, `tokens/token-reference.md` the resolved scale, and
-`components/` one file per component that exists. `/figma-theme` writes it and `/figma-survey` reads it, so a
-difference already decided is never re-raised as a per-view finding. This is what
-stops the drift; the record, not this ADR, is where the values live, because values
-are data that gets refreshed and an ADR is prose that does not.
+**5. Global visual decisions are settled once, in the design spec, before any
+per-view work.** [`docs/design/`](../design/) holds it: `foundations/` carries the
+decided values and off-scale values per concern, each marked **settled** or **open**,
+`tokens/token-reference.md` the resolved scale, and `components/` one file per
+component. A difference already decided is never re-raised as a per-view finding.
+This is what stops the drift; the spec, not this ADR, is where the values live,
+because values are data that gets refreshed and an ADR is prose that does not.
+
+**The spec is a contract, not a transcript.** It records what the design asks for, so
+it is authored from the design and *before* the code, and implementation conforms to
+it. That direction is load-bearing: a spec written from the finished component would
+describe the implementation, which is both readable from source already and unable to
+say whether the implementation is right. One skill writes it — `figma-survey`, which
+is also where each divergence is decided with a human, since the calls that matter
+are judgement rather than transcription. `figma-theme` applies the settled spec to
+the theme CSS and owns exactly one part of it: the resolved-values table, which only
+a running app can produce. Implementation never edits a spec file to match what it
+built.
 
 **6. `--lumo-*` is forbidden, and the hazard is the toolchain's, not a
 preference.** The Figma Aura kit genuinely names variables with `lumo-` prefixes, so
@@ -156,9 +166,15 @@ that changes `.mcp.json` cannot exercise the server until it restarts (F-059).
   Aura's 13) are design bugs, not app bugs. Decision 4 means the app does not
   reproduce them, and the record names them so the next survey does not file them
   again.
-- **`/figma-survey` now depends on the record existing.** Ship a theme change without
-  updating the record and every per-view survey re-raises the same global mismatches
-  forever — the failure is silent and only shows up as survey noise.
+- **Applying the theme now depends on the spec existing and being settled.**
+  `figma-theme` refuses a spec whose rows are still **open**, which makes the ordering
+  enforced rather than advisory: no theme survey, no theme. The cost is a second step
+  where there used to be one; the benefit is that the decisions get reviewed as a spec
+  before they arrive as a diff.
+- **A theme change stales measured figures elsewhere in the spec.** Moving an input
+  moves every derived value, so a component file quoting a resolved number or a contrast
+  ratio is suspect afterwards even though its token names remain correct. `figma-theme`
+  names what it staled; refreshing it is a survey run.
 - **The shell is the one large area still governed by nothing.** The design's top
   header bar, its orange gradient, the 220/250 nav widths and the 80 px page inset are
   all deferred to #146; the current side-nav rules are comment-marked as pending it

@@ -37,13 +37,21 @@ Patterns — which Java layout API, which CSS, what is forbidden — stay in
 
 ## How it is consumed
 
-- **`/figma-survey`** reads `foundations/` before deciding whether a difference is a
-  finding. A row marked **settled** is *not* a finding: the app is conforming to a
-  decision, and a survey that re-raises it is how a spec stops being believed.
-- **`/figma-theme`** writes `foundations/` and `tokens/`. It is the only thing that
-  should rewrite those wholesale.
-- **Per-view work** reads `tokens/token-reference.md` plus the relevant component file,
-  and updates that component's file as part of the change.
+This folder is the **contract**. One skill writes it; everything else conforms.
+
+- **`/figma-survey` writes it.** Scoped `theme` it writes `foundations/` and the inputs
+  in `tokens/`; scoped to a view or component it writes `components/`. It decides each
+  divergence with the user rather than transcribing the design, because the calls that
+  matter — which side wins, what to do with an off-scale value — are not in the design.
+- **`/figma-theme` applies the theme** and owns one table: the *resolved values* in
+  `tokens/token-reference.md`, which only a running app can produce. It refuses a spec
+  whose rows are still **open**.
+- **Implementation conforms.** Read `tokens/token-reference.md` and the component's file;
+  take the tokens and states from there. A difference is a bug in the code. **Never edit a
+  spec file to match what was just built** — re-run the survey instead.
+- **`/figma-visual-verification` fills the measured figures** a survey cannot: contrast
+  ratios and rendered sizes need a running app, so a survey leaves those slots marked
+  unverified.
 
 ## Status vocabulary
 
