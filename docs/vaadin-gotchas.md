@@ -8,12 +8,25 @@ Layout and spacing rules live in [`theming-layouts.md`](theming-layouts.md); the
 Aura-not-Lumo rules live in [`../CLAUDE.md`](../CLAUDE.md). This file holds what
 neither covers.
 
-## The Aura token scale
+## The theme record
 
-`figma-survey` compares a design's raw pixel values against this table to decide
-whether a difference is a **global theming** question or **view styling**. Keeping it
-here makes that comparison free and offline — the alternative is a running app, since
-Aura ships these as `calc()`/`round()` expressions resolved at render time.
+This app's **theme record**: the values a design-facing run looks up instead of
+deciding again. `/figma-theme` writes it, `/figma-survey` reads it, and a difference
+recorded here as **settled** is never a per-view question. It is data, refreshed when
+the theme changes or the Vaadin version moves; the rationale behind a decision belongs
+in an ADR, not here.
+
+Two of its three sections are still unwritten — **Decided values** (accent, font, base
+size, and every place the app deliberately keeps its own value rather than the
+design's) and **Off-scale values**. Both land with issue #144, the first run to settle
+them. Until then nothing is settled, and every global difference a survey finds is
+open.
+
+### Resolved token scale
+
+Keeping this here makes a design-to-token comparison free and offline — the
+alternative is a running app, since Aura ships these as `calc()`/`round()` expressions
+resolved at render time.
 
 **The formulas are the reference.** They hold whatever the theme inputs are, so they
 survive a theme change and go stale only on a Vaadin upgrade.
