@@ -4,8 +4,8 @@
  *
  * Settled by /figma-theme for issue #144. The rationale is ADR-0025; the decided
  * values, the resolved token scale and the off-scale values are recorded in
- * docs/vaadin-gotchas.md ("The theme record"), which /figma-survey reads so a
- * settled difference is never re-raised as a per-view finding.
+ * docs/design/ (foundations/ and tokens/), which /figma-survey reads so a settled
+ * difference is never re-raised as a per-view finding.
  *
  * Only non-default Aura properties are set. The design's accent (#3266e4), base
  * font size (14) and font family (Instrument Sans) are each exactly the Aura 25.2
@@ -46,10 +46,15 @@ html {
  * Each value below is 3–6px off the nearest token and recurs on every card and
  * heading, so it is decided once here instead of five times per view. Values
  * within 1–2px of a token instead take the token, so the Aura type and spacing
- * scales stay the single source of truth for text; those are named in the record.
+ * scales stay the single source of truth for text; those are named in the spec.
+ *
+ * The decision on each value is in docs/design/foundations/ — radius.md, spacing.md
+ * and typography.md — and every property is listed in
+ * docs/design/tokens/token-reference.md.
  *
  * Defined here, consumed by the per-view classes in styles.css as each view is
  * revised — so they are expected to be unreferenced until the first per-view issue.
+ * Adding a fifth is a decision for docs/design/, not a per-view convenience.
  */
 html {
   --em-card-radius: 12px;      /* between --vaadin-radius-m 9 and --vaadin-radius-l 15 */
@@ -108,7 +113,7 @@ vaadin-side-nav::part(label) {
  * hover is a ::before overlay at opacity 0.03 (scoped :not([disabled], [active])),
  * and disabled is opacity 0.5 on the host. A 3% tint cannot take that 19.7:1 pair
  * below ~18.9:1. Neither is visible in the host's computed style — see
- * docs/vaadin-gotchas.md.
+ * docs/vaadin-gotchas.md ("Component state styling is invisible on the host").
  *
  * Aura's stock button already supplies the design's border and shadow-xs, so —
  * unlike the old rule — no background, border-color or shadow override is needed.

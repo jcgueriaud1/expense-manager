@@ -109,7 +109,13 @@ Record the Vaadin version you researched against.
 ### 5. Route the styling differences
 
 Read the **theme record** first — the project's record of its decided colours, fonts
-and sizes, and of the resolved token values. It changes what counts as a finding:
+and sizes, and of the resolved token values. It is usually a design-spec directory the
+project's agent instructions name, split one file per concern; read the concerns this
+view actually touches rather than all of them. Where the project also keeps per-component
+specs, read the ones for the components on this frame — a component spec is where a
+state (hover, disabled, error) that the frame does not show is recorded.
+
+It changes what counts as a finding:
 
 - A difference the record has already **decided** is not a finding. The app is
   conforming to a settled choice, and a survey that re-raises it every time is how a

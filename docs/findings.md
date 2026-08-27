@@ -2193,7 +2193,7 @@ Deployment/Observability · UX-spec
   Vaadin's side: the Aura Figma kit could expose the size variables for radius/padding
   so a designer drawing a card picks a token instead of typing `12`.
 - Owner / next step: **Decided by issue #144** (`/figma-theme`), recorded in
-  `docs/vaadin-gotchas.md` → *Off-scale values*, with the rule in ADR-0025. Option (c)
+  `docs/design/foundations/` (radius, spacing, typography), with the rule in ADR-0025. Option (c)
   for the four recurring 3–6px gaps — `--em-card-radius` 12, `--em-card-padding` 20,
   `--em-section-gap` 40, `--em-font-size-title` 24 — plus one exact Aura override
   (`--aura-app-layout-radius: 12px`), and the nearest token for the 1–2px cases (15→16,
@@ -2330,7 +2330,8 @@ Deployment/Observability · UX-spec
   `clamp(0.625rem, round(font-size-m * 0.85, 0.0625rem), 0.8125rem)` — `0.875 × 0.85 =
   0.74375rem`, which rounds to `0.75rem` = 12px, inside the clamp.
 - Workaround used: trusted the measurement over the docs, and recorded both the formula
-  and the discrepancy in the theme record so the next run does not re-derive it.
+  and the discrepancy in `docs/design/tokens/token-reference.md` so the next run does
+  not re-derive it.
 - Evidence: `get_theme_css_properties theme=aura vaadin_version=25.2` ("The default
   corresponds to `11px`") against a probe element on the running app at 25.2.1 returning
   `12px`; the design's own local variable set names `XS: 11`, `S: 12`.
@@ -2349,7 +2350,7 @@ Deployment/Observability · UX-spec
   The scale is not a geometric ramp (`xs` is a clamped 0.85 of `m`, `s` is the
   *midpoint* of `m` and `xs`), so a reader who infers a constant ratio from one sample
   gets two steps wrong. Better still, ship the resolved table per base size.
-- Owner / next step: recorded in `docs/vaadin-gotchas.md` → *Resolved token scale*, with
+- Owner / next step: recorded in `docs/design/tokens/token-reference.md`, with
   all five formulas and an explicit warning that the docs disagree. Worth reporting
   upstream to the Vaadin docs team.
 
@@ -2387,6 +2388,6 @@ Deployment/Observability · UX-spec
   cannot silently drift off the declared family; and `get_design_context` could flag
   when a node's rendered value contradicts a variable bound in the same file, which is
   the machine-checkable version of this whole finding.
-- Owner / next step: recorded in `docs/vaadin-gotchas.md` → *Decided values* and as
+- Owner / next step: recorded in `docs/design/foundations/typography.md` and as
   ADR-0025 decision 4. The design fix is the designer's; raise the stray families and
   the design's own 12px "S" step (against Aura's 13px `s`) with them.

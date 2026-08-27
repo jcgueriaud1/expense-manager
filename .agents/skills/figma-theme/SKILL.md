@@ -209,11 +209,22 @@ Three sections, and a survey reads all three:
 | Resolved token scale | step 3's formulas, the table they produce at the decided inputs, the Vaadin version, and the refresh trigger — re-measure after a version bump |
 | Off-scale values | step 5's list: the value, where it appears, its nearest token, the decision, and its status |
 
-Put it where the project keeps durable notes an agent reads, and make the project's
-agent instructions name that path — a record nothing points at is a record no survey
-finds. Where a document already carries part of it, extend that document; a second copy
-of the token scale is a copy that will disagree with the first.
+**Give the record its own home** — a directory the project keeps for the design spec,
+with one file per concern (colour, typography, spacing, radius, elevation, motion) rather
+than one long document. Then make the project's agent instructions name that path: a
+record nothing points at is a record no survey finds.
 
-**Done when** all three sections exist, every row in the first and third carries
-**settled** or **open**, and the record sits at a path the project's agent instructions
-name.
+Do **not** append it to a document that exists for another purpose, even one that already
+carries the token scale. A spec and a log have different lifecycles — the record is data
+refreshed on a version bump, a gotchas or findings file is append-only history — and
+merging them buries the spec inside a file nobody would think to open. Move the token
+scale into the new home instead; one copy, in the right place.
+
+Split by **concern**, because that is how a later run arrives: it is asking "what is the
+typography?", not "what did the last run decide?". Each concern file carries its own
+decided values, its own off-scale values, and a pointer to the resolved scale. Where the
+project also keeps per-component specs, the same directory is their home.
+
+**Done when** all three sections exist, every row in the decided and off-scale tables
+carries **settled** or **open**, the record has its own path rather than a section inside
+an unrelated document, and the project's agent instructions name that path.

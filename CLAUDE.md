@@ -6,8 +6,9 @@ React/Hilla), real Postgres from day one, deployed as a Docker container.
 Orientation: `docs/plan.md` (phased build plan), `docs/glossary.md` (domain
 language), `docs/adr/` (architecture decisions, see `docs/adr/README.md`),
 `docs/findings.md` (friction/gaps log — a first-class deliverable),
-`docs/vaadin-gotchas.md` (behaviour no config confesses, and this app's theme
-record — consult it before comparing a design's values to the app's).
+`docs/design/` (the design spec — decided values, token scale, component specs;
+consult it before comparing a design's values to the app's),
+`docs/vaadin-gotchas.md` (Vaadin behaviour no config confesses).
 
 ## Theming — Aura, never Lumo
 
@@ -78,8 +79,8 @@ are this project's own. All four need the project-scoped Figma MCP server, see
 
 **Theme record.** `/figma-theme` settles the global theme against the design and
 writes the record — decided values, the resolved token scale, and the design
-values the scale cannot produce — to `docs/vaadin-gotchas.md`, which already
-carries the token-scale section. `/figma-survey` reads it to tell a settled
+values the scale cannot produce — to `docs/design/foundations/` and
+`docs/design/tokens/token-reference.md`. `/figma-survey` reads it to tell a settled
 choice from a real finding, so a difference it has decided is never a per-view
 question.
 

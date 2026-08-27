@@ -61,9 +61,10 @@ one project-level property, or accepting the nearest token. Without this split,
 families and would have promoted every stray pixel to a requirement.
 
 **5. Global visual decisions are settled once, in the theme record, before any
-per-view work.** [`docs/vaadin-gotchas.md`](../vaadin-gotchas.md) holds the record:
-decided values, the resolved token scale, and the off-scale values, each marked
-**settled** or **open**. `/figma-theme` writes it and `/figma-survey` reads it, so a
+per-view work.** [`docs/design/`](../design/) holds the spec:
+`foundations/` carries the decided values and off-scale values per concern, each
+marked **settled** or **open**, `tokens/token-reference.md` the resolved scale, and
+`components/` one file per component that exists. `/figma-theme` writes it and `/figma-survey` reads it, so a
 difference already decided is never re-raised as a per-view finding. This is what
 stops the drift; the record, not this ADR, is where the values live, because values
 are data that gets refreshed and an ADR is prose that does not.
