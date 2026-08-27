@@ -1,6 +1,6 @@
 ---
 name: figma-survey
-description: "Survey one Figma frame against what a Vaadin app already builds, and produce the component mapping a spec needs."
+description: "Survey one Figma frame against what a Vaadin app already builds: a component mapping, and the delta from what exists."
 disable-model-invocation: true
 argument-hint: "[view or component] [figma url]"
 ---
@@ -63,7 +63,7 @@ implementation* empty.
 "you have nothing selected", which names a precondition you did not violate, and a
 page's `get_metadata` exceeds the token cap outright.
 
-Fetch the frame's screenshot once — step 5 needs to see it. Pass
+Fetch the frame's screenshot once — step 5 judges view-local decoration against it. Pass
 `excludeScreenshot: true` on any child-node call, so the mapping keeps the context.
 
 **Done when** every Figma **component instance** in the frame's subtree is enumerated.
@@ -88,13 +88,15 @@ what lets a reviewer tell evidence from judgement in a single pass:
   accent scoping, so a button annotated `theme="primary"` whose Figma variant is
   `Color=Accent neutral` renders in the accent colour where the design paints it
   near-black; that row reads `Button` + `PRIMARY` + `aura-accent-neutral`. Check the
-  layer name and the rendered fill before trusting a colour. Watch for variants that
-  are Lumo-only and silently inert under Aura, such as `tertiary-inline`, `contrast`
-  and `icon`.
+  layer name and the rendered fill before trusting a colour.
 - **`invented`** — no annotation, or no component fits. Propose the composition
   (a layout plus a scoped CSS class) and say plainly that it is judgement. A card whose
   content is a list of peer rows with dividers does not fit `Card`'s
   title/subtitle/media slots; a raw SVG icon has no mapping at all.
+
+An annotation naming `tertiary-inline`, `contrast` or `icon` is naming a Lumo-only
+variant: Aura accepts it and renders nothing differently. Map it to the nearest variant
+that exists, and say in *Why* that the original is inert.
 
 Confirm every distinct component against the real API with
 `get_component_java_api` — that is where exact constant and method names live, and
@@ -106,21 +108,31 @@ Record the Vaadin version you researched against.
 
 ### 5. Route the styling differences
 
-Every visual difference goes to exactly one of two destinations, because global and
-view theming are separate decisions with separate owners:
+Read the **theme record** first — the project's record of its decided colours, fonts
+and sizes, and of the resolved token values. It changes what counts as a finding:
 
-- **Global theming** — the difference is a token or theme-level mismatch. It belongs
-  to the theme's own backlog and **never** to the view's ticket, so the next survey
-  does not re-litigate the same radius.
-- **View styling** — the difference is decoration local to this view, and becomes a
-  scoped, role-named CSS class using theme tokens.
+- A difference the record has already **decided** is not a finding. The app is
+  conforming to a settled choice, and a survey that re-raises it every time is how a
+  record stops being believed. Name it as settled and move on.
+- **No record at all** means the theme was never settled. Say so in the survey — it
+  bounds what the survey can conclude — and treat every global difference as open.
 
-Deciding which requires the theme's resolved token values. Use the project's record of
-them if it keeps one; otherwise read `--vaadin-radius-*`, `--vaadin-padding-*`,
-`--vaadin-gap-*` and `--aura-font-size-*` from a running app with `getComputedStyle`,
-since Aura ships them as `calc()`/`round()` expressions resolved at render time. A
-design value that no single theme input can produce is a global question by
-construction.
+Route what remains to exactly one of two destinations, because a difference affecting
+more than one screen has a different owner than one affecting this screen alone:
+
+- **Global theming** — a token or theme-level mismatch. It belongs to the theme record
+  and **never** to this view's ticket, so the next survey does not re-litigate the same
+  radius. Record the question, and where you proceeded on an assumption, the assumption
+  — so a reviewer sees it rather than inheriting it.
+- **View styling** — decoration local to this view, which becomes a scoped, role-named
+  CSS class using theme tokens.
+
+Judging which needs the frame's screenshot and the theme's resolved token values. Where
+the record carries those values, use them; otherwise read `--vaadin-radius-*`,
+`--vaadin-padding-*`, `--vaadin-gap-*` and `--aura-font-size-*` from a running app with
+`getComputedStyle`, since Aura ships them as `calc()`/`round()` expressions resolved at
+render time. A design value that no single theme input can produce is a global question
+by construction.
 
 The design's reference code arrives threaded with `--lumo-*` properties, because that
 is genuinely how the shared Aura kit names its variables. Each one ships a plausible
@@ -129,11 +141,12 @@ right today and silently stops tracking the theme forever. Translate every kit v
 to its `--aura-*` / `--vaadin-*` equivalent, or record the literal value it resolves to
 and say that is what you did.
 
-**Done when** every visual difference sits under exactly one of the two headings.
+**Done when** every difference is either named as settled or sits under exactly one of
+the two headings.
 
 ### 6. Surface what the design assumes
 
-Three kinds of thing the mapping cannot absorb:
+Two things the mapping cannot absorb:
 
 - **Delta** (existing surveys only) — what the design shows that the app does not do,
   as a numbered list. Each item becomes an acceptance-criteria line in step 7, so write
@@ -143,12 +156,8 @@ Three kinds of thing the mapping cannot absorb:
   restyle; buried in the delta it gets reviewed and estimated as one. Decide it here,
   in the survey conversation — a new field, or an explicit "out of scope, use X
   instead". Hand the implementer a decision, not a question.
-- **Open global decisions** — check the project's decision records for one covering the
-  theme and the token scale. Absent one, record the question *and* the assumption you
-  proceeded under, so a reviewer sees the assumption rather than inheriting it.
 
-**Done when** every gap carries a decision and every open global question carries its
-assumption.
+**Done when** every delta item is checkable and every domain gap carries its decision.
 
 ### 7. Assemble the survey
 
@@ -160,10 +169,9 @@ Write it up under these headings:
 | Current implementation | what the existing class already does — empty on a greenfield survey |
 | Delta | numbered, each item checkable |
 | Component mapping | the table from step 4 |
-| Global theming | token and theme-level mismatches, for the theme's backlog |
+| Global theming | token and theme-level mismatches for the theme record, each with any assumption taken; and whether a theme record existed at all |
 | View styling | view-local decoration |
 | Domain gaps | each with its decision |
-| Open decisions | each with the assumption taken |
 | Acceptance criteria | the checklist below |
 | Research notes | Vaadin version, which components' Java API was read, the Figma node ids |
 
