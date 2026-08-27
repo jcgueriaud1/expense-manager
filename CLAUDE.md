@@ -13,9 +13,32 @@ consult it before comparing a design's values to the app's),
 ## Theming — Aura, never Lumo
 
 This app uses the **Aura** theme (`@StyleSheet(Aura.STYLESHEET)`), not Lumo.
-Aura and Lumo are separate, incompatible design systems. **Never use `--lumo-*`
-CSS custom properties** — they are undefined under Aura, so `getStyle().set(...,
-"var(--lumo-...)")` renders nothing, silently (no error). Style with:
+Aura and Lumo are separate, incompatible design systems.
+
+**Never reference a custom property Aura does not define.** That is the rule; the
+`--lumo-*` prefix is only its commonest instance. A `var()` on an undefined property
+**with a fallback renders the fallback, permanently** — the CSS works, looks right
+today, and never tracks the theme again. Nothing errors, and it surfaces months later
+as "some corners are the wrong colour in dark mode" (F-062). Four other ways to hit
+exactly the same bug:
+
+- a typo — `var(--vaadin-radius-md, 9px)`; it is `-m`
+- a token from a newer Vaadin than the app runs
+- a token an upgrade **removed** — the code keeps rendering at the frozen literal
+- a project property used before it was defined — `var(--em-card-radius, 12px)`
+
+`--lumo-*` is the instance you will actually meet, because the Figma Aura kit names
+its variables that way and emits several dozen per frame, each with a hardcoded
+fallback. Translate every one to its `--aura-*` / `--vaadin-*` equivalent.
+
+Without a fallback the property is merely invalid, so it behaves as unset — visible,
+and the lesser problem. **`LumoIcon` is not covered by any of this and is fine:** a
+supported Vaadin 25.2 icon set, on the classpath via `vaadin-lumo-theme-25.2.1.jar`,
+and what the Figma annotations correctly prescribe. It is *defined*, which is the
+whole test. Swapping it for `VaadinIcon` on the strength of its name changes the
+rendered icon size (F-062).
+
+Style with:
 
 - `--aura-*` for Aura-specific tokens: accent colour (`--aura-accent-color`,
   `--aura-accent-surface`), surfaces (`--aura-surface-color`), typography
@@ -37,6 +60,14 @@ constants — `PRIMARY`, `TERTIARY`, `ERROR`, `SUCCESS`, `WARNING`, `SMALL`,
 `LARGE` — **not** the legacy `LUMO_*` ones. The `tertiary-inline`, `contrast`,
 and `icon` variants are Lumo-only (no effect under Aura); use plain `TERTIARY`
 instead. See findings F-013 and F-017.
+
+A variant Aura does not implement is a *different* mechanism from an undefined
+property — it is accepted and ignored rather than frozen at a literal — but it fails
+the same way that matters: **silently.** Under Aura none of these errors, so
+nothing in a build or a test run tells you the styling you asked for never
+happened. That is the property the whole section is guarding against, and it is why
+an audit has to check what the theme actually defines rather than grep for a name
+(#158).
 
 ## Layouts & spacing
 
