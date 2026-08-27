@@ -26,7 +26,16 @@ pin them first, aim every test at them, stop only when they are met.
    verification. When you visually verify, follow the
    [`visual-verification`](../visual-verification/SKILL.md) skill and view every
    route the ticket touches.
-4. **Commit** on a feature branch off `main`.
+4. **Update the component spec — only when a component changed.** If the change
+   created or altered a component (a shared UI class, or a cluster of CSS classes
+   rendered as one thing), invoke
+   [`figma-component-spec`](../figma-component-spec/SKILL.md) for it, in this
+   change rather than a later one — a spec written later is written from memory.
+   Skip it when nothing about the component changed: wiring an existing, already
+   specced component to new data does not touch its spec. That skill owns the
+   template, the all-states rule and the staleness audit; don't hand-write the spec
+   instead.
+5. **Commit** on a feature branch off `main`.
 
 ## While you work
 

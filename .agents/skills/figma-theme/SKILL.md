@@ -237,8 +237,15 @@ axis.
 
 If the project keeps **per-component specs**, they live in `components/` in the same
 directory. Writing them is not this skill's job — this skill settles the *global* theme —
-but check whether the directory exists, and say so in the summary if it does not, because
-a foundations layer with no component layer is where per-view drift restarts.
+but two things about them belong in the summary:
+
+- **Say so if the directory does not exist.** A foundations layer with no component layer
+  is where per-view drift restarts: the foundations can settle what a radius is without
+  ever settling which element is entitled to it.
+- **Warn that this run may have staled them.** Changing an input moves every derived
+  value, so any component spec quoting a *resolved* number (`--vaadin-radius-m` (9)) or a
+  measured figure (a contrast ratio) is now suspect even though its token names are still
+  correct. Recommend a component-spec audit as the follow-up; do not perform it here.
 
 **Done when** every concern has a file, each with its decisions and off-scale tables and
 every row marked **settled** or **open**; the resolved scale has one home and only one;
