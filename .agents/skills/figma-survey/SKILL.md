@@ -155,29 +155,38 @@ Vaadin version you researched against.
 
 **Done when** every enumerated instance has a row, and every row has a `Source`.
 
-### 5. Establish the app's current values
+### 5. Establish the app's values — from files, not from a browser
 
-The spec compares the design against what the app renders **now**, so both ends need
-values.
+**A survey never boots the app.** Its three inputs are all readable without one: the
+design, the code, and the existing spec. Everything this step needs comes from the last
+two.
 
-Where the spec already carries the resolved token scale and the Vaadin version matches,
-use it — that is what it is for. Otherwise read the scale from a running app: apply each
-token to a probe element and read the used value back, because these ship as
-`calc()`/`round()` expressions resolved at render time and exist as numbers only in a
-browser. `element.style.setProperty()` takes a **CSS** property name, so
-`setProperty('borderTopLeftRadius', …)` fails silently and every token reads back as
-`0px` — a whole measurement pass can look successful and be entirely zeros.
+Take the **formulas** from the spec's token reference — `round(baseRadius * 2px + 3px,
+1px)` and its siblings. They are what the framework derives each scale with, they are
+stable across a theme change, and they go stale only on a framework upgrade, which is why
+the spec caches them. Then take the list of every property the app's own theme file sets,
+so step 6 knows what is a deliberate app choice rather than a default.
 
-**Capture the formulas, not just the numbers.** The numbers are true only for today's
-inputs and go stale the moment step 6 changes one; the formulas hold across a theme change
-and go stale only on a framework upgrade. Mark any step whose expression you could not
-read as unverified rather than inferring a multiplier from one sample.
+**Compute the resolved values; do not measure them.** Given the formulas this is
+arithmetic, and it is the only correct way round — because step 6 is about to change an
+input, so the numbers you need are the ones at the **decided** inputs, not the ones the
+app renders today. A running app can only show you the scale you are replacing. Measure
+at this moment and you will judge a design against the outgoing scale and reach the
+opposite conclusion from the right one.
 
-Then list every property the app's own theme file sets, so step 6 knows what is a
-deliberate app choice rather than a default.
+That is not hypothetical: a type scale whose small step is a *clamped* fraction of the
+medium step can land a design's most-used size exactly on a token at one base and between
+two tokens at another. Scored against the outgoing base, the wrong base looks better.
 
-**Done when** each scale has its formulas and its current values, the version they hold
-for is noted, and every property the app's theme sets is listed.
+**Where the spec has no formulas** — a first run, or a framework upgrade since the last
+one — say so and stop short of asserting any resolved number or off-scale verdict. Those
+rows stay unresolved for a measurement pass to fill, and obtaining formulas belongs to
+whoever applies the theme and is already in a browser. Do not boot the app to work around
+a missing cache; that trades a visible gap for an invisibly wrong number.
+
+**Done when** the formulas are in hand or their absence is recorded, the resolved values
+at the decided inputs are computed rather than measured, the version they hold for is
+noted, and every property the app's theme sets is listed.
 
 ### 6. Turn every divergence into a decision
 
@@ -293,8 +302,8 @@ hover as a pseudo-element overlay and disabled as `opacity` on the host, leaving
 `background-color` and `color` untouched in both, so an audit reading those two properties
 reports the disabled control as identical to the enabled one having measured nothing.
 
-**A survey cannot fill a measured figure.** It has no running app, so a contrast ratio or a
-rendered pixel size is not yours to state. Leave the slot marked as unverified for visual
+**A survey cannot fill a measured figure.** It never boots the app (step 5), so a contrast
+ratio or a rendered pixel size is not yours to state. Leave the slot marked as unverified for visual
 verification to complete. An unverified row said to be unverified costs the next run five
 minutes; the same row presented as settled costs it a wrong decision.
 

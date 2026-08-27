@@ -115,6 +115,21 @@ framework version they hold for, and the refresh trigger. Where the spec quotes 
 figure elsewhere — a contrast ratio in a component file — this run either confirms it or
 corrects it.
 
+**Capture the formulas too, whenever the spec lacks them** — a first run, or a framework
+upgrade since the last one. A survey never boots the app, so it defers this here and
+records the gap rather than guessing; leave the gap unfilled and the next survey cannot
+judge an off-scale value at all. `getComputedStyle(document.documentElement)` returns each
+token's expression with its `var()`s substituted but not evaluated: that is the formula.
+For the number, apply the token to a probe element and read the used value back. Do both
+for every step of every scale, and mark any step whose expression you could not read as
+unverified rather than inferring a multiplier from one sample.
+
+**The probe trap:** `element.style.setProperty()` takes a **CSS** property name, so
+`setProperty('borderTopLeftRadius', …)` fails silently and every token reads back as `0px`
+or `normal`. Use `'border-top-left-radius'`. A whole measurement pass can look successful
+and be entirely zeros, and the zeros are indistinguishable from a real answer if you are
+not expecting them.
+
 Finally, say what this run **staled**. Changing an input moves every derived value, so any
 component spec quoting a resolved number is now suspect even though its token names are
 still correct. Recommend a component-spec refresh; do not perform it here.
