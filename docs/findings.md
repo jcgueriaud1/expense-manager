@@ -2192,7 +2192,15 @@ Deployment/Observability · UX-spec
   the handful of extra properties once, or get the design corrected to the kit's scale.
   Vaadin's side: the Aura Figma kit could expose the size variables for radius/padding
   so a designer drawing a card picks a token instead of typing `12`.
-- Owner / next step: needs a decision (an ADR) before the per-view issues start.
+- Owner / next step: **Decided by issue #144** (`/figma-theme`), recorded in
+  `docs/design/foundations/` (radius, spacing, typography), with the rule in ADR-0025. Option (c)
+  for the four recurring 3–6px gaps — `--em-card-radius` 12, `--em-card-padding` 20,
+  `--em-section-gap` 40, `--em-font-size-title` 24 — plus one exact Aura override
+  (`--aura-app-layout-radius: 12px`), and the nearest token for the 1–2px cases (15→16,
+  10→8) so the type scale stays the single source for text. **One row of the table above
+  is wrong:** 12px is *not* off-scale — it is exactly `--aura-font-size-xs` at base 14
+  (see F-068). It was recorded as a match against the app's then-current base of 15,
+  which happened to give the same verdict for the wrong reason.
 
 ### F-065 — `docs/theming-layouts.md` prescribes `setPadding(String)`, which does not exist
 - Date: 2026-08-26
@@ -2303,3 +2311,83 @@ Deployment/Observability · UX-spec
   check the layer name and the rendered fill for *colour*".
 - Owner / next step: captured in `docs/figma-toolchain-spike.md`; worth a note in the
   project copy's Project overrides section next to the existing `LUMO_*` rule.
+  **Superseded globally by issue #144:** the theme now scopes the accent to neutral for
+  every non-tertiary button, reaching the same `oklch(0.15 0.0038 248)` without the
+  per-button class. Per-view code should *not* add `aura-accent-neutral` — the annotation
+  is still wrong about the colour, but the app no longer needs a per-button remedy.
+
+### F-068 — Aura's docs give the wrong default for `--aura-font-size-xs`, on the design's most-used text size
+- Date: 2026-08-27
+- Area: Docs
+- Severity: Medium
+- Task being attempted: issue #144 — `/figma-theme` step 6 looks each Aura default up
+  with `get_theme_css_properties theme=aura` before writing the theme, precisely so a
+  declaration never merely re-asserts a default.
+- Expected vs actual: expected the documented font-size defaults to match the running
+  app. Actual: the docs state `--aura-font-size-xs` "default corresponds to `11px`". The
+  formula and the running app both give **12px** at the default base of 14. The other
+  four steps (13/14/16/18) match. Read from the app, the real derivation is
+  `clamp(0.625rem, round(font-size-m * 0.85, 0.0625rem), 0.8125rem)` — `0.875 × 0.85 =
+  0.74375rem`, which rounds to `0.75rem` = 12px, inside the clamp.
+- Workaround used: trusted the measurement over the docs, and recorded both the formula
+  and the discrepancy in `docs/design/tokens/token-reference.md` so the next run does
+  not re-derive it.
+- Evidence: `get_theme_css_properties theme=aura vaadin_version=25.2` ("The default
+  corresponds to `11px`") against a probe element on the running app at 25.2.1 returning
+  `12px`; the design's own local variable set names `XS: 11`, `S: 12`.
+- Impact: a 1px docs error, but it landed on the single most consequential value in this
+  design. 12px is the design's most-used text size — 28 of 65 text nodes in frame
+  `116:4444`. Trusting the docs would have classified all 28 as **off-scale**, and the
+  recorded decision would then have been either a fifth `--em-*` property or an accepted
+  divergence on every caption and section label in the app — a fabricated problem with a
+  real cost, defended by a citation. It also nearly inverted the base-font-size decision:
+  scored against the wrong scale, base 15 looked like the better fit (44 nodes exact vs
+  20); scored against the real one, base 14 wins outright (48 vs 17). The general shape:
+  an authoritative-looking default is more dangerous than a missing one, because nobody
+  measures what the docs already answered.
+- Suggested Vaadin/product improvement: Vaadin's — correct the `--aura-font-size-xs`
+  default in the Aura typography docs, and publish the derivation for all five steps.
+  The scale is not a geometric ramp (`xs` is a clamped 0.85 of `m`, `s` is the
+  *midpoint* of `m` and `xs`), so a reader who infers a constant ratio from one sample
+  gets two steps wrong. Better still, ship the resolved table per base size.
+- Owner / next step: recorded in `docs/design/tokens/token-reference.md`, with
+  all five formulas and an explicit warning that the docs disagree. Worth reporting
+  upstream to the Vaadin docs team.
+
+### F-069 — The design renders three font families while declaring one, so "the design is the source of truth" needs a carve-out
+- Date: 2026-08-27
+- Area: UX-spec
+- Severity: Medium
+- Task being attempted: issue #144 — reading frame `116:4444`'s global typography to
+  settle `--aura-font-family`.
+- Expected vs actual: expected the frame's text to use the family its own variable
+  declares. Actual: `Typography/Font-family` (a bound Aura kit variable) and the local
+  `Font` variable both say **Instrument Sans**, and the frame's 65 text nodes render in
+  **three** families — Instrument Sans (11 nodes), **Inter** (44), and **Public Sans**
+  (10). The kit-driven text is Instrument Sans; the hand-drawn text is not.
+- Workaround used: took the *variable* as authoritative and left `--aura-font-family` at
+  the Aura default (Instrument Sans, which is what the variable names). The stray
+  families are reported as design defects rather than reproduced.
+- Evidence: a `use_figma` binding walk over the frame's subtree returning a
+  `fontName.family + style` histogram — `Inter Bold` 18, `Inter Regular` 20,
+  `Public Sans Regular` 7, `Public Sans SemiBold` 3, against `Typography/Font-family:
+  "Instrument Sans"` from the remote "Aura sizes" collection.
+- Impact: this is the finding that forced a decision into ADR-0025 rather than a
+  workaround into one issue. A literal reading of "Figma is the source of truth" would
+  have shipped three font families, or picked whichever family the majority of nodes
+  happened to use — which here is Inter, i.e. exactly the value the design was supposed
+  to be replacing. The same split shows up in spacing (F-064): values inherited from a
+  kit component land on the token scale, values typed by hand do not. So the useful rule
+  is not "the design wins" but **"the design's variables and kit components win; its
+  hand-drawn values are a proposal to reconcile against the scale"** (ADR-0025 decision
+  4). Without that, a design-to-code toolchain faithfully reproduces a designer's
+  leftovers and calls it fidelity.
+- Suggested Vaadin/product improvement: partly ours — the design needs its stray text
+  nodes rebound to the typography variables. Vaadin's side: the Aura Figma kit could
+  expose typography as text *styles* rather than only as variables, so hand-drawn text
+  cannot silently drift off the declared family; and `get_design_context` could flag
+  when a node's rendered value contradicts a variable bound in the same file, which is
+  the machine-checkable version of this whole finding.
+- Owner / next step: recorded in `docs/design/foundations/typography.md` and as
+  ADR-0025 decision 4. The design fix is the designer's; raise the stray families and
+  the design's own 12px "S" step (against Aura's 13px `s`) with them.

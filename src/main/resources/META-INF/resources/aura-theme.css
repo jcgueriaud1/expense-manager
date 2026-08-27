@@ -1,0 +1,124 @@
+/*
+ * Aura theme configuration for Expense Manager, matched to the Figma design
+ * (file Irsp3cgi1WX3GiLGpJZECa, frame 116:4444 "My Expenses" / report detail).
+ *
+ * Settled by /figma-theme for issue #144. The rationale is ADR-0025; the decided
+ * values, the resolved token scale and the off-scale values are recorded in
+ * docs/design/ (foundations/ and tokens/), which /figma-survey reads so a settled
+ * difference is never re-raised as a per-view finding.
+ *
+ * Only non-default Aura properties are set. The design's accent (#3266e4), base
+ * font size (14) and font family (Instrument Sans) are each exactly the Aura 25.2
+ * default, so they are deliberately ABSENT rather than re-asserted — a declaration
+ * that merely restates a default looks theme-driven and hides what really differs.
+ *
+ * Follows the Aura-not-Lumo standard in CLAUDE.md: no --lumo-* property is defined
+ * under Aura, so any var(--lumo-…, fallback) silently freezes at its literal (F-062).
+ */
+
+html {
+  /*
+   * Follow the viewer's OS light/dark preference. NOT an Aura default — Aura ships
+   * `color-scheme: light` — and load-bearing beyond the colour: ThemeSwitcher's
+   * "System" option works by clearing the inline color-scheme that
+   * Page.setColorScheme writes, which lets this declaration apply again. Drop it
+   * and "System" silently stops resetting to the OS preference.
+   */
+  color-scheme: light dark;
+
+  /*
+   * The design draws the content panel at a 12px radius; Aura derives 15px for it
+   * from --aura-base-radius. This is the one off-scale value Aura has a real
+   * property for, so it is overridden directly rather than given an --em-* twin.
+   * Effective only while --aura-app-layout-inset is non-zero (it is, by default).
+   */
+  --aura-app-layout-radius: 12px;
+}
+
+/*
+ * Design values Aura's derivation cannot produce (F-064).
+ *
+ * Solving the scale backwards does not help: a 9px field radius needs
+ * --aura-base-radius: 3 (2·3+3), while the 12px card radius in the same design
+ * needs 1.33 (1.5·1.33+10), at which the field renders 6px. The design has left
+ * Aura's derivation, so no choice of base reconciles them.
+ *
+ * Each value below is 3–6px off the nearest token and recurs on every card and
+ * heading, so it is decided once here instead of five times per view. Values
+ * within 1–2px of a token instead take the token, so the Aura type and spacing
+ * scales stay the single source of truth for text; those are named in the spec.
+ *
+ * The decision on each value is in docs/design/foundations/ — radius.md, spacing.md
+ * and typography.md — and every property is listed in
+ * docs/design/tokens/token-reference.md.
+ *
+ * Defined here, consumed by the per-view classes in styles.css as each view is
+ * revised — so they are expected to be unreferenced until the first per-view issue.
+ * Adding a fifth is a decision for docs/design/, not a per-view convenience.
+ */
+html {
+  --em-card-radius: 12px;      /* between --vaadin-radius-m 9 and --vaadin-radius-l 15 */
+  --em-card-padding: 20px;     /* between --vaadin-padding-l 16 and --vaadin-padding-xl 24 */
+  --em-section-gap: 40px;      /* beyond --vaadin-gap-xl 24, the top of the scale */
+  --em-font-size-title: 24px;  /* beyond --aura-font-size-xl 18, the top of the scale */
+}
+
+/*
+ * Side nav styling — PENDING #146 (app-shell redesign).
+ *
+ * The design replaces the drawer-and-side-nav shell with a top header bar, which
+ * makes these three rules dead. They are kept rather than removed because #146 is
+ * a separate issue: deleting them here would leave the current nav unstyled for as
+ * long as this ships ahead of the shell. Remove them with #146, not before.
+ */
+vaadin-side-nav-item:not([current]) > vaadin-icon {
+  color: var(--aura-accent-text-color);
+}
+
+vaadin-side-nav-item[current]::part(content) {
+  --vaadin-side-nav-item-background: var(--vaadin-background-container);
+  --vaadin-side-nav-item-border-color: transparent;
+}
+
+vaadin-side-nav::part(label) {
+  text-transform: uppercase;
+  font-size: var(--aura-font-size-xs);
+  color: var(--vaadin-text-color);
+  letter-spacing: 0.03em;
+}
+
+/*
+ * Neutral (black) buttons, accent-blue reserved for tertiary.
+ *
+ * This inverts the rule this file used to carry. That one neutralised
+ * *non-primary* buttons and left primary accent-blue; the design does the
+ * opposite — primary is the design's `accent-neutral` (#0a0b0d light, #ffffff
+ * dark, both verified to be exactly Aura's --aura-neutral-*), while blue survives
+ * for badges and for the link-like tertiary actions (--aura-accent-text-color,
+ * #2b59c8 light / #81b9ff dark).
+ *
+ * One rule covers both filled and outline buttons because Aura derives each from
+ * the same accent: with the accent scoped to neutral, `primary` renders a black
+ * fill with a white label, and a default button renders the design's white
+ * outline with a neutral label. Scoping it per-element rather than globally is
+ * what keeps the blue Draft pill and link text blue.
+ *
+ * The -light/-dark pair is set explicitly because Aura resolves
+ * --aura-accent-color through light-dark() keyed off color-scheme, so both halves
+ * must move or ThemeSwitcher flips one scheme back to blue.
+ *
+ * Verified in the browser: primary is #0a0b0d on white at 19.7:1 in light, and
+ * #feffff on #333 at 12.6:1 in dark. Hover and disabled need no attention here
+ * because Aura derives both from whatever the accent is, without reading it:
+ * hover is a ::before overlay at opacity 0.03 (scoped :not([disabled], [active])),
+ * and disabled is opacity 0.5 on the host. A 3% tint cannot take that 19.7:1 pair
+ * below ~18.9:1. Neither is visible in the host's computed style — see
+ * docs/vaadin-gotchas.md ("Component state styling is invisible on the host").
+ *
+ * Aura's stock button already supplies the design's border and shadow-xs, so —
+ * unlike the old rule — no background, border-color or shadow override is needed.
+ */
+:is(vaadin-button, vaadin-menu-bar-button, vaadin-upload-button):not([theme~="tertiary"]) {
+  --aura-accent-color-light: var(--aura-neutral-light);
+  --aura-accent-color-dark: var(--aura-neutral-dark);
+}

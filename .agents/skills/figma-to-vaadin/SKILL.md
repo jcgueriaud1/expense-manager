@@ -149,6 +149,17 @@ If `sample-data: generate-sample`:
 If `sample-data: use-existing-data`, wire the view to the existing repository/service/entity
 instead of inventing new sample data.
 
+### 5b. Conform to the design spec
+
+Where the project keeps a design spec, it is the contract for anything this step styles:
+take tokens and states from the component's file rather than choosing values. A difference
+is a bug in this code. If a component you are building has no spec, or the design has
+moved, run `figma-survey` — it owns the spec. Do not write or edit a spec file to match
+what you just built.
+
+**Done when** every component this step styled matches its spec, or the mismatch is
+reported.
+
 ### 6. Test
 
 This skill's own job — writing code — is done by the end of Step 5. Don't run terminal
@@ -257,5 +268,10 @@ avatar.getStyle().set("--vaadin-avatar-size", "48px");
   - Step 6 now invokes `figma-visual-verification` (this repo's renamed copy of upstream's
     `vaadin-visual-verification`).
   - `compatibility:` no longer claims a Vaadin MCP server is required.
+  - Added **Step 5b — Conform to the design spec**, since upstream has no design-spec
+    concept at all: it ends at code plus verification, which is why the same "is this a
+    card?" question can be answered differently by every view. This project authors the
+    spec in `figma-survey` and treats it as a contract, so implementation conforms and
+    never edits it.
 - **Not copied at all:** upstream's `figma-to-lumo-theme` — this app is Aura, and
   `CLAUDE.md` forbids `--lumo-*`.
