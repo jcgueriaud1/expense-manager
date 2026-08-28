@@ -2391,3 +2391,121 @@ Deployment/Observability · UX-spec
 - Owner / next step: recorded in `docs/design/foundations/typography.md` and as
   ADR-0025 decision 4. The design fix is the designer's; raise the stray families and
   the design's own 12px "S" step (against Aura's 13px `s`) with them.
+
+### F-070 — Spring Security proxies the view, so the class the navigation chain reports is a CGLIB subclass and `Class` equality silently matches nothing
+- Date: 2026-08-27
+- Area: Vaadin
+- Severity: Medium
+- Task being attempted: issue #146 — lighting the correct nav group for the current
+  route, by matching `AfterNavigationEvent.getActiveChain().get(0).getClass()` against
+  the view classes a `NavGroup` lists.
+- Expected vs actual: expected `MyReportsView.class`. Actual
+  `MyReportsView$$SpringCGLIB$$0` — every view in this app carries `@RolesAllowed` or
+  `@PermitAll` at class level (ADR-0008), so Spring method security proxies it. The
+  `equals` comparison matched nothing at all, for every route.
+- Workaround used: `isAssignableFrom` instead of `equals` in `NavGroup#contains`, with
+  the reason written next to it so nobody "simplifies" it back.
+- Evidence: a temporary probe printing the chain's class from `MainLayout#afterNavigation`
+  on the running app — `view=class com.vaadin.expensemanager.report.ui.MyReportsView$$SpringCGLIB$$0`.
+  The failing assertion was `NavigationShellUiTest#currentGroupFollowsTheGroupNotTheRoute`.
+- Impact: this is a **silent, total** failure of a feature that has no error path: the nav
+  simply never marks anything current, and every route looks like an unclassified one.
+  There is no exception, no log line, and no compile-time signal — the types are correct.
+  Two things made it easy to walk into. First, the code it replaced never met it:
+  `MenuEntry#menuClass()` reports the *declared* class, so the old `@Menu`-driven side
+  nav compared proxies to nothing. Second, a browserless test reproduces it exactly, but
+  only if the test asserts the *current* state rather than the presence of the items —
+  the four tests that only checked which links render all passed.
+- Suggested Vaadin/product improvement: Vaadin's — `AfterNavigationEvent` (and
+  `getActiveChain()`) could expose the *route target* class rather than the runtime one,
+  or offer `getNavigationTarget()` alongside, since the router already knows the
+  registered class. Failing that, the Flow/Spring docs should say plainly that a view
+  annotated for method security arrives proxied, next to the security annotations that
+  cause it. This will bite anything that keys off the view class — analytics, per-view
+  layout switches, breadcrumbs.
+- Owner / next step: fixed in `NavGroup#contains`, and covered by
+  `NavigationShellUiTest#currentGroupFollowsTheGroupNotTheRoute`. Worth reporting
+  upstream to Flow.
+
+### F-071 — A `ContextMenu`'s items are invisible to the browserless tester, so navigation behind a menu cannot be asserted from the rendered tree
+- Date: 2026-08-27
+- Area: Verification
+- Severity: Low
+- Task being attempted: issue #146 — replacing four view tests that asserted "an admin
+  sees this view in the navigation, a plain user does not" against the old `SideNavItem`
+  list.
+- Expected vs actual: expected `find(RouterLink.class).all()` to return the links inside
+  the two nav group menus. Actual: it returns only the two links in the light DOM (the
+  logo and the single-entry group). A `ContextMenu`'s items are attached as a virtual
+  child of its target and never appear in the component tree the tester walks, open or
+  closed.
+- Workaround used: assert against the model the shell renders from —
+  `NavGroup.allVisibleTo(authenticationContext)` — and leave the rendered menu to visual
+  verification. The access filtering itself is unit-tested against the real
+  `AccessAnnotationChecker` in `NavGroupTest`.
+- Evidence: a probe test on the running Spring context printing every discoverable
+  `RouterLink` while signed in as an admin: two results, where the bar renders eight
+  destinations.
+- Impact: modest but worth knowing before designing the assertion, not after. The
+  practical rule: anything an overlay owns — `ContextMenu`, `MenuBar` submenus, `Dialog`
+  content before it opens — is outside what a browserless test can see, so a test that
+  needs it either drives the component's own API or moves the guarantee into a model that
+  can be tested directly. Choosing the latter is not a weaker test here, but it does move
+  the "did we render it" half onto the visual pass, which is worth saying out loud rather
+  than quietly losing.
+- Suggested Vaadin/product improvement: Vaadin's — the browserless tester could expose
+  overlay content through the owning component (a `find(..., withinOverlayOf(menu))`
+  scope, or simply including virtual children in the walk). The `MenuBar` API is
+  reachable from Java (`getItems().getSubMenu()`), so the information exists; only the
+  locator DSL cannot reach it.
+- Owner / next step: recorded here; the four tests now assert the model. Worth raising
+  with the browserless-testing maintainers.
+
+### F-072 — A container's `color` never reaches an `h1`–`h6` or `a`: Aura re-declares it at element level, and inheritance loses to any matching rule
+- Date: 2026-08-28
+- Area: Vaadin
+- Severity: Medium
+- Task being attempted: issue #146's app shell — a coral header bar that sets its text
+  colour once, on the bar, and lets the logo, the nav pills and the greeting inherit it.
+- Expected vs actual: expected `.app-header { color: var(--em-header-text-color) }` to
+  reach the greeting `H1` inside it, since `.app-header` (specificity 0,1,0) far outranks
+  Aura's `:where(h1,h2,h3,h4,h5,h6) { color: var(--vaadin-text-color) }` (specificity
+  **0,0,0**). Actual: the greeting rendered black on coral. Specificity is not the
+  comparison being made — the bar's white arrives at the `H1` by *inheritance*, and an
+  inherited value loses to **any** declaration that matches the element itself, at any
+  specificity, zero included. `:where()` resets are built to be easy to override, but only
+  by a rule targeting the element; an ancestor's colour is not that.
+- Workaround used: `color: inherit` on the affected element's own class — a matching
+  declaration that opts back into inheritance. `styles.css:.app-header__greeting` and
+  `styles.css:.summary-heading`.
+- Evidence: `:where(h1,h2,h3,h4,h5,h6){color:var(--vaadin-text-color)}` in
+  `META-INF/resources/aura/aura.css` (`vaadin-aura-theme-25.2.5.jar`);
+  `styles.css:383` (`.app-header`), `styles.css:530` (`.app-header__greeting`);
+  `styles.css:88` (`.error-summary`), `styles.css:103` (`.summary-heading`);
+  `AppHeader.java:55`, `ErrorSummary.java:80`.
+- Impact: **two instances shipped, found by audit, not by looking.** The header greeting
+  (white → black on coral) and the validation summary's heading (`--aura-red-text` →
+  `--vaadin-text-color` inside a red callout). Both had the same signature: the class
+  overrides *some* of what Aura resets on that element — `.app-header__greeting` sets
+  `font-size`, `line-height` and `font-weight`, `.summary-heading` sets `font-weight` and
+  `font-size` — and not `color`, while an ancestor declares it. In both, the sibling `a`
+  was handled (`.app-header__logo { color: inherit }`, `.error-summary-link` declares the
+  token) and the heading was not, so the author had met the mechanism and not generalised
+  it. This is a third way Aura fails silently, beside F-062's undefined-property-frozen-
+  at-a-fallback and F-013/F-017's accepted-and-ignored variant: here the declaration is
+  valid, defined and applied, and simply never reaches the element that needed it.
+  Worst of all, an accessibility gate **prefers the bug** — black on `#f16c4e` measures
+  6.99:1, the design's white 3.00:1 — so a contrast pass is not merely silent but
+  actively wrong, and nothing in a build or a test run mentions any of it.
+- Suggested Vaadin/product improvement: Aura's element-level resets are load-bearing for
+  unstyled markup and should not go. But `color` is the one property whose reset routinely
+  fights an app's own container colour, and Aura already re-declares it on exactly two
+  subjects — `h1`–`h6` and `a:any-link`. Documenting that pair in the theming docs as
+  "does not inherit your colour; re-declare it" would cost a sentence. A stronger fix:
+  reset only what typography needs (`font-size`, `font-weight`, `line-height`) and leave
+  `color` to inherit, letting `--vaadin-text-color` reach headings from `:root` the way it
+  reaches every `Span`.
+- Owner / next step: both instances fixed; recorded in `app-shell.md` and
+  `error-summary.md`; the general rule and the audit that finds it are in
+  `docs/theming-layouts.md` § *Inherited properties*. Worth raising with the Aura team as
+  a docs gap at minimum.

@@ -43,6 +43,13 @@ Aura.
 | Heading | `--aura-font-size-m`, semibold, `--vaadin-gap-s` bottom margin |
 | Focus outline | `2px solid var(--aura-red)`, `2px` offset |
 
+`--aura-red-text` is declared once on `.error-summary` and inherited. The heading is an
+`H3`, and Aura re-declares `color` on `h1`–`h6` at element level, which beats an inherited
+value regardless of specificity — so `.summary-heading` carries `color: inherit`
+explicitly. Without it the heading renders `--vaadin-text-color` inside a red callout,
+silently. `.error-summary-link` declares the token directly for the same reason (`a` is
+Aura's other element-level colour reset). F-072.
+
 ## API
 
 ```java

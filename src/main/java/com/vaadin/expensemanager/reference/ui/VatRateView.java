@@ -11,7 +11,6 @@ import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.textfield.BigDecimalField;
 import com.vaadin.flow.data.binder.Binder;
-import com.vaadin.flow.router.Menu;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 
@@ -25,8 +24,8 @@ import static com.vaadin.expensemanager.reference.ui.ReferenceViewSupport.format
  *
  * <p>An admin can <strong>add, edit, reorder, and deactivate</strong> rates.
  * Two-layer authorization (ADR-0008): {@code @RolesAllowed("ADMIN")} gates
- * navigation (a USER can't reach the route and the auto-menu hides its
- * {@code @Menu} entry), while the real enforcement is
+ * navigation (a USER can't reach the route, and the top nav hides the
+ * entry that leads to it), while the real enforcement is
  * {@link ReferenceDataService}'s method security. There is no delete — the only
  * removal is <em>deactivate</em>, which flips the {@code active} flag so the row
  * is hidden from new line choices but retained for historical lines (ADR-0018);
@@ -39,7 +38,6 @@ import static com.vaadin.expensemanager.reference.ui.ReferenceViewSupport.format
  */
 @Route("vat-rates")
 @PageTitle("VAT rates")
-@Menu(title = "VAT rates", order = 2, icon = "vaadin:money")
 @RolesAllowed("ADMIN")
 public class VatRateView extends ReferenceConfigView<VatRateDto> {
 

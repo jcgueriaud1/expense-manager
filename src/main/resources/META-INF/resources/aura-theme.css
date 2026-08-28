@@ -27,12 +27,11 @@ html {
   color-scheme: light dark;
 
   /*
-   * The design draws the content panel at a 12px radius; Aura derives 15px for it
-   * from --aura-base-radius. This is the one off-scale value Aura has a real
-   * property for, so it is overridden directly rather than given an --em-* twin.
-   * Effective only while --aura-app-layout-inset is non-zero (it is, by default).
+   * --aura-app-layout-radius was set here for the content panel's 12px corners.
+   * It went with the drawer in #146: the property only ever styled AppLayout's
+   * content area, and the shell now draws its own card. The same 12px is still
+   * the design's, and is now applied through --em-card-radius below.
    */
-  --aura-app-layout-radius: 12px;
 }
 
 /*
@@ -64,27 +63,34 @@ html {
 }
 
 /*
- * Side nav styling — PENDING #146 (app-shell redesign).
+ * The header bar's brand colour (#146).
  *
- * The design replaces the drawer-and-side-nav shell with a top header bar, which
- * makes these three rules dead. They are kept rather than removed because #146 is
- * a separate issue: deleting them here would leave the current nav unstyled for as
- * long as this ships ahead of the shell. Remove them with #146, not before.
+ * The design paints the app shell's bar a coral that is bound to no Figma
+ * variable, and Aura has no orange in that hue — --aura-orange is oklch hue 87,
+ * a gold, where this is ~37. So it is the app's own value, named once here and
+ * consumed by .app-header in styles.css; the three status states re-point it at
+ * a real palette token (--aura-green / --aura-blue / --aura-red), which the
+ * design does bind.
+ *
+ * One value for both schemes: the design draws a single mode for this bar, and a
+ * brand colour that changed with the OS preference would not be one.
+ *
+ * ACCESSIBILITY, RECORDED DELIBERATELY: white on this coral is 3.00:1 (2.70–3.64
+ * across the gradient wash). That clears WCAG AA for the 50px greeting and for
+ * non-text contrast, and FAILS the 4.5:1 required of the 16px nav links, the
+ * wordmark and the 20px hero line. The design was shipped as drawn on an explicit
+ * call in #146, against the contrast floor ADR-0025 otherwise puts above the
+ * design; #160 carries the measurements back to the designer. Do not copy this
+ * pairing to a new surface — see docs/design/components/app-shell.md.
+ *
+ * The text colour is pinned rather than taken from --aura-accent-contrast-color,
+ * which the Figma kit binds here. That property tracks the *accent*, not this
+ * bar: it reads white only because the accent is blue, and would flip to black
+ * the day the accent lightens, on a coral that never moved.
  */
-vaadin-side-nav-item:not([current]) > vaadin-icon {
-  color: var(--aura-accent-text-color);
-}
-
-vaadin-side-nav-item[current]::part(content) {
-  --vaadin-side-nav-item-background: var(--vaadin-background-container);
-  --vaadin-side-nav-item-border-color: transparent;
-}
-
-vaadin-side-nav::part(label) {
-  text-transform: uppercase;
-  font-size: var(--aura-font-size-xs);
-  color: var(--vaadin-text-color);
-  letter-spacing: 0.03em;
+html {
+  --em-header-color: #f16c4e;
+  --em-header-text-color: #ffffff;
 }
 
 /*

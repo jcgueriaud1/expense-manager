@@ -24,7 +24,6 @@ import com.vaadin.flow.component.radiobutton.RadioButtonGroup;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.data.binder.Binder;
 import com.vaadin.flow.data.value.ValueChangeMode;
-import com.vaadin.flow.router.Menu;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 
@@ -35,8 +34,8 @@ import jakarta.annotation.security.RolesAllowed;
  * (issue #64, Phase 6). Read path only — no mutation in this slice.
  *
  * <p>Structure mirrors {@code ExpenseTypeView}: an H2 header, an intro
- * paragraph, and a {@link Grid} of {@link UserSummaryDto}. The side-nav item is
- * auto-generated from {@code @Menu} and access-filtered, so navigation is gated
+ * paragraph, and a {@link Grid} of {@link UserSummaryDto}. Its top-nav entry is
+ * hand-authored in {@code NavGroup} and access-filtered, so navigation is gated
  * by {@code @RolesAllowed("ADMIN")} here while the real enforcement lives in
  * {@link UserAdminService#list()} (two-layer authorization, ADR-0008).
  *
@@ -56,7 +55,6 @@ import jakarta.annotation.security.RolesAllowed;
  */
 @Route("users")
 @PageTitle("Users")
-@Menu(title = "Users", order = 4, icon = "vaadin:users")
 @RolesAllowed("ADMIN")
 public class UserManagementView extends VerticalLayout {
 

@@ -15,7 +15,6 @@ import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
-import com.vaadin.flow.router.Menu;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.router.RouterLink;
@@ -27,8 +26,8 @@ import jakarta.annotation.security.RolesAllowed;
  * awaiting review, across all owners, newest submission first.
  *
  * <p>Two-layer authorization (ADR-0008): {@code @RolesAllowed("ADMIN")} gates
- * navigation (a USER can't reach the route and the auto-menu hides its
- * {@code @Menu} entry), while the real enforcement is {@link ApprovalService}'s
+ * navigation (a USER can't reach the route, and the top nav hides the
+ * entry that leads to it), while the real enforcement is {@link ApprovalService}'s
  * method security. Each row is a {@link RouterLink} into the report detail view's
  * {@code /review/{id}} alias (a real, keyboard-operable link, ADR-0020), where the
  * admin reviews it read-only and approves. When the queue is empty the shared
@@ -41,7 +40,6 @@ import jakarta.annotation.security.RolesAllowed;
  */
 @Route("approvals")
 @PageTitle("Approvals")
-@Menu(title = "Approvals", order = 5, icon = "vaadin:inbox")
 @RolesAllowed("ADMIN")
 public class ApprovalQueueView extends VerticalLayout {
 

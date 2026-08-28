@@ -29,8 +29,8 @@ source and would go stale here.
 | [`error-summary.md`](error-summary.md) | shared Java component | code | conforms |
 | [`editor-dialog.md`](editor-dialog.md) | shared Java component | code | conforms |
 | [`empty-state.md`](empty-state.md) | shared Java component | code | conforms |
-| [`theme-switcher.md`](theme-switcher.md) | shared Java component | code | conforms |
-| [`app-shell.md`](app-shell.md) | shell | design | **drifted** structurally → #146 |
+| [`theme-switcher.md`](theme-switcher.md) | shared Java component | code | unaudited |
+| [`app-shell.md`](app-shell.md) | shell | design | unaudited — rebuilt in #146 |
 
 ## The two axes
 

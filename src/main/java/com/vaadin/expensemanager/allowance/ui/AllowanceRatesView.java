@@ -24,7 +24,6 @@ import com.vaadin.flow.component.textfield.BigDecimalField;
 import com.vaadin.flow.component.textfield.IntegerField;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.data.binder.Binder;
-import com.vaadin.flow.router.Menu;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 
@@ -46,8 +45,8 @@ import static com.vaadin.expensemanager.allowance.ui.AllowanceViewSupport.openDe
  * one (PRD 4.4) without touching prior years.
  *
  * <p>Two-layer authorization (ADR-0008): {@code @RolesAllowed("ADMIN")} gates
- * navigation (a USER can't reach the route and the auto-menu hides its
- * {@code @Menu} entry), while the real enforcement is
+ * navigation (a USER can't reach the route, and the top nav hides the
+ * entry that leads to it), while the real enforcement is
  * {@link AllowanceRateService}'s method security. Every editor is a shared
  * {@link EditorDialog} (always-enabled Save + top-of-form error summary,
  * ADR-0020); the single-value rate editors go through
@@ -55,7 +54,6 @@ import static com.vaadin.expensemanager.allowance.ui.AllowanceViewSupport.openDe
  */
 @Route("allowance-rates")
 @PageTitle("Allowance rates")
-@Menu(title = "Allowance rates", order = 4, icon = "vaadin:coin-piles")
 @RolesAllowed("ADMIN")
 public class AllowanceRatesView extends VerticalLayout {
 

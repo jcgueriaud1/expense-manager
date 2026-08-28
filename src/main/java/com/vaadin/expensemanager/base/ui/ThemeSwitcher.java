@@ -6,15 +6,19 @@ import java.util.Map;
 import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.contextmenu.MenuItem;
 import com.vaadin.flow.component.contextmenu.SubMenu;
-import com.vaadin.flow.component.icon.Icon;
-import com.vaadin.flow.component.icon.VaadinIcon;
-import com.vaadin.flow.component.menubar.MenuBar;
 import com.vaadin.flow.component.page.ColorScheme;
 import com.vaadin.flow.component.page.WebStorage;
 
 /**
- * Navbar control that lets the user override the app's colour scheme: follow the
- * OS ("System"), or force "Light" / "Dark".
+ * The colour-scheme choice — follow the OS ("System"), or force "Light" / "Dark".
+ *
+ * <p><strong>A menu group, not a component.</strong> It used to be a
+ * {@code MenuBar} of its own in the {@code AppLayout} navbar. The designed
+ * header (#146) has no room for a second control beside the avatar, so the three
+ * choices now install into the avatar menu instead (#145 decision 1) — a menu
+ * inside a menu is what a nested {@code MenuBar} would have been, without the
+ * second trigger. Dark mode is a requirement, so this could not simply be
+ * dropped when the drawer went.
  *
  * <p>The scheme is applied with Flow's {@link com.vaadin.flow.component.page.Page#setColorScheme
  * Page.setColorScheme}, which sets an inline {@code color-scheme} on the document
@@ -30,16 +34,28 @@ import com.vaadin.flow.component.page.WebStorage;
  * page head (see {@code Application#configurePage}) re-applies it before first
  * paint, so a reload never flashes the wrong scheme.
  */
-public class ThemeSwitcher extends MenuBar {
+public final class ThemeSwitcher {
 
     /** localStorage key shared with the early bootstrap script in the page head. */
     public static final String STORAGE_KEY = "expense-manager.color-scheme";
 
+    /** The label of the group this installs, and what a test looks for. */
+    public static final String LABEL = "Colour theme";
+
     private final Map<ColorScheme.Value, MenuItem> choices = new LinkedHashMap<>();
 
-    public ThemeSwitcher() {
-        var trigger = addItem(new Icon(VaadinIcon.ADJUST));
-        trigger.setAriaLabel("Change colour theme");
+    /**
+     * Adds a checkable <em>Colour theme</em> group — System, Light, Dark — to
+     * {@code parent}, and returns the item that opens it.
+     */
+    public static MenuItem addTo(SubMenu parent) {
+        return new ThemeSwitcher(parent).trigger;
+    }
+
+    private final MenuItem trigger;
+
+    private ThemeSwitcher(SubMenu parent) {
+        trigger = parent.addItem(LABEL);
 
         SubMenu menu = trigger.getSubMenu();
         addChoice(menu, "System", ColorScheme.Value.NORMAL);
