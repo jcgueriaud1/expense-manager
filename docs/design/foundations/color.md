@@ -21,7 +21,7 @@ Naming rules (`--aura-*` vs `--vaadin-*`, and the `--lumo-*` ban) are in
 | `--aura-contrast-level` | not specified | default (1) | default | both agree | **settled** |
 | App-shell bar colour | `#f16c4e`, bound to no variable | — | `--em-header-color: #f16c4e` | design | **settled** (#146) |
 | App-shell bar text | `aura-accent-contrast-color` (`#ffffff`) | — | `--em-header-text-color: #ffffff`, pinned | app | **settled** (#146) |
-| White on the bar, 16px text | 3.00:1 | — | shipped as drawn, below the AA floor | design, overriding decision 3 | **settled** (#146), **open** with the designer as #145 |
+| White on the bar, 16px text | 3.00:1 | — | shipped as drawn, below the AA floor | design, overriding decision 3 | **settled** (#146), **open** with the designer as #160 |
 | Header status tints | `--aura-green` / `--aura-blue` / `--aura-red` | — | as bound | design | **settled** (#146) |
 
 ## Resolved values
@@ -74,7 +74,7 @@ across its gradient wash), against the 4.5:1 AA needs for text that size. Its gr
 tints pass.
 
 It shipped as drawn on an explicit call in #146, which is a deliberate override of
-decision 3 rather than an oversight, and #145 carries the question back to the designer.
+decision 3 rather than an oversight, and #160 carries the measurements back to the designer.
 Two accessible alternatives were measured and declined: darkening the coral to `#bf533c`
 (white reaches 4.60:1 at the same hue), or keeping the coral and taking Aura's own
 computed contrast colour, a near-black at 5.6:1.

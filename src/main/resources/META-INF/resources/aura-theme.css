@@ -80,7 +80,7 @@ html {
  * non-text contrast, and FAILS the 4.5:1 required of the 16px nav links, the
  * wordmark and the 20px hero line. The design was shipped as drawn on an explicit
  * call in #146, against the contrast floor ADR-0025 otherwise puts above the
- * design; #145 carries the question back to the designer. Do not copy this
+ * design; #160 carries the measurements back to the designer. Do not copy this
  * pairing to a new surface — see docs/design/components/app-shell.md.
  *
  * The text colour is pinned rather than taken from --aura-accent-contrast-color,

@@ -95,8 +95,8 @@ This shipped **as drawn**, on an explicit call in #146, overriding the contrast 
 [ADR-0025](../../adr/0025-figma-design-source-of-truth.md) decision 3 otherwise puts above
 the design. The two alternatives, both measured and both declined, were: darken the coral
 to `#bf533c` (white reaches 4.60:1 at the same hue), or keep the coral and take Aura's own
-computed contrast colour, a near-black at 5.6:1. **#145** carries the question back to the
-designer.
+computed contrast colour, a near-black at 5.6:1. **#160** carries the measurements back to
+the designer.
 
 **Do not copy this pairing to a new surface.** It is a recorded exception for one bar, not
 a licence for white-on-saturated anywhere else.
@@ -192,4 +192,5 @@ colour schemes.
 [`../tokens/token-reference.md`](../tokens/token-reference.md) ·
 ADR-0017 (the shell), ADR-0008 (route security), ADR-0025 (the design as contract) ·
 **F-070** (the proxied view class), **F-071** (menu items and the browserless tester) ·
-**#145** — the design gaps behind the contrast call and the small-screen behaviour
+**#160** — the measured design defects, contrast among them · **#145** — the open design
+questions behind the small-screen behaviour and the avatar menu
