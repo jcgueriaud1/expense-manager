@@ -1,7 +1,11 @@
 package com.vaadin.expensemanager.report.service;
 
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -11,6 +15,7 @@ import java.util.stream.Collectors;
 import com.vaadin.expensemanager.report.domain.ExpenseLine;
 import com.vaadin.expensemanager.report.domain.ExpenseReport;
 import com.vaadin.expensemanager.report.domain.GeneratedLineKind;
+import com.vaadin.expensemanager.report.domain.ReportStatus;
 import com.vaadin.expensemanager.report.domain.StatusChange;
 import com.vaadin.expensemanager.report.domain.Travel;
 
@@ -50,10 +55,107 @@ public class ReportDtoMapper {
         this.travelCosting = travelCosting;
     }
 
-    /** The list-row projection: the four grid columns plus the detail-route id. */
+    /**
+     * The list-row projection: the report-level fields and derived total, the
+     * created-on date the card's footer shows, the report's trips, and — for a
+     * report that is <em>currently</em> {@code REJECTED} — who rejected it and when
+     * (issue #147).
+     *
+     * <p>Walks {@code lines}, {@code travels} and {@code statusHistory}, so the
+     * caller must have fetched all three: {@code ExpenseReportService.listMine()}
+     * does it in three batched queries. A report rejected and then resubmitted is
+     * {@code SUBMITTED} again and carries no rejection meta — the footer entry
+     * describes the report's present state, not its past.
+     */
     public static ReportSummaryDto toSummary(ExpenseReport r) {
+        var rejection = r.getStatus() == ReportStatus.REJECTED
+                ? latestChangeTo(r, ReportStatus.REJECTED)
+                : null;
         return new ReportSummaryDto(r.getId(), r.getReportDate(),
-                r.getAdditionalInformation(), r.getStatus(), r.total());
+                r.getAdditionalInformation(), r.getStatus(), r.total(),
+                r.getCreatedAt(), r.getTravels().stream()
+                        .map(ReportDtoMapper::toTripSummary).toList(),
+                rejection == null ? null : rejection.getActingUser().getName(),
+                rejection == null ? null : rejection.getChangedAt());
+    }
+
+    /** One trip row: the route the user typed and the trip's own date range. */
+    private static TripSummaryDto toTripSummary(Travel t) {
+        return new TripSummaryDto(t.getDestinations(), t.getDepartureAt(),
+                t.getReturnAt());
+    }
+
+    /**
+     * The three list metrics for one owner's reports (issue #147), computed in a
+     * single pass so the cards can never disagree with each other or with the list
+     * below them. Owner-scoping is the caller's — this maps whatever it is given.
+     *
+     * <p>"Needs you" is {@link ReportStatus#isEditable()}, the predicate the list
+     * already groups on, so there is exactly one notion of a report awaiting its
+     * owner; {@code rejectedCount} breaks that figure down rather than adding to it.
+     * The in-flight wait is the <em>longest</em> one — the number that says how
+     * overdue the queue is — measured from the latest {@code SUBMITTED} change, not
+     * from the user-entered report date.
+     *
+     * <p>A report counts as reimbursed in the year its approval <em>happened</em>,
+     * from the latest {@code APPROVED} change; a report approved without a
+     * recordable change (which the domain does not produce) falls back to its report
+     * date rather than dropping out of the total silently.
+     *
+     * @param now  the instant the wait is measured against
+     * @param zone the zone that decides which calendar year an approval fell in
+     */
+    public static ReportMetricsDto toMetrics(List<ExpenseReport> reports, Instant now,
+            ZoneId zone) {
+        int year = now.atZone(zone).getYear();
+        if (reports.isEmpty()) {
+            return ReportMetricsDto.empty(year);
+        }
+        var needsYou = reports.stream()
+                .filter(r -> r.getStatus().isEditable()).toList();
+        var inFlight = reports.stream()
+                .filter(r -> r.getStatus() == ReportStatus.SUBMITTED).toList();
+        var reimbursed = reports.stream()
+                .filter(r -> r.getStatus() == ReportStatus.APPROVED)
+                .filter(r -> approvalYear(r, zone) == year).toList();
+        return new ReportMetricsDto(needsYou.size(), sumTotals(needsYou),
+                (int) needsYou.stream()
+                        .filter(r -> r.getStatus() == ReportStatus.REJECTED).count(),
+                inFlight.size(), longestWaitDays(inFlight, now), year,
+                sumTotals(reimbursed), reimbursed.size());
+    }
+
+    private static BigDecimal sumTotals(List<ExpenseReport> reports) {
+        return reports.stream().map(ExpenseReport::total)
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+    }
+
+    /**
+     * Whole days the longest-waiting submitted report has been waiting. A report
+     * whose {@code SUBMITTED} change is somehow absent contributes no wait rather
+     * than an arbitrary one; with no submitted reports at all the answer is 0.
+     */
+    private static long longestWaitDays(List<ExpenseReport> submitted, Instant now) {
+        return submitted.stream()
+                .map(r -> latestChangeTo(r, ReportStatus.SUBMITTED))
+                .filter(Objects::nonNull)
+                .mapToLong(change -> ChronoUnit.DAYS.between(change.getChangedAt(), now))
+                .max().orElse(0L);
+    }
+
+    /** The calendar year the report's approval fell in (report date as fallback). */
+    private static int approvalYear(ExpenseReport r, ZoneId zone) {
+        var approval = latestChangeTo(r, ReportStatus.APPROVED);
+        return approval == null ? r.getReportDate().getYear()
+                : approval.getChangedAt().atZone(zone).getYear();
+    }
+
+    /** The report's most recent transition into {@code toStatus}, or {@code null}. */
+    private static StatusChange latestChangeTo(ExpenseReport r, ReportStatus toStatus) {
+        return r.getStatusHistory().stream()
+                .filter(change -> change.getToStatus() == toStatus)
+                .max(Comparator.comparing(StatusChange::getChangedAt))
+                .orElse(null);
     }
 
     /**
