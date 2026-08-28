@@ -109,6 +109,28 @@ formula flips it to black once the accent's lightness passes 0.62. Bound to the 
 would one day turn the label black on a coral that never moved. `--em-header-text-color`
 is pinned instead, and the divergence is recorded here rather than carried silently.
 
+### Reaching the heading costs an explicit `color: inherit`
+
+Pinning the token is half the job; the bar still has to *deliver* it. `.app-header`
+declares `color: var(--em-header-text-color)` once and every descendant inherits it —
+except the ones Aura re-declares at element level. Aura's reset
+
+```css
+:where(h1,h2,h3,h4,h5,h6) { color: var(--vaadin-text-color); }
+```
+
+has specificity 0,0,0, which is *lower* than `.app-header`'s, and still wins: the bar's
+white arrives at the greeting by **inheritance**, and an inherited value loses to any
+declaration matching the element itself at any specificity. So the greeting `H1` carries
+`color: inherit` of its own. The logo (`a`, Aura's other element-level colour reset) has
+always carried it, and the pills declare the token directly.
+
+**Rule for anything added to this bar:** an `h1`–`h6` or an `a` needs its own
+`color: inherit`, or it renders `--vaadin-text-color` on coral. Everything else — `Span`,
+`Div`, Vaadin components — inherits correctly. Nothing errors when this is missed and the
+text stays legible (black on `#f16c4e` measures 6.99:1, *better* than the design's white),
+so neither the build nor a contrast check reports it. F-072.
+
 ## API
 
 ```java

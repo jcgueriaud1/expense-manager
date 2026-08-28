@@ -69,6 +69,17 @@ happened. That is the property the whole section is guarding against, and it is 
 an audit has to check what the theme actually defines rather than grep for a name
 (#158).
 
+A third silent mechanism, and the one that has actually shipped twice: **a container's
+inherited property never reaching a heading or a link.** Aura re-declares `color` on
+`h1`-`h6` and `a:any-link` at element level, and an inherited value loses to any rule
+matching the element itself — *at any specificity*, `:where()`'s zero included. So
+`.app-header { color: white }` leaves the `H1` inside it black, and no specificity fight
+you win will change that. Here the declaration is valid, defined and applied; it simply
+never arrives. When you declare an inherited property on a container, give every
+`h1`-`h6`/`a` inside it `color: inherit` of its own. Full table, the other affected
+elements, and the audit that finds this: `docs/theming-layouts.md` § *Inherited
+properties*. F-072.
+
 ## Layouts & spacing
 
 **Vaadin layout Java APIs for structure, plain CSS with tokens for the rest.** Never use

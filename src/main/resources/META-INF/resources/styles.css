@@ -101,6 +101,7 @@
     padding-inline-start: var(--vaadin-padding-l);
 }
 .summary-heading {
+    color: inherit;                              /* h1-h6 do not inherit it; F-072 */
     font-weight: var(--aura-font-weight-semibold);
     font-size: var(--aura-font-size-m);
     margin: 0 0 var(--vaadin-gap-s) 0;
@@ -529,6 +530,12 @@ vaadin-context-menu-item > a[router-link] {
 
 .app-header__greeting {
     margin: 0;
+    /*
+     * Aura re-declares `color` on h1-h6 at element level, so the bar's white
+     * never reaches this heading by inheritance, whatever the specificity of
+     * the rule it comes from. It has to be asked for. F-072.
+     */
+    color: inherit;
     font-size: 50px;                             /* design; beyond the type scale */
     line-height: 60px;
     font-weight: var(--aura-font-weight-semibold);

@@ -2460,3 +2460,52 @@ Deployment/Observability · UX-spec
   locator DSL cannot reach it.
 - Owner / next step: recorded here; the four tests now assert the model. Worth raising
   with the browserless-testing maintainers.
+
+### F-072 — A container's `color` never reaches an `h1`–`h6` or `a`: Aura re-declares it at element level, and inheritance loses to any matching rule
+- Date: 2026-08-28
+- Area: Vaadin
+- Severity: Medium
+- Task being attempted: issue #146's app shell — a coral header bar that sets its text
+  colour once, on the bar, and lets the logo, the nav pills and the greeting inherit it.
+- Expected vs actual: expected `.app-header { color: var(--em-header-text-color) }` to
+  reach the greeting `H1` inside it, since `.app-header` (specificity 0,1,0) far outranks
+  Aura's `:where(h1,h2,h3,h4,h5,h6) { color: var(--vaadin-text-color) }` (specificity
+  **0,0,0**). Actual: the greeting rendered black on coral. Specificity is not the
+  comparison being made — the bar's white arrives at the `H1` by *inheritance*, and an
+  inherited value loses to **any** declaration that matches the element itself, at any
+  specificity, zero included. `:where()` resets are built to be easy to override, but only
+  by a rule targeting the element; an ancestor's colour is not that.
+- Workaround used: `color: inherit` on the affected element's own class — a matching
+  declaration that opts back into inheritance. `styles.css:.app-header__greeting` and
+  `styles.css:.summary-heading`.
+- Evidence: `:where(h1,h2,h3,h4,h5,h6){color:var(--vaadin-text-color)}` in
+  `META-INF/resources/aura/aura.css` (`vaadin-aura-theme-25.2.5.jar`);
+  `styles.css:383` (`.app-header`), `styles.css:530` (`.app-header__greeting`);
+  `styles.css:88` (`.error-summary`), `styles.css:103` (`.summary-heading`);
+  `AppHeader.java:55`, `ErrorSummary.java:80`.
+- Impact: **two instances shipped, found by audit, not by looking.** The header greeting
+  (white → black on coral) and the validation summary's heading (`--aura-red-text` →
+  `--vaadin-text-color` inside a red callout). Both had the same signature: the class
+  overrides *some* of what Aura resets on that element — `.app-header__greeting` sets
+  `font-size`, `line-height` and `font-weight`, `.summary-heading` sets `font-weight` and
+  `font-size` — and not `color`, while an ancestor declares it. In both, the sibling `a`
+  was handled (`.app-header__logo { color: inherit }`, `.error-summary-link` declares the
+  token) and the heading was not, so the author had met the mechanism and not generalised
+  it. This is a third way Aura fails silently, beside F-062's undefined-property-frozen-
+  at-a-fallback and F-013/F-017's accepted-and-ignored variant: here the declaration is
+  valid, defined and applied, and simply never reaches the element that needed it.
+  Worst of all, an accessibility gate **prefers the bug** — black on `#f16c4e` measures
+  6.99:1, the design's white 3.00:1 — so a contrast pass is not merely silent but
+  actively wrong, and nothing in a build or a test run mentions any of it.
+- Suggested Vaadin/product improvement: Aura's element-level resets are load-bearing for
+  unstyled markup and should not go. But `color` is the one property whose reset routinely
+  fights an app's own container colour, and Aura already re-declares it on exactly two
+  subjects — `h1`–`h6` and `a:any-link`. Documenting that pair in the theming docs as
+  "does not inherit your colour; re-declare it" would cost a sentence. A stronger fix:
+  reset only what typography needs (`font-size`, `font-weight`, `line-height`) and leave
+  `color` to inherit, letting `--vaadin-text-color` reach headings from `:root` the way it
+  reaches every `Span`.
+- Owner / next step: both instances fixed; recorded in `app-shell.md` and
+  `error-summary.md`; the general rule and the audit that finds it are in
+  `docs/theming-layouts.md` § *Inherited properties*. Worth raising with the Aura team as
+  a docs gap at minimum.

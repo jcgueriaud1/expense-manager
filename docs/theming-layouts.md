@@ -160,6 +160,75 @@ scroller.setSizeFull();
   spans (finding F-029). Fall back to palette tokens (`--aura-red`, `--aura-green`, …) and
   `color-mix(...)` only for surfaces the components don't provide.
 
+## Inherited properties — headings and links don't get yours
+
+Declaring an inherited property on a container does **not** reach every descendant. Aura
+re-declares some properties on bare element selectors, and an inherited value loses to any
+rule that matches the element itself — **at any specificity, zero included**. Aura's reset
+is `:where(h1,h2,h3,h4,h5,h6)`, specificity 0,0,0, and it still beats `.app-header`'s
+0,1,0, because the two are not competing on specificity: one matches the element, the
+other only inherits to it. Nothing errors (F-072).
+
+What Aura re-declares, derived from `aura.css` in `vaadin-aura-theme-25.2.5.jar`:
+
+| Element | Properties it will not inherit from your container |
+|---|---|
+| `h1`–`h6` | `color`, `font-weight`, `font-size`, `line-height` |
+| `a:any-link` | `color` |
+| `b`, `strong`, `th` | `font-weight` |
+| `code`, `pre`, `figcaption` | `font-size`, `font-weight`, `line-height` |
+
+**The rule:** when a container declares one of these properties, every descendant in the
+table needs its own declaration for it — `color: inherit` to take the container's value,
+or the token directly. `Span`, `Div` and Vaadin components inherit correctly and need
+nothing. Re-derive the table after a Vaadin upgrade rather than trusting this copy; a
+hardcoded list goes stale in exactly the silent way the rule exists to prevent.
+
+### The audit
+
+Two checks. Neither needs Figma, and neither needs to know the right colour — both detect
+a contradiction internal to the CSS and the DOM. Which property to test is not a judgement
+call either: it is the intersection of *what the theme resets on this element* and *what
+project CSS declares on an ancestor of it*, and both sets come from CSS.
+
+**Static.** Parse `aura.css` with a real CSS parser (it ships minified, with `@supports` /
+`@scope` / `@media` nesting) and emit an `(element, property)` pair only when the
+selector's **subject** — the rightmost compound, pseudo-elements stripped — is that bare
+element type. Without the subject rule, `…::part(label)`, `ol li::marker` and
+`b,blockquote,pre code,strong` all produce false pairs. Then flag:
+
+> an ancestor declares `P` · the element is in the table for `P` · no project rule matching
+> the element declares `P`.
+
+The high-precision signature is a class that overrides *some but not all* of what the
+theme resets on its element: both F-072 instances set `font-size`/`font-weight` and not
+`color`. Containment is the weak edge — `.app-*` names carry their block (`__`), the
+flat-dash majority (`.status-callout-heading`) don't, and the sound alternative is a
+dataflow through `addClassName`/`add()` in Java. So this check is precise where BEM holds
+and silent elsewhere; treat it as a fast screen, not a proof.
+
+**Runtime.** The rendered DOM settles containment exactly, including dynamic classes:
+
+```js
+computed(E)[P] !== computed(inheritanceParent(E))[P] && !projectCssDeclares(E.classList, P)
+```
+
+`inheritanceParent` is not `parentElement` — inheritance follows the flattened tree, so
+slotted content (`.app-nav__item` is a `vaadin-button`) inherits through its `assignedSlot`
+and naive parent-walking reports garbage at every shadow boundary. CDP
+`CSS.getMatchedStylesForNode` is worth adding for the *report* rather than the detection:
+"loses to `aura.css :where(h1,h2,h3,h4,h5,h6)`" is fixable, "greeting is rgb(0,0,0)" starts
+a debugging session.
+
+**Conformance is a separate, slower pass** and the only one with an oracle — and the oracle
+is `docs/design/`, never Figma directly. The specs record deliberate divergences from the
+design; `app-shell.md` holds one exactly here (the bar's text is pinned, not bound to
+`aura-accent-contrast-color`, which flips to black above accent lightness 0.62), so a check
+resolving Figma's own variable could assert black-on-coral and call it conformance.
+
+**Do not rely on a contrast gate for this class of bug.** It can invert: black on the
+header's `#f16c4e` measures 6.99:1 and the design's white 3.00:1, so axe prefers the defect.
+
 ## Known gap
 
 Arbitrary spacing values that don't map to an `xs`/`s`/`m`/`l`/`xl` token must be hard-coded
