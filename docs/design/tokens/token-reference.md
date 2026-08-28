@@ -34,12 +34,21 @@ The complete list — everything else is Aura stock.
 | `--em-card-padding` | `20px` | off-scale: between `padding-l` 16 and `padding-xl` 24 |
 | `--em-section-gap` | `40px` | off-scale: beyond `gap-xl` 24 |
 | `--em-font-size-title` | `24px` | off-scale: beyond `font-size-xl` 18 |
+| `--em-font-size-total` | `20px` | off-scale: beyond `font-size-xl` 18 — the report card's total |
+| `--em-font-size-metric` | `28px` | off-scale: beyond `font-size-xl` 18 — the metric card's figure |
 | `--em-header-color` | `#f16c4e` | the shell bar's brand coral; bound to no design variable, and no Aura hue is near it |
 | `--em-header-text-color` | `#ffffff` | the bar's label colour — pinned, **not** `--aura-accent-contrast-color`, which tracks the accent rather than the bar |
 
 Plus one rule scoping `--aura-accent-color-light/-dark` to `--aura-neutral-*` on
 non-tertiary buttons. All in
 `src/main/resources/META-INF/resources/aura-theme.css`.
+
+**`--em-font-size-total` and `--em-font-size-metric` are decided but not yet declared.**
+The report-list survey settled both; a survey writes no CSS, so adding them to
+`aura-theme.css` belongs to whoever applies the theme next. Until then any `var()` on
+either renders **unset** — invalid, so visibly wrong rather than silently frozen, which
+is the safer of the two failures but still a failure. Do not ship a view that uses them
+before they exist.
 
 `--aura-app-layout-radius` was here until #146 and is not any more: it styles
 `AppLayout`'s content area, and the shell no longer uses `AppLayout`. The design's 12px
@@ -80,7 +89,9 @@ only** — there is no bare `--vaadin-padding` / `--vaadin-gap` (F-030).
 
 | Token | Size | Line height | When |
 |---|---|---|---|
-| `--em-font-size-title` | 24 | — | page headings |
+| `--em-font-size-metric` | 28 | — | metric card figures |
+| `--em-font-size-title` | 24 | — | page headings, report card titles |
+| `--em-font-size-total` | 20 | — | report card totals |
 | `--aura-font-size-xl` | 18 | 26 | grand total, list title |
 | `--aura-font-size-l` | 16 | 22 | card totals, amounts, detail title |
 | `--aura-font-size-m` | 14 | 20 | body, card titles |

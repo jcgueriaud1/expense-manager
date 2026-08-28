@@ -69,6 +69,9 @@ Every decision row carries one:
 |---|---|
 | App shell — top header bar, gradient, nav widths (220/250), page inset (80px) | #146 |
 | Per-view spacing against the new token scale | one issue per view |
+| Report card hover — invisible on actionable cards; the design draws no hover state | the report-list redesign |
+| `--em-font-size-total` / `--em-font-size-metric` decided but not yet in `aura-theme.css` | whoever applies the theme next |
+| Whether the 20/24/28 display ramp should be design tokens rather than `--em-*` properties | the designer |
 
 ## Lifecycle
 
