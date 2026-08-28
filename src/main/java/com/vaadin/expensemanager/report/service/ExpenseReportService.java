@@ -2,6 +2,7 @@ package com.vaadin.expensemanager.report.service;
 
 import java.io.ByteArrayInputStream;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -95,14 +96,57 @@ public class ExpenseReportService {
         this.mapper = mapper;
     }
 
-    /** The current user's reports, newest report-date first (My Reports, UC-002). */
+    /**
+     * The current user's reports, newest report-date first (My Reports, UC-002).
+     * Each row carries its trips, its created-on date, and — when rejected — who
+     * rejected it and when (issue #147).
+     *
+     * <p><strong>Three queries, whatever the list length.</strong> A summary reads
+     * three of the aggregate's collections: the lines (the derived total), the trips
+     * (the card's trip rows) and the status history with its actors (the rejection
+     * footer). Left lazy, each is one query <em>per report</em>. Each is instead
+     * fetched for the whole owner-scoped set in one statement — separately, because
+     * two ordered collections in a single {@code join fetch} multiply the rows and
+     * corrupt their {@code @OrderColumn} indices. The second and third calls are run
+     * for their effect on the persistence context; the reports they hydrate are the
+     * ones already in hand.
+     */
     @RolesAllowed("USER")
     @Transactional(readOnly = true)
     public List<ReportSummaryDto> listMine() {
-        return reportRepository
-                .findByOwnerIdOrderByReportDateDescIdDesc(currentUserId()).stream()
+        return loadMineFetchingTravels().stream()
                 .map(ReportDtoMapper::toSummary)
                 .toList();
+    }
+
+    /**
+     * The three at-a-glance metrics above the My Reports list, over
+     * <strong>only</strong> the current user's reports (issue #147, ADR-0008) —
+     * every figure here is per-user, and one that leaked across owners would be
+     * worse than a list that did.
+     *
+     * <p><strong>"Needs you" is drafts and rejected together</strong>, with the
+     * rejected ones also called out in {@link ReportMetricsDto#rejectedCount()} — a
+     * breakdown of the figure, not an addition to it, so a user with 2 drafts and 1
+     * rejected has {@code needsYouCount == 3}. That is exactly
+     * {@link ReportStatus#isEditable()}, the predicate the list already groups on:
+     * one definition of "awaiting its owner", already named in the domain, rather
+     * than a second notion invented for the metric. (The design frame argues with
+     * itself here — its metric copy and its greeting say drafts + rejected, its
+     * sample cards file Rejected under "closed". The copy wins; see F-073.)
+     *
+     * <p>The in-flight wait is measured from the latest {@code SUBMITTED} status
+     * change, never from the user-entered report date, and the reimbursed year is
+     * returned rather than left for the caller to assume — the caption and the
+     * figure come from one place so they cannot disagree at a year boundary.
+     *
+     * <p>A user with no reports gets zeroes, not nulls and not an exception.
+     */
+    @RolesAllowed("USER")
+    @Transactional(readOnly = true)
+    public ReportMetricsDto myMetrics() {
+        return ReportDtoMapper.toMetrics(loadMineFetchingStatusHistory(),
+                Instant.now(), ZoneId.systemDefault());
     }
 
     /**
@@ -491,6 +535,29 @@ public class ExpenseReportService {
                         type.contentType()),
                 () -> receiptRepository.save(new Receipt(line, upload.data(),
                         upload.filename(), type.contentType())));
+    }
+
+    /**
+     * The current user's reports with lines <em>and</em> status history fetched —
+     * the two collections every metric reads (issue #147). Two queries, or one when
+     * the user has no reports at all.
+     */
+    private List<ExpenseReport> loadMineFetchingStatusHistory() {
+        Long ownerId = currentUserId();
+        var reports = reportRepository.findByOwnerIdFetchingLines(ownerId);
+        if (!reports.isEmpty()) {
+            reportRepository.fetchStatusHistoryByOwnerId(ownerId);
+        }
+        return reports;
+    }
+
+    /** {@link #loadMineFetchingStatusHistory()} plus the trips each card lists. */
+    private List<ExpenseReport> loadMineFetchingTravels() {
+        var reports = loadMineFetchingStatusHistory();
+        if (!reports.isEmpty()) {
+            reportRepository.fetchTravelsByOwnerId(currentUserId());
+        }
+        return reports;
     }
 
     private ExpenseReport requireOwned(Long id) {
