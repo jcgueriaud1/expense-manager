@@ -1,7 +1,12 @@
 # Component specs
 
-One file per component **that exists in this app**. Nothing speculative: if it is not in
-`src/main/java` or `styles.css` today, it does not get a file.
+One file per component that **exists in this app, or that a survey's delta will
+create**. Nothing speculative beyond that: a component nobody has committed to building
+does not get a file, and one that is merely *imagined* for a future view does not either.
+
+A file written ahead of the code carries `Implementation: none`, which is exactly what
+that value is for — the spec is the contract, so writing it first is the intended order
+when the delta that will satisfy it is already filed.
 
 **Written by `/figma-survey`**, scoped to a view or a component. These files are the
 **contract**: implementation takes its tokens and states from them, and a difference is a
@@ -21,6 +26,8 @@ source and would go stale here.
 | [`button.md`](button.md) | themed primitive | design | conforms |
 | [`badge.md`](badge.md) | themed primitive | design | conforms |
 | [`report-card.md`](report-card.md) | composite | design | unaudited |
+| [`metric-card.md`](metric-card.md) | composite | design | none |
+| [`report-list-section.md`](report-list-section.md) | composite | design | unaudited |
 | [`expense-line-card.md`](expense-line-card.md) | composite | design | **drifted** |
 | [`travel-card.md`](travel-card.md) | composite | design | **drifted** |
 | [`totals-card.md`](totals-card.md) | composite | design | **drifted** |
@@ -67,10 +74,14 @@ mechanical divergence found" and no more — an audit can tell that a token is m
 a table, not that the right component was chosen for the design's intent.
 
 > **The values above were assessed by hand during issue #144.** No audit tooling exists
-> yet, so treat every `conforms` as provisional and both `unaudited` rows as literally
-> that. Two specs also predate any check of their design counterpart: `status-callout` was
-> written from the stylesheet alone, and `report-card` describes the report *list*, whose
-> frame has never been surveyed.
+> yet, so treat every `conforms` as provisional and every `unaudited` row as literally
+> that. One spec still predates any check of its design counterpart: `status-callout` was
+> written from the stylesheet alone.
+>
+> The report *list* frame (`116:2499`) was surveyed for the report-list redesign, which
+> resolved `report-card`'s design reference and added `metric-card` and
+> `report-list-section`. `metric-card` is `none` on purpose — the spec is ahead of the
+> code, which is what that value is for.
 
 ## Who writes these
 

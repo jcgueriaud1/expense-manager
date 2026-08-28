@@ -2509,3 +2509,40 @@ Deployment/Observability · UX-spec
   `error-summary.md`; the general rule and the audit that finds it are in
   `docs/theming-layouts.md` § *Inherited properties*. Worth raising with the Aura team as
   a docs gap at minimum.
+
+### F-073 — A design frame's sample data can contradict its own copy, and a survey that reads the mock as spec implements the wrong rule
+- Date: 2026-08-28
+- Area: Process / Figma
+- Severity: Medium
+- Task being attempted: surveying frame `116:2499` "My Expenses" (the report list) for
+  issue #147, whose acceptance criteria required the "Needs you" metric definition to be
+  *confirmed against the design* rather than assumed.
+- Expected vs actual: expected the frame to state one definition. It states two. The
+  metric card reads `2 · €1234.00 · 1 rejected` and the shell greeting reads "2 items
+  need you attention", which together say drafts + rejected with rejected broken out.
+  But the frame's own card placement says the opposite: the two cards drawn under
+  `section-attention` carry **Submitted** and **Approved** badges, while the **Rejected**
+  card sits under `section-submitted-closed`. Read literally, "needs your attention"
+  would mean submitted + approved and exclude rejected outright — the inverse of the
+  metric directly above it, and the inverse of the app's existing
+  `ReportStatus.isEditable()` grouping.
+- Why it is easy to get wrong: the placement is the more *concrete* signal. Copy can be
+  read as loose, but three cards sorted into two named sections looks like a decision
+  someone made. It is not: mock rows are dressed to show every badge colour once, so the
+  distribution is chosen for visual coverage rather than for semantics. Nothing in the
+  frame marks which of the two signals is load-bearing.
+- Resolution: copy wins over sample data. Two independent pieces of *prose* agreed
+  (metric sub-line, greeting), the app already implemented that rule, and the placement
+  had an obvious non-semantic motive. Recorded as settled in `metric-card.md` with the
+  contradiction named, so the next survey does not reopen it.
+- The general rule this yields: **a frame's copy and structure are specification; its
+  row-level content is illustration.** Take counts, statuses and groupings from labels,
+  captions and layer names, never from which mock record landed in which group. Where
+  only the content answers a question, the question is unanswered — raise it with the
+  designer rather than inferring.
+- Suggested Vaadin/product improvement: none for Vaadin. For the design process: a frame
+  whose mock data is deliberately unrepresentative should say so in a note, the way an
+  annotation marks a component. Cheaper than either side guessing.
+- Owner / next step: settled for #147; raised with the designer in the survey follow-up
+  issue alongside the "CLOSEd" casing typo, the "need you attention" wording, and the
+  20/24/28 display ramp.
