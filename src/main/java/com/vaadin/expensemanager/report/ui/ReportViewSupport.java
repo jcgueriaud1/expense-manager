@@ -119,6 +119,8 @@ public final class ReportViewSupport {
         return percent.stripTrailingZeros().toPlainString() + " %";
     }
 
+    private static final DateTimeFormatter TRIP_DATE =
+            DateTimeFormatter.ofPattern("d MMM yyyy", Locale.ENGLISH);
     private static final DateTimeFormatter TRIP_DATE_TIME =
             DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm", Locale.ENGLISH);
     private static final DateTimeFormatter TRIP_TIME =
@@ -134,6 +136,25 @@ public final class ReportViewSupport {
      */
     public static String formatTimestamp(Instant instant) {
         return instant == null ? "" : TIMESTAMP.format(instant);
+    }
+
+    /**
+     * A trip's <em>date</em> range for a report card's trip row, e.g.
+     * {@code "25 Aug 2026 – 25 Aug 2026"} (en dash, spaced). Times are omitted —
+     * the list summarises, the detail view's
+     * {@link #formatTripRange(LocalDateTime, LocalDateTime) range} carries the
+     * clock.
+     *
+     * <p>A single-day trip <strong>repeats</strong> the date rather than
+     * collapsing to one: the design draws it that way, and a half-range reads as
+     * missing data. Returns an empty string if either endpoint is missing.
+     */
+    public static String formatTripDates(LocalDateTime departure,
+            LocalDateTime returnAt) {
+        if (departure == null || returnAt == null) {
+            return "";
+        }
+        return TRIP_DATE.format(departure) + " – " + TRIP_DATE.format(returnAt);
     }
 
     /**

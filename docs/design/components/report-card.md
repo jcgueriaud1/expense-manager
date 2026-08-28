@@ -116,22 +116,32 @@ CSS-only. Composed in `MyReportsView`.
 | State | Behaviour |
 |---|---|
 | default | `--aura-surface-color`, 1px border, no shadow, title in secondary colour |
-| hover | background lifts to `--aura-surface-color`, `transition: background 0.12s ease` |
+| hover | border tints to `--aura-accent-color`, `transition: border-color 0.12s ease` |
 | active | browser default for a link |
 | focus | browser/Aura focus ring on the `RouterLink` — the whole card, since the card is the link |
 | disabled | n/a — a non-navigable report is not rendered as a card |
 | error | n/a — a card renders a report's status, it does not carry validation |
 
-**The hover row is a known problem, not a specification.** `.report-card:hover` and
-`.report-card--actionable` both set `background: var(--aura-surface-color)`, so an
-actionable card — the majority of what a user sees — has no visible hover change at all.
-The design draws no hover state, so what it should be is an open question rather than a
-value to copy. The report-list redesign owns deciding it; a hover that is invisible on
-half the cards is worse than none, because the pointer cursor promises a response.
+**The hover row was an open question and #162 closed it.** It used to read
+`background: var(--aura-surface-color)` — which is what *both* variants already sit on, so
+an actionable card, the majority of what a user sees, changed not at all while the pointer
+cursor promised it would. The design draws no hover state, so there was nothing to copy and
+the redesign had to pick one.
 
-Rendered contrast of the closed card's dimmed title against `--aura-surface-color` is
-**unverified** — it is secondary text at 24px, so it should pass comfortably, but no
-measurement has been taken. Visual verification fills this in.
+Decided: **the border tints to `--aura-accent-color`.** It is visible on both variants
+(the actionable card carries the same 1px border as the closed one, transparent, so the
+tint costs no reflow and the box model never shifts); it is distinct from the shadow that
+distinguishes the two variants, so hovering an actionable card cannot be misread as a
+change of state; and it follows the colour scheme, which a literal would not. The two
+alternatives were a shadow lift — rejected because a closed card gaining a shadow reads as
+becoming actionable — and a translate, rejected as motion for its own sake on a list that
+can hold dozens of cards.
+
+Rendered contrast of the closed card's dimmed title against `--aura-surface-color`,
+measured in the running app (#162): **6.21:1 light, 8.35:1 dark**, at 24px/600. It clears
+AA for large text (3:1) and normal text (4.5:1) alike, so the dimming is safe as drawn. The
+card's other secondary text measures the same, and the trip dates — primary colour at 12px,
+the design's deliberate choice — measure 19.16:1 light.
 
 ## Divergence
 

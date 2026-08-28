@@ -47,40 +47,149 @@
     padding: var(--vaadin-padding-m);
 }
 
+/*
+ * Metric band — docs/design/components/metric-card.md.
+ *
+ * A summary of the list below, never a control: no hover, no focus, no pointer.
+ */
+.metrics-row { flex-wrap: wrap; }
+.metric-card {
+    /*
+     * Equal-width columns. The spec's flex-basis is 0; an 8rem basis is used
+     * instead so the row wraps at ~360px rather than crushing three cards into
+     * it (ADR-0020). All three share the basis and the grow factor, so they stay
+     * exactly equal whenever they do share a line.
+     */
+    flex: 1 0 8rem;
+    min-width: 0;
+    padding: var(--em-card-padding);
+    border: 1px solid var(--vaadin-border-color-secondary);
+    border-radius: var(--em-card-radius);
+    background: var(--aura-surface-color);
+}
+.metric-card-label {
+    font-size: var(--aura-font-size-xs);
+    font-weight: var(--aura-font-weight-medium);
+    color: var(--vaadin-text-color-secondary);
+}
+.metric-card-value {
+    font-size: var(--em-font-size-metric);
+    font-weight: var(--aura-font-weight-semibold);
+    color: var(--vaadin-text-color);
+    line-height: 1.1;
+}
+.metric-card-sub {
+    font-size: var(--aura-font-size-xs);
+    color: var(--vaadin-text-color-secondary);
+}
+/* Nested inside .metric-card-sub, so the "·" before it stays secondary. */
+.metric-card-sub-alert { color: var(--aura-red-text); }
+
+/*
+ * Sections — docs/design/components/report-list-section.md.
+ *
+ * A vaadin-details, so the summary is the disclosure control: one tab stop, the
+ * focus ring around chevron + label + count, and collapsed cards out of the
+ * accessible tree. AURA_NO_PADDING drops both the content padding and Aura's
+ * indent of the content under the summary; the design has neither, and the
+ * header-to-cards gap is set here instead.
+ */
+.report-list-section {
+    width: 100%;
+    --vaadin-details-summary-gap: var(--vaadin-gap-s);
+    /*
+     * Flush the summary with the cards below it: Aura pads it 6px/8px, which
+     * indents the chevron out of the design's left edge. Set through the
+     * component's own style property rather than a rule on the element.
+     */
+    --vaadin-details-summary-padding: 0;
+}
+.report-list-section::part(content) { padding-top: var(--em-card-padding); }
+/*
+ * Aura's chevron points right when collapsed and down when expanded; the design
+ * points it down when collapsed and up when expanded. The glyph's own 0deg is
+ * "right", so the two states are a quarter turn either side of it.
+ */
+.report-list-section vaadin-details-summary::part(toggle) { rotate: 90deg; }
+.report-list-section vaadin-details-summary[opened]::part(toggle) { rotate: -90deg; }
+.report-list-section-header { color: var(--vaadin-text-color-secondary); }
+.report-list-section-count { font-size: var(--aura-font-size-xs); }
+/* Hover lifts the header's text; the card stack below is unaffected. Aura already
+   gives the summary a pointer, so only the colour is ours. */
+.report-list-section vaadin-details-summary:hover .section-label,
+.report-list-section vaadin-details-summary:hover .report-list-section-count {
+    color: var(--vaadin-text-color);
+}
+/* The label is uppercased here, never in the string (screen readers spell it). */
+
+/*
+ * Report card — docs/design/components/report-card.md.
+ *
+ * The classes sit on the RouterLink itself, so the whole card is the link. A
+ * RouterLink is not a Vaadin layout, so its column/gap live here (see
+ * docs/theming-layouts.md).
+ */
 .report-card {
-    /* RouterLink is not a Vaadin layout — its column/gap live here (see docs). */
     display: flex;
     flex-direction: column;
     gap: var(--vaadin-gap-s);
     width: 100%;
     color: var(--vaadin-text-color);
     text-decoration: none;
-    padding: var(--vaadin-padding-l);
-    border: 1px solid var(--vaadin-border-color);
-    border-radius: var(--vaadin-radius-l);
-    background: var(--vaadin-background-container);
-    transition: background 0.12s ease;
-}
-.report-card--actionable {
+    padding: var(--em-card-padding);
+    border: 1px solid var(--vaadin-border-color-secondary);
+    border-radius: var(--em-card-radius);
     background: var(--aura-surface-color);
+    transition: border-color 0.12s ease;
+}
+/*
+ * Actionable lifts on the shadow, not on a second background: Aura has one
+ * surface colour where the kit has two levels. The border stays in the box model
+ * as transparent so the hover tint below costs no reflow.
+ */
+.report-card--actionable {
+    border-color: transparent;
     box-shadow: var(--aura-shadow-xs);
 }
-.report-card:hover { background: var(--aura-surface-color); }
+/*
+ * Hover, decided by #162: the design draws none, and the value the card used to
+ * carry (background: --aura-surface-color) is what BOTH variants already sit on,
+ * so an actionable card — most of what a user sees — changed not at all while
+ * the pointer promised it would. An accent border tint is visible on both
+ * variants, distinct from the shadow that distinguishes them, and follows the
+ * colour scheme.
+ */
+.report-card:hover { border-color: var(--aura-accent-color); }
 .report-card-title {
     font-weight: var(--aura-font-weight-semibold);
-    font-size: var(--aura-font-size-m);
+    font-size: var(--em-font-size-title);
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.report-card-footer {
+/* A closed report's title dims; "needs you" is then visible without reading. */
+.report-card:not(.report-card--actionable) .report-card-title {
+    color: var(--vaadin-text-color-secondary);
+}
+.report-card-title-row { padding-bottom: var(--vaadin-padding-s); }
+.report-card-trip {
+    padding: var(--vaadin-padding-s);
+    border-radius: var(--vaadin-radius-s);
+}
+/* The card's only rules, and they are between trip rows — never under the last. */
+.report-card-trip + .report-card-trip {
     border-top: 1px solid var(--vaadin-border-color-secondary);
-    padding-top: var(--vaadin-gap-s);
+}
+.report-card-trip-dates { font-size: var(--aura-font-size-xs); }
+.report-card-footer { padding-top: var(--vaadin-padding-s); }
+.report-card-meta {
+    font-size: var(--aura-font-size-xs);
+    color: var(--vaadin-text-color-secondary);
 }
 .report-card-total {
     font-weight: var(--aura-font-weight-semibold);
-    font-size: var(--aura-font-size-l);
+    font-size: var(--em-font-size-total);
 }
 
 /* ---- Detail ---- */

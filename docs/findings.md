@@ -2546,3 +2546,30 @@ Deployment/Observability · UX-spec
 - Owner / next step: settled for #147; raised with the designer in the survey follow-up
   issue alongside the "CLOSEd" casing typo, the "need you attention" wording, and the
   20/24/28 display ramp.
+
+### F-074 — The browserless locator's `atIndex` is 1-based, so the idiomatic Java `atIndex(0)` throws
+- Date: 2026-08-28
+- Area: Verification
+- Severity: Low
+- Task being attempted: issue #162's collapsible sections — closing the *first* of two
+  `Details` from a browserless test and asserting the count survives the collapse.
+- Expected vs actual: expected `findDetails().withClassName("report-list-section")
+  .atIndex(0)` to select the first match, the way every index in Java's own collection
+  and stream APIs does. Actual: `IllegalArgumentException: Index must be greater than
+  zero, but was 0` — the locator counts from 1, so the first element is `atIndex(1)`.
+- Workaround used: `atIndex(1)`, with a one-line comment at the call site so the next
+  reader does not "fix" it back.
+- Evidence: `com.vaadin.browserless.locator.Locator.atIndex(Locator.java:269)`,
+  `browserless-test-shared-1.1.2`; `MyReportsViewUiTest
+  #bothSectionsStartExpandedAndCollapsingOneKeepsItsCountVisible`.
+- Impact: one failed test run, no more — the exception fires immediately and names the
+  rule, so this is the cheap kind of surprise. Logged because the sibling APIs a test
+  reaches for in the same breath (`components()`, `List::get`, `Stream::skip`) are all
+  0-based, so the mismatch will recur for every author who meets it, and because an agent
+  writing the call has no signal short of running it.
+- Suggested Vaadin/product improvement: either accept 0-based indices (the Java
+  convention, and what the surrounding APIs use) or say so in the method's javadoc —
+  neither the name nor the signature hints at 1-based counting. Failing both, `first()`
+  and `last()` helpers would cover the common cases without an index at all.
+- Owner / next step: worked around in the test; worth reporting upstream to the
+  browserless-test maintainers as an API-consistency nit.

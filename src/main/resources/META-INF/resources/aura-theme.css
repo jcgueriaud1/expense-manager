@@ -53,13 +53,17 @@ html {
  *
  * Defined here, consumed by the per-view classes in styles.css as each view is
  * revised — so they are expected to be unreferenced until the first per-view issue.
- * Adding a fifth is a decision for docs/design/, not a per-view convenience.
+ * Adding another is a decision for docs/design/, not a per-view convenience: the
+ * last two arrived that way, decided by the report-list survey and recorded in
+ * tokens/token-reference.md before #162 declared them here.
  */
 html {
   --em-card-radius: 12px;      /* between --vaadin-radius-m 9 and --vaadin-radius-l 15 */
   --em-card-padding: 20px;     /* between --vaadin-padding-l 16 and --vaadin-padding-xl 24 */
   --em-section-gap: 40px;      /* beyond --vaadin-gap-xl 24, the top of the scale */
   --em-font-size-title: 24px;  /* beyond --aura-font-size-xl 18, the top of the scale */
+  --em-font-size-metric: 28px; /* beyond --aura-font-size-xl 18, the top of the scale */
+  --em-font-size-total: 20px;  /* beyond --aura-font-size-xl 18, the top of the scale */
 }
 
 /*
