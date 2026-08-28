@@ -23,10 +23,34 @@ pin them first, aim every test at them, stop only when they are met.
    component, a changed theme token, a field added to a form. When it doesn't —
    data, logic, or config rendered through existing, already-styled UI — skip it:
    the green suite plus a direct check (SQL query, `flyway validate`) is the
-   verification. When you visually verify, follow the
-   [`visual-verification`](../visual-verification/SKILL.md) skill and view every
-   route the ticket touches.
+   verification.
+
+   When you visually verify, invoke the `vaadin-playwright-screenshot` skill to
+   capture one screenshot per criterion across every route the ticket touches,
+   then the `visual-verdict` skill to score them against the reference.
+
+   **Verify in a separate context** — a delegated agent or sub-session, where the
+   harness offers one — briefed with the ticket number, the routes, and a note on
+   what changed. Verifying costs an app boot, a temporary capture test, a build
+   run and a set of full-page images, none of which the implementation context
+   needs; what it needs back is the verdict JSON, the issues and the image paths.
+   Where no delegation is available, verify inline and expect to pay that cost.
+
+   **Loop:** if the verdict scores below the 90 threshold, fix what its
+   `differences[]`/`suggestions[]` call out in the implementation context — the
+   verifier reports, it does not edit code — then re-verify by continuing the
+   same verification context rather than opening a fresh one: its app is still
+   running and its capture test still written. Repeat until it clears 90 — a
+   low-scoring verdict is not done. Open at most the one screenshot you need to
+   see a reported issue for yourself. Keep the final passing screenshots and
+   verdict; they go on the PR in step 5.
 4. **Commit** on a feature branch off `main`.
+5. **Open the PR, then attach the visual proof.** After the PR is created, commit
+   the passing screenshots into `docs/screenshots/` (name each by its view; if a
+   screenshot of the same view exists from a previous issue, overwrite it), then
+   post the final `visual-verdict` JSON as a separate `gh pr comment` linking to
+   them. Skip only when the change had nothing to visually verify (step 3 was
+   skipped).
 
 ## While you work
 
