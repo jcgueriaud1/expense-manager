@@ -5,6 +5,7 @@ import java.util.Locale;
 
 import com.vaadin.expensemanager.base.DomainRuleException;
 import com.vaadin.expensemanager.base.ui.ErrorSummary;
+import com.vaadin.expensemanager.base.ui.LucideIcon;
 import com.vaadin.expensemanager.user.Role;
 import com.vaadin.expensemanager.user.UserAdminService;
 import com.vaadin.expensemanager.user.UserSummaryDto;
@@ -16,8 +17,6 @@ import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.Paragraph;
-import com.vaadin.flow.component.icon.Icon;
-import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.radiobutton.RadioButtonGroup;
@@ -107,7 +106,7 @@ public class UserManagementView extends VerticalLayout {
 
     /** Per-row action opening the role/access editor for that user. */
     private Button manageButton(UserSummaryDto user) {
-        var button = new Button(new Icon(VaadinIcon.EDIT), event -> openEditor(user));
+        var button = new Button(LucideIcon.PENCIL.create(), event -> openEditor(user));
         button.addThemeVariants(ButtonVariant.TERTIARY);
         button.setAriaLabel("Edit user " + user.email());
         return button;
@@ -223,7 +222,7 @@ public class UserManagementView extends VerticalLayout {
     private HorizontalLayout filters() {
         search.setLabel("Search");
         search.setPlaceholder("Search by name or email");
-        search.setPrefixComponent(new Icon(VaadinIcon.SEARCH));
+        search.setPrefixComponent(LucideIcon.SEARCH.create());
         search.setClearButtonVisible(true);
         search.setWidth("20em");
         search.setValueChangeMode(ValueChangeMode.EAGER);

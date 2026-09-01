@@ -160,6 +160,40 @@ scroller.setSizeFull();
   spans (finding F-029). Fall back to palette tokens (`--aura-red`, `--aura-green`, …) and
   `color-mix(...)` only for surfaces the components don't provide.
 
+## Icons — Lucide, via `LucideIcon`
+
+Every glyph the app draws comes from **Lucide**, through the `LucideIcon` enum
+(ADR-0026). `VaadinIcon`, `LumoIcon`, and the `"vaadin:name"` / `"lumo:name"` string
+forms are out of `src/main/java`, and `IconSetGuardTest` fails the build if one comes
+back.
+
+```java
+new Button("Add expense", LucideIcon.PLUS.create())     // sized by the button
+icon = LucideIcon.PLANE.create("16px")                  // only where nothing sizes it
+```
+
+- **Don't size an icon the theme already sizes.** Aura sizes icons in every slot it owns
+  — buttons, field prefixes, menu items — and an explicit size fights it. Pass a size
+  only for a standalone glyph in a layout the app drew itself.
+- **This governs glyphs the app draws, not a component's own.** A combo box's dropdown
+  arrow, a `Details` summary's chevron, a grid's sort indicator, an `Upload`'s drop-zone
+  glyph: those ship with their component and stay. The report list's chevron is the
+  worked example — the design draws `lucide/chevron-up`, and it is satisfied by Aura's
+  own toggle rotated in CSS, not by an icon of ours.
+- **A new glyph comes from the design.** Read the name off the Figma frame, drop the
+  upstream file into `META-INF/resources/icons/lucide.svg` unmodified, add the enum
+  constant. If the design draws no glyph there, that is a question for the designer —
+  ADR-0026 carries a ledger of the ones picked without one, and it is meant to shrink.
+- **Every `<symbol>` needs its own `stroke="currentColor"`** (plus `fill`, `stroke-width`,
+  the two `stroke-line*`, and `viewBox`). Addressed by `symbol`, `vaadin-icon` renders
+  `<use href="…">` against the external file and reads *no* attribute off it, so anything
+  on the sprite's root `<svg>` is silently ignored. A symbol missing it renders black —
+  correct-looking in light mode, invisible in dark. F-075.
+
+The colour rule follows from `currentColor`: an icon takes its parent's text colour, so
+tint it by colouring the parent, not the glyph. That is what makes one sprite serve both
+colour schemes, and a red `TRASH_2` in an error-variant button costs nothing.
+
 ## Inherited properties — headings and links don't get yours
 
 Declaring an inherited property on a container does **not** reach every descendant. Aura

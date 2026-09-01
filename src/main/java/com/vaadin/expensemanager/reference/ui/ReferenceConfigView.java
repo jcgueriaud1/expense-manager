@@ -2,13 +2,13 @@ package com.vaadin.expensemanager.reference.ui;
 
 import java.util.List;
 
+import com.vaadin.expensemanager.base.ui.LucideIcon;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.Paragraph;
-import com.vaadin.flow.component.icon.Icon;
-import com.vaadin.flow.component.icon.VaadinIcon;
+import com.vaadin.flow.component.icon.AbstractIcon;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
@@ -41,7 +41,7 @@ abstract class ReferenceConfigView<T> extends VerticalLayout {
         setPadding(true);
         setSpacing(true);
 
-        var addButton = new Button(addButtonText, new Icon(VaadinIcon.PLUS),
+        var addButton = new Button(addButtonText, LucideIcon.PLUS.create(),
                 event -> openEditor(null));
         addButton.addThemeVariants(ButtonVariant.PRIMARY);
 
@@ -80,16 +80,24 @@ abstract class ReferenceConfigView<T> extends VerticalLayout {
         return items.indexOf(item);
     }
 
-    /** An accessible, theme-agnostic (Aura/Lumo) tertiary icon button. */
-    protected Button iconButton(VaadinIcon icon, String ariaLabel, Runnable action) {
-        var button = new Button(new Icon(icon), event -> action.run());
+    /**
+     * An accessible tertiary icon button.
+     *
+     * <p>The icon arrives built rather than as a collection member: typed to
+     * {@link LucideIcon} this base would pin both subclasses to one icon set, which
+     * is exactly the coupling #163 removed. {@link AbstractIcon} is the common
+     * supertype of every icon Vaadin has, so a subclass can pass whatever it needs
+     * without this class knowing where glyphs come from.
+     */
+    protected Button iconButton(AbstractIcon<?> icon, String ariaLabel, Runnable action) {
+        var button = new Button(icon, event -> action.run());
         button.addThemeVariants(ButtonVariant.TERTIARY);
         button.setAriaLabel(ariaLabel);
         return button;
     }
 
     /** A reorder icon button, disabled at the list boundary. */
-    protected Button reorderButton(VaadinIcon icon, String ariaLabel, boolean enabled,
+    protected Button reorderButton(AbstractIcon<?> icon, String ariaLabel, boolean enabled,
             Runnable action) {
         var button = iconButton(icon, ariaLabel, action);
         button.setEnabled(enabled);

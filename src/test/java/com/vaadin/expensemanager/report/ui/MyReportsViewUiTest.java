@@ -5,12 +5,14 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Stream;
 
+import com.vaadin.expensemanager.base.ui.LucideIcon;
 import com.vaadin.expensemanager.base.ui.MetricCard;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.html.Anchor;
 import com.vaadin.flow.component.html.Span;
+import com.vaadin.flow.component.icon.SvgIcon;
 import com.vaadin.flow.router.RouterLink;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.test.context.support.WithUserDetails;
@@ -31,7 +33,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * (year included) and rendering as zeroes for a user with nothing, the metric
  * cards being neither focusable nor clickable, per-section counts replacing the
  * page-header count, the sections being collapsible with the count surviving the
- * collapse, and each card's trip rows, created-on footer and rejection meta.
+ * collapse, and each card's trip rows, created-on footer and rejection meta. Since
+ * #163 it also pins the two glyphs on this view to Lucide symbols — the trip row's
+ * plane is the one icon in the app the Figma design actually annotates
+ * ({@code lucide/plane}, node {@code I88:12941;91:1810}), so a swap back to another
+ * set is a design regression and not a matter of taste.
  *
  * <p>Assertions read the rendered text of the view or locate components by their
  * design class name (the cards are plain links, not a Grid).
@@ -55,6 +61,15 @@ class MyReportsViewUiTest extends AbstractReportViewUiTest {
                 .toList();
     }
 
+    /** The Lucide symbol ids rendered anywhere under the current view. */
+    private List<String> renderedSymbols() {
+        return descendants((Component) getCurrentView())
+                .filter(SvgIcon.class::isInstance)
+                .map(SvgIcon.class::cast)
+                .map(SvgIcon::getSymbol)
+                .toList();
+    }
+
     private List<String> sectionCounts() {
         return findSpan().withClassName("report-list-section-count").components()
                 .stream().map(Span::getText).toList();
@@ -65,6 +80,32 @@ class MyReportsViewUiTest extends AbstractReportViewUiTest {
         navigate(MyReportsView.class);
 
         assertThat(renderedText()).contains("No expense reports yet");
+    }
+
+    @Test
+    void theEmptyStateGlyphIsALucideSymbolFromTheSprite() {
+        navigate(MyReportsView.class);
+
+        // EmptyState took a "vaadin:name" string until #163, so this asserts the
+        // widened seam really carries a built icon through to the DOM.
+        var icons = descendants((Component) getCurrentView())
+                .filter(SvgIcon.class::isInstance).map(SvgIcon.class::cast).toList();
+        assertThat(icons).isNotEmpty();
+        assertThat(icons).allSatisfy(
+                icon -> assertThat(icon.getSrc()).isEqualTo(LucideIcon.SPRITE));
+        assertThat(renderedSymbols()).contains(LucideIcon.FILE_TEXT.glyph());
+    }
+
+    @Test
+    void theTripRowDrawsTheDesignsAnnotatedPlaneGlyph() {
+        // The plane only renders on a card that actually has a trip.
+        seedReportWithTravel(LocalDate.of(2026, 8, 25),
+                LocalDateTime.of(2026, 8, 25, 8, 0),
+                LocalDateTime.of(2026, 8, 27, 19, 0));
+
+        navigate(MyReportsView.class);
+
+        assertThat(renderedSymbols()).contains(LucideIcon.PLANE.glyph());
     }
 
     @Test

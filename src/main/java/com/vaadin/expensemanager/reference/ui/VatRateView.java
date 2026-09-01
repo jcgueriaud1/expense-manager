@@ -4,10 +4,10 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import com.vaadin.expensemanager.base.ui.EditorDialog;
+import com.vaadin.expensemanager.base.ui.LucideIcon;
 import com.vaadin.expensemanager.reference.ReferenceDataService;
 import com.vaadin.expensemanager.reference.VatRateDto;
 import com.vaadin.flow.component.Component;
-import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.textfield.BigDecimalField;
 import com.vaadin.flow.data.binder.Binder;
@@ -71,13 +71,13 @@ public class VatRateView extends ReferenceConfigView<VatRateDto> {
         int index = indexOf(dto);
         String label = formatPercent(dto.value());
 
-        var edit = iconButton(VaadinIcon.EDIT, "Edit rate " + label, () -> openEditor(dto));
-        var up = reorderButton(VaadinIcon.ARROW_UP, "Move rate " + label + " up",
+        var edit = iconButton(LucideIcon.PENCIL.create(), "Edit rate " + label, () -> openEditor(dto));
+        var up = reorderButton(LucideIcon.ARROW_UP.create(), "Move rate " + label + " up",
                 index > 0, () -> {
                     service.moveVatRate(dto.id(), -1);
                     refresh();
                 });
-        var down = reorderButton(VaadinIcon.ARROW_DOWN, "Move rate " + label + " down",
+        var down = reorderButton(LucideIcon.ARROW_DOWN.create(), "Move rate " + label + " down",
                 index >= 0 && index < currentItems().size() - 1, () -> {
                     service.moveVatRate(dto.id(), 1);
                     refresh();

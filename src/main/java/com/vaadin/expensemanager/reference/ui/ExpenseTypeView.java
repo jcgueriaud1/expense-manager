@@ -4,12 +4,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.vaadin.expensemanager.base.ui.EditorDialog;
+import com.vaadin.expensemanager.base.ui.LucideIcon;
 import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.ReferenceDataService;
 import com.vaadin.expensemanager.reference.VatRateDto;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.combobox.ComboBox;
-import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.textfield.TextField;
@@ -74,14 +74,14 @@ public class ExpenseTypeView extends ReferenceConfigView<ExpenseTypeDto> {
     private Component actions(ExpenseTypeDto dto) {
         int index = indexOf(dto);
 
-        var edit = iconButton(VaadinIcon.EDIT, "Edit expense type " + dto.name(),
+        var edit = iconButton(LucideIcon.PENCIL.create(), "Edit expense type " + dto.name(),
                 () -> openEditor(dto));
-        var up = reorderButton(VaadinIcon.ARROW_UP, "Move " + dto.name() + " up",
+        var up = reorderButton(LucideIcon.ARROW_UP.create(), "Move " + dto.name() + " up",
                 index > 0, () -> {
                     service.moveExpenseType(dto.id(), -1);
                     refresh();
                 });
-        var down = reorderButton(VaadinIcon.ARROW_DOWN, "Move " + dto.name() + " down",
+        var down = reorderButton(LucideIcon.ARROW_DOWN.create(), "Move " + dto.name() + " down",
                 index >= 0 && index < currentItems().size() - 1, () -> {
                     service.moveExpenseType(dto.id(), 1);
                     refresh();

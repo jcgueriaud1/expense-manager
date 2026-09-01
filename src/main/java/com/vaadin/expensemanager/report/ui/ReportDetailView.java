@@ -11,6 +11,7 @@ import java.util.function.Predicate;
 import com.vaadin.expensemanager.approval.service.ApprovalService;
 import com.vaadin.expensemanager.base.DomainRuleException;
 import com.vaadin.expensemanager.base.ui.ErrorSummary;
+import com.vaadin.expensemanager.base.ui.LucideIcon;
 import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.ReferenceDataService;
 import com.vaadin.expensemanager.reference.VatRateDto;
@@ -36,7 +37,6 @@ import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.Paragraph;
 import com.vaadin.flow.component.html.Span;
-import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
@@ -155,9 +155,9 @@ public class ReportDetailView extends VerticalLayout
     private final Button submit = new Button("Submit for approval");
     private final Button approve = new Button("Approve");
     private final Button reject = new Button("Reject");
-    private final Button addLine = new Button("Add expense", VaadinIcon.PLUS.create());
+    private final Button addLine = new Button("Add expense", LucideIcon.PLUS.create());
     private final Button addTravel =
-            new Button("Insert travel info", VaadinIcon.AIRPLANE.create());
+            new Button("Insert travel info", LucideIcon.PLANE.create());
     private final Button delete = new Button("Delete");
     private final Binder<ReportFormModel> binder = new Binder<>();
     private final ReportFormModel model = new ReportFormModel();
@@ -736,7 +736,7 @@ public class ReportDetailView extends VerticalLayout
 
     private HorizontalLayout headerRow() {
         // Back returns to the approval queue in review mode, else the owner's list.
-        var back = new Button(VaadinIcon.ARROW_LEFT.create(), event -> getUI()
+        var back = new Button(LucideIcon.ARROW_LEFT.create(), event -> getUI()
                 .ifPresent(ui -> {
                     if (reviewMode) {
                         ui.navigate(APPROVAL_QUEUE_PATH);
@@ -948,7 +948,7 @@ public class ReportDetailView extends VerticalLayout
         texts.setPadding(false);
         texts.setSpacing(false);
 
-        var icon = VaadinIcon.AIRPLANE.create();
+        var icon = LucideIcon.PLANE.create();
         icon.addClassName("travel-card-icon");
 
         var body = new HorizontalLayout(icon, texts);
@@ -965,7 +965,7 @@ public class ReportDetailView extends VerticalLayout
         if (editable) {
             var edit = new Button("Edit", event -> openTravelEditor(entry));
             edit.addThemeVariants(ButtonVariant.TERTIARY);
-            var trash = new Button(VaadinIcon.TRASH.create(), event -> {
+            var trash = new Button(LucideIcon.TRASH_2.create(), event -> {
                 pendingTravelReceipts.keySet().removeIf(k -> k.travel().equals(entry));
                 travels.remove(entry);
             });
@@ -1095,7 +1095,7 @@ public class ReportDetailView extends VerticalLayout
         row.addClassName("travel-line-row");
         if (editable) {
             var attach = new Button(line.hasReceipt() ? "Receipt" : "Add receipt",
-                    VaadinIcon.PAPERCLIP.create());
+                    LucideIcon.PAPERCLIP.create());
             attach.addThemeVariants(ButtonVariant.TERTIARY, ButtonVariant.SMALL);
             attach.addClickListener(event -> openTravelLineReceipt(entry, line));
             attach.getElement().setAttribute("aria-label",
@@ -1441,7 +1441,7 @@ public class ReportDetailView extends VerticalLayout
         // Trash lives outside the clickable body, so removing a line never also
         // opens the editor (no click-propagation hack needed).
         if (editable) {
-            var trash = new Button(VaadinIcon.TRASH.create(), event -> {
+            var trash = new Button(LucideIcon.TRASH_2.create(), event -> {
                 pendingReceipts.remove(entry);
                 lines.remove(entry);
             });
