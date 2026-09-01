@@ -46,21 +46,29 @@ public final class ReportViewSupport {
     /**
      * The status as the official Vaadin {@link Badge} (since 25.1, styled under
      * Aura). The label text always renders, so meaning never rides on colour
-     * alone (ADR-0020); the variant only reinforces it: approved is
-     * {@code success} (green), rejected {@code error} (red), submitted a
-     * {@code filled} (solid) neutral badge to read as "handed off", and a draft
-     * the plain default badge. All are {@code small} to sit compactly beside a
-     * title. (Aura has no accent/primary badge variant — {@code contrast} is
-     * Lumo-only — so submitted uses the filled neutral rather than a blue tint.)
+     * alone (ADR-0020); the colour only reinforces it. The design draws all four
+     * as the same <em>tinted</em> pill — a soft fill, a matching border and
+     * saturated text — never a solid one, so no status takes {@code filled}:
+     * approved is {@code success} (green), rejected {@code error} (red), and
+     * submitted the plain default badge, which under Aura is the accent tint the
+     * design draws it in. All are {@code small} to sit compactly beside a title.
+     *
+     * <p>Draft is the fourth tint, grey, and it has no theme variant: Aura's only
+     * neutral badge variant is {@code contrast}, which is Lumo-only and silently
+     * does nothing here. So it scopes the <em>accent</em> to neutral for that one
+     * element with Aura's stock {@code aura-accent-neutral} class, and the default
+     * badge styling then derives the grey fill, border and text from it — the same
+     * mechanism the theme uses on buttons (F-067), applied per element because
+     * only this status wants it.
      */
     public static Badge statusBadge(ReportStatus status) {
         var badge = new Badge(statusLabel(status));
         badge.addThemeVariants(BadgeVariant.SMALL);
         switch (status) {
-            case SUBMITTED -> badge.addThemeVariants(BadgeVariant.FILLED);
             case APPROVED -> badge.addThemeVariants(BadgeVariant.SUCCESS);
             case REJECTED -> badge.addThemeVariants(BadgeVariant.ERROR);
-            case DRAFT -> { /* the plain default (neutral) badge */ }
+            case SUBMITTED -> { /* the default badge — Aura tints it with the accent */ }
+            case DRAFT -> badge.addClassName("aura-accent-neutral");
         }
         return badge;
     }

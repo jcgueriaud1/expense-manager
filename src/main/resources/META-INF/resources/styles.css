@@ -163,6 +163,15 @@
 .report-card-title {
     font-weight: var(--aura-font-weight-semibold);
     font-size: var(--em-font-size-title);
+    /*
+     * Aura sets line-height on body as a LENGTH (--aura-line-height-m, 20px), so
+     * it inherits unchanged into this 24px title: a 20px line box around a 24px
+     * font, and `overflow: hidden` — needed for the ellipsis — then crops the
+     * glyphs, descenders first ("p", "g", "y"). A unitless value re-derives from
+     * this element's own font-size instead of freezing at the body's. 1.2 is what
+     * .app-header__greeting already uses at the same size.
+     */
+    line-height: 1.2;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;

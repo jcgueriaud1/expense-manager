@@ -25,7 +25,8 @@ A single pill element carrying text. No parts.
 
 Stock Aura badge styling — this app overrides nothing. The variant selects the palette
 hue (`--aura-green`, `--aura-red`, the accent) and Aura derives fill, border and text
-colour from it.
+colour from it. `DRAFT` selects no hue but re-points the *accent* at `--aura-neutral`,
+so the same derivation yields grey.
 
 ## API
 
@@ -38,18 +39,31 @@ Variant mapping:
 
 | Status | Variants | Renders |
 |---|---|---|
-| `DRAFT` | `SMALL` | the default badge — accent-tinted, i.e. **blue** |
-| `SUBMITTED` | `SMALL, FILLED` | solid neutral, reads as "handed off" |
+| `DRAFT` | `SMALL` + class `aura-accent-neutral` | **grey** tint |
+| `SUBMITTED` | `SMALL` | the default badge — accent-tinted, i.e. **blue** |
 | `APPROVED` | `SMALL, SUCCESS` | green |
 | `REJECTED` | `SMALL, ERROR` | red |
 
-Aura has no accent/primary badge variant — `contrast` is Lumo-only — which is why
-`SUBMITTED` uses filled neutral rather than a blue tint.
+**All four are tints, never solids — no status takes `FILLED`.** The design draws the
+pill one way for every status: a soft fill, a border in the same hue, and saturated
+text. Only the hue changes.
 
-> The `statusBadge` javadoc calls the `DRAFT` case "the plain default (neutral) badge".
-> It renders **blue** under Aura, because the default badge picks up the global accent
-> and the theme's neutral scoping applies to buttons only. Verified in the browser in
-> both schemes. The javadoc means "no semantic variant", not "grey".
+`SUBMITTED` is therefore the *default* badge, whose accent tint is the blue the design
+draws it in — it needs no variant, and Aura has no accent/primary one to give it.
+
+`DRAFT` wants the one hue Aura's variants don't offer: grey. `contrast` is Lumo-only and
+silently does nothing here, so instead of a variant the badge carries Aura's stock
+`aura-accent-neutral` class, which scopes `--aura-accent-color` to `--aura-neutral` for
+that element; the default badge styling then derives a grey fill, border and text from
+it. Same mechanism the theme uses on buttons (F-067), per element because only this
+status wants it.
+
+> **Corrected 2026-09-01, verified against the design.** This table previously gave
+> `DRAFT` the blue default badge and `SUBMITTED` a `FILLED` (solid) badge described as
+> "solid neutral" — two errors. The design's Submitted pill is the blue *tint*, so the
+> blue was on the wrong status; and `FILLED` renders solid **blue**, not neutral, since
+> the theme's accent-to-neutral scoping is scoped to buttons and never reached the
+> badge. Reference: frame `116:2499`, the Submitted pill on the first card.
 
 ## States
 
