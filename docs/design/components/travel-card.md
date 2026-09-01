@@ -39,6 +39,7 @@ Add `.travel-card` **alongside** `.line-card`; it overrides only background and 
 | Preview top margin | `--vaadin-gap-m` (12) |
 | Preview amount | `--aura-font-size-l`, semibold |
 | Removed label | `--vaadin-text-color-secondary`, `--aura-font-weight-regular` |
+| "Removed" badge | grey — `SMALL` + class `aura-accent-neutral`, see [`badge.md`](badge.md) |
 
 Everything else is inherited from `.line-card`.
 
@@ -66,8 +67,15 @@ CSS-only. Composed in `ReportDetailView`; the preview is built by `TravelEditorD
 | active | n/a |
 | focus | n/a on the card — on the action buttons inside |
 | disabled | a generated line is read-only apart from attaching a receipt; it renders without edit actions rather than as a disabled control |
-| **removed** | `.travel-line-removed` — dashed border, transparent background, label at secondary colour and regular weight. It is a placeholder for something **not** on the report, so it must not read as a line that counts; it still carries its reason and the way back, so it stays legible rather than merely faded (issue #132) |
+| **removed** | `.travel-line-removed` — dashed border, transparent background, label at secondary colour and regular weight, and a grey "Removed" badge. It is a placeholder for something **not** on the report, so it must not read as a line that counts; it still carries its reason and the way back, so it stays legible rather than merely faded (issue #132) |
 | error | n/a — surfaces in the dialog's [`error-summary.md`](error-summary.md) |
+
+The badge is grey rather than accent-tinted for the same reason the row is muted: it
+labels something that is *not* on the report, and Aura's accent tint is what every
+live thing on this screen wears. It asked for grey via `BadgeVariant.CONTRAST` until
+2026-09-01 and did not get it — that variant is Lumo-only and silently does nothing
+under Aura (F-017), so the badge rendered accent blue. It now scopes the accent to
+neutral instead, as [`badge.md`](badge.md) describes.
 
 ## Code example
 

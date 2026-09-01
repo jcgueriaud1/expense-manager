@@ -1153,8 +1153,14 @@ public class ReportDetailView extends VerticalLayout
         var name = new Span(ReportViewSupport.generatedLineLabel(kind));
         name.addClassName("line-name");
         // Text, never colour alone (ADR-0020) — the badge carries its own label.
+        // Grey, like the Draft pill, and by the same route: BadgeVariant.CONTRAST is
+        // Lumo-only and silently does nothing under Aura, which left this badge the
+        // accent blue it never asked for. Scoping the accent to neutral for this one
+        // element makes the default badge styling derive the grey (see
+        // ReportViewSupport.statusBadge, docs/design/components/badge.md, F-017).
         var badge = new Badge("Removed");
-        badge.addThemeVariants(BadgeVariant.SMALL, BadgeVariant.CONTRAST);
+        badge.addThemeVariants(BadgeVariant.SMALL);
+        badge.addClassName("aura-accent-neutral");
         var heading = new HorizontalLayout(name, badge);
         heading.setPadding(false);
         heading.setSpacing("var(--vaadin-gap-s)");

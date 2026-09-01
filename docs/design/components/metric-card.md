@@ -2,8 +2,8 @@
 
 **Category:** composite (CSS on a `Div`/`VerticalLayout`)
 **Origin:** design
-**Implementation:** none — nothing in the app renders a metric card yet
-**Code:** — (to be created by the report-list redesign)
+**Implementation:** unaudited
+**Code:** `MetricCard.java`; `styles.css` — `.metrics-row`, `.metric-card*`
 **Design:** `88:12918` `metrics-row` > `88:12919` / `88:12923` / `88:12927` `metric-card`
 
 ## Overview

@@ -43,12 +43,12 @@ Plus one rule scoping `--aura-accent-color-light/-dark` to `--aura-neutral-*` on
 non-tertiary buttons. All in
 `src/main/resources/META-INF/resources/aura-theme.css`.
 
-**`--em-font-size-total` and `--em-font-size-metric` are decided but not yet declared.**
-The report-list survey settled both; a survey writes no CSS, so adding them to
-`aura-theme.css` belongs to whoever applies the theme next. Until then any `var()` on
-either renders **unset** — invalid, so visibly wrong rather than silently frozen, which
-is the safer of the two failures but still a failure. Do not ship a view that uses them
-before they exist.
+`--em-font-size-total` and `--em-font-size-metric` were decided by the report-list survey
+and declared by **#162**, the first issue to use them — a survey writes no CSS, so the two
+sat decided-but-undeclared in between. That gap is the thing to watch when a survey settles
+a new property: until it exists, any `var()` on it renders **unset** — invalid, so visibly
+wrong rather than silently frozen, which is the safer of the two failures but still a
+failure. Do not ship a view that uses a property before it is declared here.
 
 `--aura-app-layout-radius` was here until #146 and is not any more: it styles
 `AppLayout`'s content area, and the shell no longer uses `AppLayout`. The design's 12px

@@ -2,8 +2,9 @@
 
 **Category:** composite (CSS on a `Details`, or a `VerticalLayout` + header row)
 **Origin:** design
-**Implementation:** unaudited — `.section-label` exists; the disclosure and the count do not
-**Code:** `styles.css` — `.section-label`; `MyReportsView#section`
+**Implementation:** unaudited
+**Code:** `ReportListSection.java` (a `Details`); `styles.css` — `.section-label`,
+`.report-list-section*`; composed in `MyReportsView#section`
 **Design:** `88:12937` `section-attention` and `88:12943` `section-submitted-closed`,
 each with a `section-header` child
 
