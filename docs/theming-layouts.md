@@ -168,13 +168,18 @@ forms are out of `src/main/java`, and `IconSetGuardTest` fails the build if one 
 back.
 
 ```java
-new Button("Add expense", LucideIcon.PLUS.create())     // sized by the button
-icon = LucideIcon.PLANE.create("16px")                  // only where nothing sizes it
+new Button("Add expense", LucideIcon.PLUS.create())            // SIZE_M (20), the default
+icon = LucideIcon.PLANE.create(LucideIcon.SIZE_S)              // 16, inline beside text
 ```
 
-- **Don't size an icon the theme already sizes.** Aura sizes icons in every slot it owns
-  — buttons, field prefixes, menu items — and an explicit size fights it. Pass a size
-  only for a standalone glyph in a layout the app drew itself.
+- **Three role sizes, and they are properties, not numbers.** `SIZE_S` 16 inline beside
+  small text, `SIZE_M` 20 in a button slot or field prefix, `SIZE_L` 24 standalone in a
+  layout the app drew. `create()` applies `SIZE_M`. A raw CSS length is right only where
+  the design has no role size and the glyph should track its own text — today that is
+  `EmptyState`'s `3em` and `ReceiptPreview`'s link glyph, and nothing else.
+- **Stroke width is not yours to set.** It comes from `--vaadin-icon-stroke-width` in
+  `aura-theme.css`, and reaches the glyph only because no `<symbol>` declares
+  `stroke-width` itself. Add that attribute back and the token dies silently.
 - **This governs glyphs the app draws, not a component's own.** A combo box's dropdown
   arrow, a `Details` summary's chevron, a grid's sort indicator, an `Upload`'s drop-zone
   glyph: those ship with their component and stay. The report list's chevron is the
@@ -184,15 +189,21 @@ icon = LucideIcon.PLANE.create("16px")                  // only where nothing si
   upstream file into `META-INF/resources/icons/lucide.svg` unmodified, add the enum
   constant. If the design draws no glyph there, that is a question for the designer —
   ADR-0026 carries a ledger of the ones picked without one, and it is meant to shrink.
-- **Every `<symbol>` needs its own `stroke="currentColor"`** (plus `fill`, `stroke-width`,
-  the two `stroke-line*`, and `viewBox`). Addressed by `symbol`, `vaadin-icon` renders
-  `<use href="…">` against the external file and reads *no* attribute off it, so anything
-  on the sprite's root `<svg>` is silently ignored. A symbol missing it renders black —
-  correct-looking in light mode, invisible in dark. F-075.
+- **Every `<symbol>` needs its own `stroke="currentColor"`** (plus `fill`, the two
+  `stroke-line*`, and `viewBox` — but **never** `stroke-width`, see above). Addressed by
+  `symbol`, `vaadin-icon` renders `<use href="…">` against the external file and reads
+  *no* attribute off it, so anything on the sprite's root `<svg>` is silently ignored. A
+  symbol missing it renders black — correct-looking in light mode, invisible in dark.
+  F-075.
+- **`--vaadin-icon-color` does nothing here.** It applies as `fill`, and a Lucide glyph is
+  `fill="none"`. Colour the parent instead; the icon follows via `currentColor`.
 
 The colour rule follows from `currentColor`: an icon takes its parent's text colour, so
 tint it by colouring the parent, not the glyph. That is what makes one sprite serve both
 colour schemes, and a red `TRASH_2` in an error-variant button costs nothing.
+
+Full reasoning, the design nodes behind each size, and what is still unverified:
+[`design/foundations/iconography.md`](design/foundations/iconography.md).
 
 ## Inherited properties — headings and links don't get yours
 

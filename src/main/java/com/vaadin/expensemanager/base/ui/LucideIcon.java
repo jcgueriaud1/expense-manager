@@ -20,11 +20,25 @@ import com.vaadin.flow.component.icon.SvgIcon;
  *
  * <h2>Sizing</h2>
  *
- * {@link #create()} leaves the size to the context, which is what a button or a
- * field prefix wants: Aura already sizes an icon in every slot it owns, and an
- * explicit size there fights the theme. Pass a size only for an icon the theme has
- * no opinion about — a standalone glyph in a layout the app drew itself, such as
- * {@link EmptyState}'s.
+ * Three role sizes, from the design and settled in
+ * {@code docs/design/foundations/iconography.md}: {@link #SIZE_S} 16 inline beside
+ * small text, {@link #SIZE_M} 20 in a button slot or field prefix, {@link #SIZE_L}
+ * 24 standalone in a layout the app drew.
+ *
+ * <p>{@link #create()} applies {@link #SIZE_M}, the dominant case; {@link
+ * #create(String)} overrides it. Note what that gives up: unsized, the base styles
+ * size an icon at {@code 1lh} — one line height of its own font size, which on a
+ * 14px/20px button label is <em>also</em> 20px, so the design's bound
+ * {@code Button icon size} and the framework already agreed. Setting it explicitly
+ * buys one greppable scale and costs {@code 1lh}'s contextual scaling, so an icon
+ * dropped into small text no longer shrinks with it. That trade was taken
+ * deliberately; it is the first thing to revisit if icons look oversized somewhere
+ * dense.
+ *
+ * <p><strong>Stroke width is not set here.</strong> It comes from
+ * {@code --vaadin-icon-stroke-width} in {@code aura-theme.css}, and reaches the glyph
+ * only because no {@code <symbol>} in the sprite declares {@code stroke-width} of its
+ * own — an element's own presentation attribute would beat the inherited value.
  *
  * <h2>Why an enum over the raw {@code SvgIcon}</h2>
  *
@@ -61,6 +75,15 @@ public enum LucideIcon {
      */
     public static final String SPRITE = "icons/lucide.svg";
 
+    /** Inline beside small text — the design's 16px trip-row glyph. */
+    public static final String SIZE_S = "var(--em-icon-size-s)";
+
+    /** A button slot or field prefix — the design's bound {@code Button icon size}. */
+    public static final String SIZE_M = "var(--em-icon-size-m)";
+
+    /** Standalone in a layout the app drew — the design's 24px section chevron. */
+    public static final String SIZE_L = "var(--em-icon-size-l)";
+
     private final String glyph;
 
     LucideIcon(String glyph) {
@@ -73,24 +96,27 @@ public enum LucideIcon {
     }
 
     /**
-     * A fresh icon, sized by whatever slot it lands in.
+     * A fresh icon at {@link #SIZE_M}, the button-slot and field-prefix size.
      *
      * <p>Always a new instance: a {@link com.vaadin.flow.component.Component} can
      * only be attached in one place, so a shared constant would move the glyph
      * rather than draw it twice.
      */
     public SvgIcon create() {
-        return new SvgIcon(SPRITE, glyph);
+        return create(SIZE_M);
     }
 
     /**
-     * A fresh icon at an explicit size, for the slots the theme does not size.
+     * A fresh icon at an explicit size.
      *
-     * @param size any CSS length — prefer an {@code em} so the glyph tracks the
-     *             surrounding text, or a {@code --vaadin-icon-size-*} token
+     * @param size one of {@link #SIZE_S}, {@link #SIZE_M}, {@link #SIZE_L} — or a
+     *             raw CSS length only where the design has no role size, which today
+     *             is {@link EmptyState}'s {@code 3em} alone: that one is relative to
+     *             the heading beneath it, so the glyph keeps its proportion if the
+     *             type scale moves
      */
     public SvgIcon create(String size) {
-        var icon = create();
+        var icon = new SvgIcon(SPRITE, glyph);
         icon.setSize(size);
         return icon;
     }

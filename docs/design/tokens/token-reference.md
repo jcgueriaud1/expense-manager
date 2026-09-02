@@ -52,9 +52,12 @@ Plus one rule scoping `--aura-accent-color-light/-dark` to `--aura-neutral-*` on
 non-tertiary buttons. All in
 `src/main/resources/META-INF/resources/aura-theme.css`.
 
-**The four icon rows are decided-but-undeclared** — settled by the iconography survey,
-declared by whichever issue implements it. See the note below: until they exist, a `var()`
-on one renders unset.
+The four icon rows were settled by the iconography survey and **declared by #163's own
+PR**, which is the shortest that gap has ever been — the survey and the implementation
+happened to be in flight together. `--vaadin-icon-stroke-width` is the one row here that
+is not an `--em-*` property: the framework has a real property for exactly that value, so
+it is overridden directly rather than given a twin (the same reasoning that once applied
+to `--aura-app-layout-radius`).
 
 `--em-font-size-total` and `--em-font-size-metric` were decided by the report-list survey
 and declared by **#162**, the first issue to use them — a survey writes no CSS, so the two

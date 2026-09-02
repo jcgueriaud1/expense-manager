@@ -2640,3 +2640,52 @@ Deployment/Observability · UX-spec
   raising with the Vaadin design-system and Flow-components teams respectively. The
   invention ledger in ADR-0026 tracks the design-side half — 13 glyphs picked without a
   drawn reference — and shrinks as views get designed.
+
+### F-076 — A custom-property name in an SVG comment makes the sprite malformed XML, and every icon in the app disappears with no console error
+- Date: 2026-09-02
+- Area: Vaadin / Tooling
+- Severity: Medium
+- Task being attempted: applying the iconography survey's decision to move stroke width out
+  of the sprite's `<symbol>`s and onto the theme's `--vaadin-icon-stroke-width`. The edit
+  removed the attribute and added a comment to the sprite explaining why it must not come
+  back.
+- Expected vs actual: expected a comment to be inert. Actual: every icon in the app
+  vanished. **An XML comment may not contain the string `--`**, and the comment named the
+  property in full — `--vaadin-icon-stroke-width`. That made `lucide.svg` malformed XML, so
+  the browser's SVG parse failed, every external `<use href="icons/lucide.svg#…">` resolved
+  to nothing, and 22 icons rendered as empty boxes.
+- Why it is worse than a normal typo: **nothing reports it.** The console showed zero
+  errors and zero warnings — the parse failure happens inside the browser's own SVG
+  resolution for a `<use>` reference, not in a fetch, so there is no network error and no
+  script error. The file still serves `200 image/svg+xml`. `getComputedStyle` on the
+  `<svg>` and on the `<use>` both still reported `stroke-width: 2px`, because the *host*
+  document's CSS is fine; it is the *referenced* document that failed to parse. Every
+  signal an agent would reach for says the icons are working.
+- The one signal that did show it: `use.getBBox()` returned `0×0` where it had previously
+  returned real geometry. Worth remembering as the cheap probe for "did this `<use>`
+  actually resolve" — it is the only in-page check that distinguishes a resolved reference
+  from a silently failed one.
+- Workaround used: name custom properties in the sprite's comments **without their leading
+  dashes**, with a line in the comment saying why. Then the real fix: a test that parses the
+  sprite as XML. Every other assertion in `LucideIconTest` reads the file as **text**, so
+  all 53 of them passed on a file no browser could parse — which is precisely the shape of
+  gap a test suite is supposed to close. `theSpriteIsWellFormedXml` now fails with the
+  parser's own message ("The string \"--\" is not permitted within comments"), verified by
+  replanting the bug.
+- Evidence: `src/main/resources/META-INF/resources/icons/lucide.svg`;
+  `LucideIconTest#theSpriteIsWellFormedXml`; ADR-0026 decision 4 as amended;
+  `docs/design/foundations/iconography.md`.
+- Impact: caught in the browser within minutes *because* the change was visually verified —
+  and it would not have been caught otherwise. A green 522-test suite, a 200 response and a
+  clean console all agreed the icons were fine. This is the third silent-styling mechanism
+  logged in this area (F-062 frozen fallbacks, F-072 inheritance losing to an element-level
+  rule, F-075 the sprite branch reading no attributes) and the first where the *asset* is
+  the thing that fails.
+- Suggested Vaadin/product improvement: `vaadin-icon` should warn when a `<use>` reference
+  resolves to nothing — it already logs `Error loading icon` for a failed fetch in the
+  single-file branch, so the sprite branch is the asymmetric one. A one-line
+  `console.warn` on an empty bounding box after load would turn this class of bug from
+  invisible to obvious, and would also catch the mistyped-symbol case that forced
+  `LucideIcon` to be an enum in the first place.
+- Owner / next step: fixed and covered by a test. The Vaadin suggestion is worth filing
+  alongside F-075's, since both are about the sprite branch failing quietly.

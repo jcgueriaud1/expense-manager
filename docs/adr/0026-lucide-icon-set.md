@@ -1,6 +1,7 @@
 # ADR-0026 — Lucide is the app's icon set, delivered as one vendored SVG sprite
 
-**Status:** Accepted
+**Status:** Accepted — decision 4 and the sizing consequence **amended by the
+iconography survey**, before this ADR ever reached `main`. See *Amendments* at the end.
 
 ## Context
 
@@ -82,10 +83,15 @@ static resources without extra plumbing, for a set this small. Rejected: one fil
 glyph — it *is* the better-supported path (see Consequences) but costs a request per
 glyph and puts 15 near-identical files in the tree.
 
-**4. Every `<symbol>` carries its own presentation attributes.** `fill="none"`,
-`stroke="currentColor"`, `stroke-width="2"`, and both `stroke-linecap`/`linejoin`
-`round`, plus `viewBox="0 0 24 24"`. This is not belt-and-braces; it is load-bearing,
-for the reason in Consequences.
+**4. Every `<symbol>` carries its own presentation attributes — except
+`stroke-width`.** `fill="none"`, `stroke="currentColor"`, both
+`stroke-linecap`/`linejoin` `round`, and `viewBox="0 0 24 24"`. This is not
+belt-and-braces; it is load-bearing, for the reason in Consequences.
+
+`stroke-width` is the deliberate exception, and it is the one attribute that must
+**not** be there: the theme sets `--vaadin-icon-stroke-width: 2` instead, and it
+reaches the glyph only while no symbol declares the attribute itself. See
+*Amendments*.
 
 **5. New glyphs come from the design, through `LucideIcon`.** When a view gets its
 design pass, its glyphs are read off the Figma frame and added here. A glyph nobody
@@ -178,6 +184,63 @@ Figma frame; drop the upstream file into the sprite unmodified; add the enum
 constant. If there is no Figma frame, the answer is a question to the designer — the
 ledger above exists because that step was skipped, knowingly, once.
 
+## Amendments
+
+### The iconography survey, before this ADR reached `main`
+
+The theme-scope iconography survey ran while this ADR was still in its own unmerged
+PR. It re-read page `88:12278` against the design's *variables* rather than only its
+layers, and corrected two things this ADR asserts. Because nothing here had ever been
+accepted into `main`, the amendments are folded in above rather than given a
+superseding ADR — `README.md`'s immutability rule guards accepted history, and there
+was none yet to guard. The spec is
+[`../design/foundations/iconography.md`](../design/foundations/iconography.md).
+
+**Two corrections to the survey behind this ADR.** Both come from one trap:
+`get_metadata` expands **instance** subtrees but stops at component **definitions**, so
+the page-wide `grep lucide` that produced the *What the design actually draws* table
+under-reported.
+
+1. **There is a fourth Lucide glyph.** `lucide/ellipsis-vertical` (`170:7881`,
+   `178:2033`), inside the `Grid Buttons` component set — the `⋮` row overflow. The
+   table above says "exactly three"; read it as three *placed in frames*.
+2. **The Lumo glyphs are placed deliberately, not incidental internals.** Decision 2
+   frames them as glyphs "Vaadin's components draw for themselves". `Title Text`
+   (`241:10557` / `241:10559`) shows the design putting `lumo:checkmark` (`36:503`) and
+   an edit pencil *into* a Button's icon slot at 20px, fill-based. So the design's icon
+   language is genuinely **two sets split by role**, not one set plus component
+   furniture. Decision 1 still stands — the split tracks whether a kit component
+   supplied a slot rather than any visual logic — but it is now an argued overrule of
+   ADR-0025 rather than a description, and the spec carries that argument.
+
+**Decision 4 loses `stroke-width`.** As first shipped, every symbol carried
+`stroke-width="2"`, which made Vaadin's `--vaadin-icon-stroke-width` **inert**: the base
+styles apply that property to the `<svg>` `vaadin-icon` renders, `stroke-width` is
+inherited into the `<use>`'s referenced content, and an element's own presentation
+attribute beats an inherited value at any specificity. That is F-072's mechanism one
+layer down. The attribute is now gone from every symbol and the width is set once, in
+`aura-theme.css` — so the knob the framework provides for exactly this actually works.
+
+The property is consequently **load-bearing**. The base rule sits inside an
+`@container style(--vaadin-icon-stroke-width)` guard and the sprite branch sets no
+`stroke-width` of its own, so unsetting it renders every icon at the SVG default of
+`1` — visibly thin, silently. `LucideIconTest` asserts both halves: no symbol declares
+it, and the theme does.
+
+**The sizing consequence inverts.** This ADR's *Consequences* and `LucideIcon`'s javadoc
+said to leave sizing to the context, because `--vaadin-icon-size` defaults to `1lh` and
+Aura sizes its own slots. The survey found the design names **three** role sizes — 16
+inline, 20 in a button slot (a bound variable), 24 standalone — so the app now mints
+`--em-icon-size-s/m/l` and `LucideIcon.create()` applies the 20.
+
+That is a real trade, not a strict improvement: it replaces a *contextual* size with a
+fixed one, so an icon dropped into small text no longer shrinks with it. The 20 was
+already what `1lh` computed to on a 14px/20px button label, so the design and the
+framework had agreed by mechanism — the scale buys greppable consistency and pays for it
+in adaptiveness. Recorded here because it is the first thing to revisit if icons look
+oversized somewhere dense. `ReceiptPreview` keeps a relative size for the same reason
+`EmptyState` keeps `3em`: both sit beside text the design never specified.
+
 ## Cross-references
 
 [ADR-0025](0025-figma-design-source-of-truth.md) — the design is the source of truth
@@ -185,4 +248,6 @@ for visual decisions, which is what makes the ledger above a debt rather than a
 choice · [ADR-0017](0017-base-ui-shell-and-ux-states.md) — `EmptyState`, whose
 constructor this changes · `docs/theming-layouts.md` § *Icons* — the day-to-day rule ·
 `docs/findings.md` F-075 — the sprite/`<use>` behaviour, and Vaadin 25 shipping no
-Lucide or Aura-native icon set · issue #163.
+Lucide or Aura-native icon set · F-072 — the inheritance mechanism the amended decision 4
+turns on · [`../design/foundations/iconography.md`](../design/foundations/iconography.md)
+— the icon spec, and the argued overrule of the design's two-set split · issues #163, #168.

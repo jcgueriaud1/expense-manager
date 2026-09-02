@@ -145,6 +145,20 @@ The other five attributes — `fill="none"`, `stroke="currentColor"`, `stroke-li
 `stroke-linejoin`, `viewBox` — **stay on each symbol**. Nothing in the theme supplies them,
 and the sprite branch reads none off the file.
 
+### Never write a property name in full inside the sprite's comments
+
+An XML comment may not contain `--`, so a comment naming `--vaadin-icon-stroke-width`
+makes `lucide.svg` malformed XML. Every external `<use>` against it then resolves to
+nothing and **every icon in the app disappears** — with a `200` response, a clean console
+and a fully green test suite, because the parse failure is inside the browser's own SVG
+resolution. Name properties without their leading dashes in that file. `LucideIconTest`
+parses the sprite as XML to catch it; the string assertions cannot, since they read the
+file as text. F-076.
+
+The cheap in-page probe for "did this `<use>` resolve at all" is `use.getBBox()` — `0×0`
+means it did not. Computed `stroke-width` on the `<svg>` and the `<use>` both keep
+reporting `2px` in that state, because the *host* document's CSS is unaffected.
+
 ## What the design actually draws
 
 Four Lucide glyphs across the whole Visual Design page, all hand-pasted SVG frames with no
@@ -189,9 +203,11 @@ The app keeps its search icon for now; dropping it belongs to that view's design
 A survey never boots the app, so these are open for visual verification, not conclusions:
 
 - The rendered size of Aura's `Details` summary toggle, against the design's 24px chevron.
-- That `--vaadin-icon-stroke-width` does reach the sprite's glyphs once the per-symbol
-  attribute is removed. The mechanism above is reasoned from the component's CSS, which is
-  source rather than measurement — sound, but not the same as seen.
+- ~~That `--vaadin-icon-stroke-width` does reach the sprite's glyphs once the per-symbol
+  attribute is removed.~~ **Verified** (2026-09-02, Chrome, both schemes). Not by reading a
+  computed style — that lies here, see below — but causally: raising the property to `6`
+  visibly thickened the rendered glyph, and returning it to `2` restored it. The reasoning
+  from the component CSS was correct and the knob is live.
 - The glyph size inside `ellipsis-vertical`'s hit area (`34×36` and `34×21` are the button
   boxes, not the glyph).
 

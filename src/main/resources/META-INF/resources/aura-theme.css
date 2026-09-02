@@ -67,6 +67,46 @@ html {
 }
 
 /*
+ * Iconography — docs/design/foundations/iconography.md, ADR-0026.
+ *
+ * Neither Aura nor the base styles derive an icon scale: --vaadin-icon-size is a
+ * single global defaulting to 1lh, and there is no ramp. The design names three
+ * role sizes, so the app mints three.
+ *
+ * --em-icon-size-m is 20px, which is also what the 1lh default already computes to
+ * on a 14px/20px button label — the design's bound `Button icon size` agrees with
+ * the framework by mechanism rather than luck. Declaring it anyway is a deliberate
+ * trade recorded in the spec: it buys one greppable scale and gives up 1lh's
+ * contextual scaling, so an icon in small text no longer shrinks with it.
+ *
+ * DO NOT rebind --vaadin-icon-size to any of these. That would freeze 1lh for every
+ * icon in the app, including contexts nobody has designed, and do it invisibly.
+ * These are applied per call site, through LucideIcon.
+ */
+html {
+  --em-icon-size-s: 16px;  /* inline beside small text — the design's trip-row glyph */
+  --em-icon-size-m: 20px;  /* button slot / field prefix — the design's bound variable */
+  --em-icon-size-l: 24px;  /* standalone in an app-drawn layout — the section chevron */
+
+  /*
+   * LOAD-BEARING, not decorative. The base styles apply this to the <svg> that
+   * vaadin-icon renders, inside an `@container style(--vaadin-icon-stroke-width)`
+   * guard, so the rule applies ONLY while the property is set. In the sprite branch
+   * vaadin-icon sets no stroke-width of its own (it reads nothing off the sprite,
+   * F-075), and the symbols no longer carry one — so unset this and every icon in
+   * the app falls back to the SVG default of 1 and renders visibly too thin, with
+   * nothing logged. LucideIconTest fails if it goes missing.
+   *
+   * It lives here rather than as an --em-* twin because the framework has a real
+   * property for exactly this value. It reaches the glyph only because no <symbol>
+   * declares stroke-width itself: a presentation attribute on an element beats an
+   * inherited value at any specificity, which is F-072's mechanism one layer down
+   * and what made this token inert when the sprite first shipped.
+   */
+  --vaadin-icon-stroke-width: 2;
+}
+
+/*
  * The header bar's brand colour (#146).
  *
  * The design paints the app shell's bar a coral that is bound to no Figma

@@ -303,8 +303,8 @@ public class MyReportsView extends VerticalLayout implements HasHeaderState {
     }
 
     private Component tripRow(TripSummaryDto trip) {
-        var plane = LucideIcon.PLANE.create();
-        plane.setSize("16px");
+        // The design's inline role size, beside the row's 16px text (88:12941).
+        var plane = LucideIcon.PLANE.create(LucideIcon.SIZE_S);
 
         var route = new HorizontalLayout(plane, new Span(trip.destinations()));
         route.setPadding(false);
