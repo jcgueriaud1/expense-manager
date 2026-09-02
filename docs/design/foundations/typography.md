@@ -81,14 +81,30 @@ current.
 **Decided: 40px, and the 30px section step alongside it.** Taken deliberately over the
 cheaper option of keeping 24 and reporting the drift.
 
-**This reflows every page heading in the app**, which is why it is recorded here as a
-foundation change and not inside a view's spec. Two known consumers move by 16px:
+**This is a foundation change, not a view's**, because the property is shared: it is
+recorded here rather than inside a view's spec so that every consumer moves in one place.
+Two consumers move by 16px:
 
 | Consumer | Was | Becomes |
 |---|---|---|
-| every view's page heading (`styles.css:764`) | 24 | 40 |
-| `report-card` title (`styles.css:165`, [`../components/report-card.md`](../components/report-card.md)) | 24 | 40 |
+| `report-card` title ([`../components/report-card.md`](../components/report-card.md)) | 24 | 40 |
 | app shell's small-screen greeting ([`../components/app-shell.md`](../components/app-shell.md)) | 24 | 40 |
+
+**The consumer list above was one row longer, and that row was wrong.** It claimed "every
+view's page heading" as a consumer, citing a line that is in fact the shell's small-screen
+greeting — the row below it. When #169 made the change and looked, **no view's page heading
+was on this property at all**: the report list's is `.reports-title` at
+`--aura-font-size-xl` (18), and Approvals, Review history and Users render an unstyled
+`<h2>` at Aura's own default. So the reflow moved exactly two things, both card titles, and
+the property only became a page-heading token when this issue's own `.page-title` class
+started using it.
+
+That correction makes the consequence **worse**, not better, and it is worth seeing before
+the report-list issue takes its decision: the report card and approval card titles now
+render at 40px directly beneath an 18px page heading, so the card titles are more than
+twice the size of the heading above them. Both views are visibly hierarchy-inverted today.
+It is still not this issue's call to fix — see the note below — but it is no longer the
+mild "grows with the page heading" the table implied.
 
 A **report card title is not a page heading** and almost certainly should not follow this
 token to 40px — it shares `--em-font-size-title` today only because both happened to be

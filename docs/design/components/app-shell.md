@@ -162,7 +162,7 @@ Three groups, hand-authored in `NavGroup` — `@Menu` was removed from all eight
 |---|---|---|
 | My Expenses | link | `/reports`, and `/report/<id>` lights it without being an entry |
 | Admin Tasks | menu | `/approvals`, `/approval-history`, `/users`, and `/review/<id>` |
-| Reference Tables | menu — **superseded**, see below | `/vat-rates`, `/expense-types`, `/allowance-rates` |
+| Reference Tables | link, to `/vat-rates` | `/vat-rates`, and `/expense-types` / `/allowance-rates` light it without being entries |
 | *(none)* | — | `/` — the design gives the dashboard no nav item; the logo links there |
 
 **Current follows the group, not the route.** Sitting on `/report/5` keeps *My Expenses*
@@ -174,18 +174,23 @@ alias by reading it off the `@RouteAlias` annotation. The design never drew the 
 screen, so which group it belongs under is a judgement, taken here and open to the report
 detail issue revisiting it.
 
-> **The Reference Tables menu is superseded.** The reference-table frame `156:5396`
-> draws a three-tab bar inside the content column, and the allowance-rates survey decided
-> the tabs win and this menu goes: the group becomes a single-destination pill — a plain
-> `RouterLink`, the same element type *My Expenses* already uses — and the other two
-> routes become `covered()` entries reached through the tabs. See
-> [`reference-tabs.md`](reference-tabs.md).
+> **The Reference Tables menu went in #169**, which is why the row above now reads
+> *link*. The reference-table frame `156:5396` draws a three-tab bar inside the content
+> column ([`reference-tabs.md`](reference-tabs.md)), the allowance-rates survey decided
+> the tabs win, and #169 built both halves: the group carries one `linked()` entry and two
+> `covered()` ones, so the shell renders the same plain `RouterLink` *My Expenses* already
+> uses and no new machinery was needed. The table above describes what is built.
 >
-> **This note records the decision; it does not rewrite this file.** Two questions belong
-> to the shell's own issue and are not answered here: which route the pill points at when
-> the user can reach only some of the three, and whether it stays `aria-current` across
-> all three. Until that issue lands, the table above describes what is built and the note
-> describes what was decided — read both.
+> **Of the two questions this survey handed to the shell's issue, #169 answered one.**
+> Whether the pill stays `aria-current` across all three routes: **yes**, and it came
+> free — that is what `covered()` means, and it is asserted in `NavGroupTest`.
+>
+> **Still open, and still the shell issue's.** Which route the pill points at when a user
+> can reach only *some* of the three. It points at `/vat-rates` unconditionally today.
+> All three views are `@RolesAllowed("ADMIN")`, so the case cannot occur — but note the
+> shape of the hole while it is open: a user who could reach Expense Types but not VAT
+> Rates would get **no pill at all**, while both of their tabs still worked. #169
+> deliberately did not invent a rule for a UI nobody can currently see.
 
 Access filtering reads each view's own `@RolesAllowed` / `@PermitAll` through
 `AccessAnnotationChecker` — the same annotations the router enforces (ADR-0008). A group

@@ -5,6 +5,8 @@ import com.vaadin.expensemanager.report.ui.MyReportsView;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.applayout.AppLayout;
+import com.vaadin.flow.component.contextmenu.ContextMenu;
+import com.vaadin.flow.router.RouterLink;
 import com.vaadin.flow.component.sidenav.SideNav;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -80,6 +82,32 @@ class NavigationShellUiTest extends SpringBrowserlessTest {
 
         assertThat(navLabels())
                 .containsExactly("My Expenses", "Admin Tasks", "Reference Tables");
+    }
+
+    /**
+     * The Reference Tables pill is a plain link since #169, not a menu button:
+     * its three routes are reached through {@code ReferenceTabs} inside the
+     * content column, so the group has one destination and the shell already
+     * rendered a one-entry group as a link. Admin Tasks still opens a menu, which
+     * is why this asserts the pill's own type rather than counting ContextMenus.
+     */
+    @Test
+    @WithUserDetails("admin@vaadin.com")
+    void theReferenceTablesPillIsAPlainLinkWithNoMenuBehindIt() {
+        navigate(DashboardView.class);
+
+        var pill = navPills().stream()
+                .filter(p -> "Reference Tables"
+                        .equals(p.getElement().getTextRecursively()))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(pill).isInstanceOf(RouterLink.class);
+        assertThat(((RouterLink) pill).getHref()).isEqualTo("vat-rates");
+        // No ContextMenu is attached to it — the one left in the bar is Admin
+        // Tasks', and a menu on this pill is exactly what #169 removed.
+        assertThat($(ContextMenu.class).all())
+                .allSatisfy(menu -> assertThat(menu.getTarget()).isNotSameAs(pill));
     }
 
     /**

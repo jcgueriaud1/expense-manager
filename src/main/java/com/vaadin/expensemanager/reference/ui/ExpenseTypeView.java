@@ -16,6 +16,7 @@ import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.data.binder.Binder;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
+import com.vaadin.flow.spring.security.AuthenticationContext;
 
 import jakarta.annotation.security.RolesAllowed;
 
@@ -45,13 +46,14 @@ public class ExpenseTypeView extends ReferenceConfigView<ExpenseTypeDto> {
 
     private final transient ReferenceDataService service;
 
-    public ExpenseTypeView(ReferenceDataService service) {
+    public ExpenseTypeView(ReferenceDataService service,
+            AuthenticationContext authenticationContext) {
         super("Expense types",
                 "The expense types a line is classified as, each with a default "
                         + "VAT rate a new line pre-fills. Deactivating a type hides "
                         + "it from new lines but keeps it on existing ones — nothing "
                         + "is deleted.",
-                "Add expense type");
+                "Add expense type", authenticationContext);
         this.service = service;
 
         grid.addColumn(ExpenseTypeDto::name)

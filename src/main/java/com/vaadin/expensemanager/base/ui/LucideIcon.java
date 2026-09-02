@@ -57,6 +57,10 @@ public enum LucideIcon {
     ARROW_DOWN("arrow-down"),
     ARROW_LEFT("arrow-left"),
     ARROW_UP("arrow-up"),
+    BED("bed"),
+    CAR_TAXI_FRONT("car-taxi-front"),
+    COPY("copy"),
+    ELLIPSIS_VERTICAL("ellipsis-vertical"),
     FILE_TEXT("file-text"),
     INBOX("inbox"),
     MAP_PIN("map-pin"),
@@ -67,7 +71,8 @@ public enum LucideIcon {
     SEARCH("search"),
     TRASH_2("trash-2"),
     TRIANGLE_ALERT("triangle-alert"),
-    UPLOAD("upload");
+    UPLOAD("upload"),
+    UTENSILS("utensils");
 
     /**
      * The vendored sprite, relative like every other static resource the app

@@ -3,6 +3,8 @@ package com.vaadin.expensemanager.reference.ui;
 import java.util.List;
 
 import com.vaadin.expensemanager.base.ui.LucideIcon;
+import com.vaadin.expensemanager.base.ui.ReferenceTabs;
+import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.grid.Grid;
@@ -12,6 +14,7 @@ import com.vaadin.flow.component.icon.AbstractIcon;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
+import com.vaadin.flow.spring.security.AuthenticationContext;
 
 /**
  * Abstract base for the two ADMIN reference-data screens ({@link VatRateView},
@@ -21,6 +24,12 @@ import com.vaadin.flow.component.orderedlayout.VerticalLayout;
  * accessible icon button, the boundary-disabled reorder buttons, and the
  * text-status active toggle (ADR-0020) — are provided as {@code protected}
  * helpers.
+ *
+ * <p>Both screens carry the shared {@link ReferenceTabs} bar above the heading —
+ * the sub-navigation across the three reference routes, which replaced the
+ * shell's Reference Tables menu in #169. It is added here rather than per
+ * subclass because it is identical on both, and its access filtering is what
+ * keeps a route the user cannot reach out of the bar.
  *
  * <p>Each subclass configures the grid's columns and its actions cell with the
  * plain Vaadin API and implements the two kind-specific hooks: {@link #fetchItems}
@@ -37,9 +46,14 @@ abstract class ReferenceConfigView<T> extends VerticalLayout {
 
     private List<T> items = List.of();
 
-    protected ReferenceConfigView(String heading, String intro, String addButtonText) {
+    protected ReferenceConfigView(String heading, String intro, String addButtonText,
+            AuthenticationContext authenticationContext) {
         setPadding(true);
         setSpacing(true);
+
+        // getClass(), not a per-subclass constant: the tab that must render
+        // selected is the one for whichever concrete view is being constructed.
+        add(new ReferenceTabs(selfType(), authenticationContext));
 
         var addButton = new Button(addButtonText, LucideIcon.PLUS.create(),
                 event -> openEditor(null));
@@ -56,6 +70,20 @@ abstract class ReferenceConfigView<T> extends VerticalLayout {
         }
         grid.setAllRowsVisible(true);
         add(grid);
+    }
+
+    /**
+     * This view's own class, for the tab bar's selected entry.
+     *
+     * <p>Not {@code getClass()} straight through: Spring method security proxies
+     * every {@code @RolesAllowed} view, so at runtime that is
+     * {@code VatRateView$$SpringCGLIB$$0} — which {@code ReferenceTabs} matches
+     * by assignability anyway (F-070), but naming the mechanism here is cheaper
+     * than rediscovering it.
+     */
+    @SuppressWarnings("unchecked")
+    private Class<? extends Component> selfType() {
+        return (Class<? extends Component>) getClass();
     }
 
     /** The display-ordered rows to show (called on every {@link #refresh}). */

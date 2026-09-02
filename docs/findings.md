@@ -2689,3 +2689,52 @@ Deployment/Observability · UX-spec
   `LucideIcon` to be an enum in the first place.
 - Owner / next step: fixed and covered by a test. The Vaadin suggestion is worth filing
   alongside F-075's, since both are about the sprite branch failing quietly.
+
+### F-077 — A component spec's "Tokens used" table cannot distinguish what the theme already does from what you must declare, so it reads as five times more CSS than the view needs
+- Date: 2026-09-02
+- Area: Design toolchain (`figma-survey` spec format)
+- Severity: Low
+- Task being attempted: issue #169 — building the reference-table design, whose tab bar
+  spec (`docs/design/components/reference-tabs.md`) carries an eleven-row *Tokens used*
+  table: bar background, bar radius, bar padding, tab radius, tab padding, label size and
+  weight, unselected and selected label colour, selected fill, selected border, selected
+  shadow.
+- Expected vs actual: the table reads as a list of things the implementation must set —
+  it is written as `Part | Token | Design value`, with no column for *who supplies it*.
+  Implementing it literally means writing eleven declarations. In fact Aura's stock
+  `vaadin-tabs` already renders **nine of the eleven** exactly as specified: it sets the
+  bar's background to `--vaadin-background-container`, derives the bar radius as
+  `--vaadin-tab-border-radius + --vaadin-tabs-padding`, puts the tab corner on
+  `--vaadin-radius-m`, sets the label to `--aura-font-weight-medium`, and gives
+  `vaadin-tab[selected]` an `--aura-surface-color` fill, a 1px border and
+  `--aura-shadow-s`. Only two rows genuinely differ from the theme — the bar's padding
+  (Aura 3px, design 4px) and the two label colours (Aura uses `--vaadin-text-color` /
+  `--aura-accent-text-color`, the design wants secondary / plain text).
+- Why it happened, and why it is not the surveyor's fault: a survey never boots the app
+  (that is the deliberate split with `/figma-theme`), and reading `aura.css` in a jar to
+  work out which of eleven values the theme already produces is exactly the kind of
+  resolved-value work the spec format hands to a running app. The table is *correct* about
+  every value; it simply cannot say which ones are free.
+- Cost when implemented literally: the first draft of `.reference-tabs` re-declared all of
+  it — a background, a radius, a padding, a per-tab radius and padding, a label font-size
+  and weight, and two `vaadin-tab` rules. That is nine declarations fighting rules that
+  already agreed with them, and every one is a place the app stops tracking the theme. It
+  also nearly hid the two real divergences in the noise.
+- Evidence: `styles.css` § *Reference tables* as committed (three declarations plus one
+  `a:any-link` rule, against a nine-declaration first draft);
+  `docs/design/components/reference-tabs.md` § *Tokens used*;
+  `vaadin-aura-theme-25.2.1.jar!/META-INF/resources/aura/aura.css` rules for
+  `vaadin-tabs` and `vaadin-tab[selected]`.
+- Suggested improvement: give the *Tokens used* table a **Source** column with three
+  values — `theme` (Aura already produces this; assert it, do not declare it), `declare`
+  (the theme differs, the app must set it), `unverified` (nobody has checked). A survey can
+  fill `unverified` honestly for every row without booting anything, and whoever
+  implements or runs `/figma-theme` promotes each row to `theme` or `declare` once a
+  browser has answered. That turns the eleven-row table from a work list into a checklist
+  whose two interesting rows are visible, and it is the same "resolved values are the
+  running app's to supply" split the folder already makes for the global theme.
+- Owner / next step: a `figma-survey` change. Not done here — this issue only found the
+  problem, and altering the spec format mid-implementation is how a contract becomes a
+  transcript. Note that the same shape applies to `row-action-menu.md`, whose "No property
+  is overridden" line turned out to be right for a different reason than it implies: Aura
+  needed a variant (`TERTIARY`) and a chevron suppressed, neither of which is a property.

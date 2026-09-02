@@ -63,12 +63,32 @@ public enum NavGroup {
             List.of(),
             aliasesOf(ReportDetailView.class)),
 
-    /** The reference tables. Three entries, so it renders as a menu. */
+    /**
+     * The reference tables. <strong>One entry, so it renders as a plain
+     * link</strong> — the menu this group used to open went with #169.
+     *
+     * <p>The reference-table frame draws a three-tab bar inside the content
+     * column ({@link ReferenceTabs}), and the allowance-rates survey decided the
+     * tabs win: the three routes are reached through them, and the shell offers a
+     * single way into the group. So the other two views are {@link #covered}
+     * here — they light this pill without being entries of their own, exactly as
+     * {@code /report/5} does for My Expenses — and no new shell machinery was
+     * needed, because a one-entry group already rendered as a link.
+     *
+     * <p><strong>What this deliberately does not settle.</strong> Which route
+     * the pill points at when a user can reach only <em>some</em> of the three is
+     * the shell issue's call and is left to it: all three views are
+     * {@code @RolesAllowed("ADMIN")}, so the case cannot occur today, and picking
+     * a rule for it now would be guessing at a UI nobody can see. Note the shape
+     * of the hole while it is open — a user who could reach Expense Types but not
+     * VAT Rates would get no pill at all, while both tabs still worked. The
+     * companion question, whether the pill stays {@code aria-current} across all
+     * three routes, <em>is</em> answered here and answered yes: that is what
+     * {@code covered()} means, and it came free.
+     */
     REFERENCE_TABLES("Reference Tables",
-            List.of(new NavItem("VAT rates", VatRateView.class),
-                    new NavItem("Expense types", ExpenseTypeView.class),
-                    new NavItem("Allowance rates", AllowanceRatesView.class)),
-            List.of(),
+            List.of(new NavItem("VAT rates", VatRateView.class)),
+            List.of(ExpenseTypeView.class, AllowanceRatesView.class),
             Set.of());
 
     /** One navigable entry: the label the navigation shows, and where it goes. */
