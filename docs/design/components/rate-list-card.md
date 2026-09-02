@@ -2,8 +2,9 @@
 
 **Category:** composite (CSS)
 **Origin:** design
-**Implementation:** none
-**Code:** — (nothing implements it yet)
+**Implementation:** unaudited
+**Code:** `.rate-list-card` and the `.rate-row` family in
+`styles.css`, composed by `AllowanceRatesView` (#169)
 **Design:** node `156:5697` › `expense-item-card`, rows `156:5698` / `156:5708` /
 `156:5718`, dividers `156:5707` / `156:5717`
 

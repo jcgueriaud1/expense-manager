@@ -38,8 +38,8 @@ The complete list — everything else is Aura stock.
 | `--em-card-radius` | `12px` | off-scale: between `radius-m` 9 and `radius-l` 15 |
 | `--em-card-padding` | `20px` | off-scale: between `padding-l` 16 and `padding-xl` 24 |
 | `--em-section-gap` | `40px` | off-scale: beyond `gap-xl` 24 |
-| `--em-font-size-title` | `40px` | off-scale: beyond `font-size-xl` 18. **Was 24px** — re-decided by the reference-table survey; see [`../foundations/typography.md`](../foundations/typography.md) |
-| `--em-font-size-section` | `30px` | off-scale: beyond `font-size-xl` 18 — in-page section headings. **Decided, not yet declared** |
+| `--em-font-size-title` | `40px` | off-scale: beyond `font-size-xl` 18. **Was 24px** — re-decided by the reference-table survey and changed in place by **#169**; see [`../foundations/typography.md`](../foundations/typography.md) |
+| `--em-font-size-section` | `30px` | off-scale: beyond `font-size-xl` 18 — in-page section headings. Declared by **#169** |
 | `--em-font-size-total` | `20px` | off-scale: beyond `font-size-xl` 18 — the report card's total |
 | `--em-font-size-metric` | `28px` | off-scale: beyond `font-size-xl` 18 — the metric card's figure |
 | `--em-header-color` | `#f16c4e` | the shell bar's brand coral; bound to no design variable, and no Aura hue is near it |
@@ -69,6 +69,11 @@ report card's title and the shell's small-screen greeting, both of which borrowe
 property when it happened to equal their own value. See
 [`../foundations/typography.md`](../foundations/typography.md) § *Two heading sizes, one
 token*.
+
+**#169 made that change and re-checked both consumers in the browser** rather than
+trusting the reasoning above — which is the whole point of a value that moves silently.
+Neither was re-surveyed, so neither was *fixed*; both simply now render at 40, and
+splitting them off their own properties stays the report-list and shell issues' call.
 
 `--em-font-size-total` and `--em-font-size-metric` were decided by the report-list survey
 and declared by **#162**, the first issue to use them — a survey writes no CSS, so the two

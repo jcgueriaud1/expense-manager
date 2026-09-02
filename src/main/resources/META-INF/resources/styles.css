@@ -774,3 +774,259 @@ vaadin-context-menu-item > a[router-link] {
         padding-inline: var(--vaadin-padding-m);
     }
 }
+
+/* ============================================================================
+ * Reference tables — the three ADMIN routes behind the in-content tab bar
+ * (#169, frame 156:5396). Specs: components/reference-tabs.md,
+ * components/rate-list-card.md, components/row-action-menu.md.
+ *
+ * Structure a Vaadin layout API can express stays in Java (setSpacing,
+ * setPadding, expand). What is here is decoration, per-element typography, and
+ * the flex of the plain Divs the design drew as compositions rather than
+ * components — the same call .report-card makes.
+ *
+ * Not one var() below names a property Aura does not define, and four of the
+ * design's own variables had to be TRANSLATED rather than copied: a var() on an
+ * undefined property with a fallback renders that fallback forever and never
+ * tracks the theme again (F-062).
+ *
+ *   --aura-border-color-secondary    ->  --vaadin-border-color-secondary
+ *   --components/tabs-background     ->  --vaadin-background-container
+ *   --components/tab-border-active   ->  --aura-surface-color
+ *   --lumo-font-size-m / -radius-m   ->  --aura-font-size-m / --vaadin-radius-m
+ *
+ * The middle pair are Figma variable *paths* (note the slash), not custom
+ * properties, so nothing would ever have defined them. The design also draws
+ * --vaadin-grid-row-odd-background-color, which is absent from aura.css; the
+ * grid takes GridVariant.ROW_STRIPES instead of a property nobody can confirm.
+ * --------------------------------------------------------------------------*/
+
+/* ---- Type roles from the display ramp ---- */
+
+/*
+ * The page heading, 40px — re-decided from 24 by this survey (typography.md).
+ * `color: inherit` is not defensive: Aura re-declares color on h1-h6 at element
+ * level, so a container's colour never reaches a heading by inheritance at any
+ * specificity, :where()'s zero included (F-072).
+ */
+.page-title {
+    margin: 0;
+    color: inherit;
+    font-size: var(--em-font-size-title);
+    /*
+     * Aura sets line-height on body as a LENGTH (--aura-line-height-m, 20px),
+     * which inherits unchanged into a 40px heading and crops its descenders. A
+     * unitless value re-derives from this element's own font-size.
+     */
+    line-height: 1.2;
+    font-weight: var(--aura-font-weight-semibold);
+}
+
+/* An in-page section heading, 30px — the step this survey added. */
+.section-title {
+    margin: 0;
+    color: inherit;
+    font-size: var(--em-font-size-section);
+    line-height: 1.2;
+    font-weight: var(--aura-font-weight-semibold);
+}
+
+/* ---- The tab bar ---- */
+
+/*
+ * Route navigation drawn as a pill bar. THREE DECLARATIONS, not a rebuild:
+ * Aura's stock vaadin-tabs is already the design's trough — a
+ * --vaadin-background-container fill, a --vaadin-radius-m tab corner, a
+ * --aura-surface-color + 1px border + --aura-shadow-s selected pill, and a
+ * medium label weight. Only the bar's padding and the two label colours differ,
+ * so only those are set, through Aura's own properties rather than over the top
+ * of its rules.
+ */
+.reference-tabs {
+    /* Hug the labels; without this the bar stretches across the column. */
+    flex: 0 0 auto;
+    align-self: flex-start;
+    --vaadin-tabs-padding: var(--vaadin-padding-xs);   /* design 4; Aura's is 3 */
+    /* Aura derives this as tab-radius + tabs-padding, which the 4px above puts
+       at 13 — the design's own value. The spec accepted 12, so it is pinned. */
+    --vaadin-tabs-border-radius: var(--em-card-radius);
+    /* Aura's unselected label is --vaadin-text-color; the design's is secondary. */
+    --vaadin-tab-text-color: var(--vaadin-text-color-secondary);
+}
+
+/* Aura's selected label is --aura-accent-text-color; the design's is plain text. */
+.reference-tabs vaadin-tab[selected] {
+    --vaadin-tab-text-color: var(--vaadin-text-color);
+}
+
+/*
+ * The tab hosts a RouterLink, because these are three routes and the bar has to
+ * be middle-clickable. Aura re-declares color on a:any-link at element level, so
+ * --vaadin-tab-text-color never reaches the label by inheritance whatever the
+ * specificity — the link has to ask for it (F-072).
+ */
+.reference-tabs vaadin-tab a:any-link {
+    color: inherit;
+    text-decoration: none;
+}
+
+/* ---- The toolbar ---- */
+
+/*
+ * Year selector left, the two seeding actions right, over a hairline rule. The
+ * gap between the two buttons is set through the layout API on the group inside,
+ * not here. Wraps rather than overflows at 360px, which is why the row-gap is
+ * needed at all.
+ */
+.allowance-toolbar {
+    flex-wrap: wrap;
+    row-gap: var(--vaadin-gap-s);
+    padding-bottom: var(--vaadin-padding-s);
+    border-bottom: 1px solid var(--vaadin-border-color-secondary);
+}
+
+/* ---- The rate list card ---- */
+
+/*
+ * ONE card holding the three per-year rates, rows separated by a dotted rule
+ * (rate-list-card.md). Deliberately not .report-card-trip or an expense-line
+ * class, despite the design node being named expense-item-card: those are one
+ * card per row with no internal dividers, and the two diverge on exactly the
+ * thing that matters — how many rows a card holds.
+ */
+.rate-list-card {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    padding: var(--em-card-padding);             /* design 20 */
+    border-radius: var(--em-card-radius);        /* design 12 */
+    background: var(--aura-surface-color);
+    box-shadow: var(--aura-shadow-xs);
+    color: var(--vaadin-text-color);
+}
+
+.rate-row {
+    display: flex;
+    flex-wrap: wrap;                             /* 360px: values drop below */
+    align-items: center;
+    gap: var(--em-card-padding);                 /* design 20 */
+    padding-block: var(--em-card-padding);
+    min-width: 0;
+}
+
+/* First and last rows sit flush against the card's own padding. */
+.rate-row:first-child { padding-top: 0; }
+.rate-row:last-child { padding-bottom: 0; }
+
+/* Rules go BETWEEN rows — never above the first or below the last. */
+.rate-row + .rate-row {
+    border-top: 1px dotted var(--vaadin-border-color-secondary);
+}
+
+.rate-row-icon {
+    flex-shrink: 0;
+    color: var(--vaadin-text-color);
+}
+
+.rate-row-title {
+    font-size: var(--aura-font-size-l);          /* design 15, accepted at 16 */
+    font-weight: var(--aura-font-weight-semibold);
+    min-width: 0;
+}
+
+/*
+ * The values take the row's slack and sit right-aligned. The title does not
+ * stretch: it is the row's identity and belongs beside its icon.
+ */
+.rate-row-values {
+    display: flex;
+    flex: 1;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--vaadin-gap-s);
+    min-width: 0;
+}
+
+.rate-row-value {
+    font-size: var(--aura-font-size-l);          /* design 15, accepted at 16 */
+    font-weight: var(--aura-font-weight-regular);
+}
+
+.rate-row-amount { font-weight: var(--aura-font-weight-semibold); }
+
+/*
+ * The 8px separator between the domestic row's two amounts. A literal, not a
+ * token: one occurrence, and a *size* — --vaadin-gap-s would be a coincidence of
+ * number rather than a shared meaning. Not .category-dot, which is 0.625rem and
+ * carries a per-line hue.
+ */
+.rate-row-dot {
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--vaadin-border-color);
+}
+
+/* ---- Row action menu ---- */
+
+/*
+ * The one-item MenuBar carrying a row's actions (row-action-menu.md). The spec
+ * overrides no property, and this class exists for the one thing a variant
+ * cannot do: keep the trigger from being squeezed by the flex row it sits in.
+ * MenuBarVariant.LUMO_ICON and LUMO_TERTIARY_INLINE would be the obvious way to
+ * tighten it further and both are Lumo-only — accepted and silently inert under
+ * Aura (F-013, F-017) — so anything geometry needs comes here instead.
+ */
+.row-action-menu { flex-shrink: 0; }
+
+/*
+ * Aura draws a drop-down chevron beside any menu-bar button that has a sub-menu
+ * ("Aura provides dropdown indicators by default", where Lumo makes it the
+ * opt-in `dropdown-indicators` variant — so there is no variant to switch it
+ * off). The design draws the ⋮ alone, and a second glyph beside it reads as two
+ * controls. Hiding the suffix also drops the padding Aura reserves for it, which
+ * is what takes the trigger from 66px wide back to the design's ~21.
+ */
+.row-action-menu vaadin-menu-bar-button::part(suffix) { display: none; }
+.row-action-menu vaadin-menu-bar-button { padding-inline: var(--vaadin-padding-xs); }
+
+/* ---- The foreign per-diem section ---- */
+
+.foreign-section-header { flex-wrap: wrap; }
+
+/*
+ * The design's 400px search field, capped so it cannot push the 360px viewport
+ * into a horizontal scroll (ADR-0020).
+ */
+.foreign-search { max-width: 100%; }
+
+/* ----------------------------------------------------------------------------
+ * Small screens — undesigned, the same call #145 §3 made for the shell: nothing
+ * hides, things stack.
+ *
+ * A rate row has four things competing for one line and no room for them. Left
+ * to wrap on its own the ⋮ ended up on a line of its own, below and to the LEFT
+ * of the row it belongs to, which reads as a broken layout rather than a narrow
+ * one. So the wrap is directed: icon, title and ⋮ keep line one — the row's
+ * identity and its action together — and the values drop underneath,
+ * left-aligned, where they have the width to be read.
+ * --------------------------------------------------------------------------*/
+
+@media (max-width: 700px) {
+    .rate-row { gap: var(--vaadin-gap-s); }
+
+    /* Takes the slack on line one, which is what pushes the ⋮ to the far right. */
+    .rate-row-title { flex: 1; }
+
+    /*
+     * `order` alone would only reorder within the line; the 100% basis is what
+     * forces the break, and the order then keeps the ⋮ above rather than after.
+     */
+    .rate-row-values {
+        order: 3;
+        flex-basis: 100%;
+        justify-content: flex-start;
+    }
+}

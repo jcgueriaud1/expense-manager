@@ -2,8 +2,8 @@
 
 **Category:** composite
 **Origin:** design
-**Implementation:** none
-**Code:** — (nothing implements it yet)
+**Implementation:** unaudited
+**Code:** `com.vaadin.expensemanager.base.ui.RowActionMenu` (#169)
 **Design:** node `147:4473` › `Grid Buttons` (grid variant, 36×34) and `178:2029`
 (card variant, 21×34); glyph `lucide/ellipsis-vertical` at `170:7881` / `178:2033`.
 Placed on frame `156:5396` in both the rate card rows and every grid row

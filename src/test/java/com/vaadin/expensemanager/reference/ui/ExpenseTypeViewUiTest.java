@@ -3,6 +3,8 @@ package com.vaadin.expensemanager.reference.ui;
 import java.math.BigDecimal;
 
 import com.vaadin.expensemanager.base.ui.DashboardView;
+import com.vaadin.expensemanager.base.ui.NavGroup;
+import com.vaadin.expensemanager.base.ui.ReferenceTabs;
 import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.VatRateDto;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
@@ -45,18 +47,30 @@ class ExpenseTypeViewUiTest extends AbstractReferenceDataViewUiTest {
         assertThat(grid.getCellText(3, RATE_COL)).isEqualTo("13.5 %");
     }
 
+    /**
+     * Reached through the reference tab bar, not the shell — #169 made this route
+     * a {@code covered()} entry of the Reference Tables group rather than a menu
+     * item of its own, so it lights the shell's pill without appearing in it.
+     */
     @Test
     @WithUserDetails("admin@vaadin.com")
-    void adminSeesMenuEntry() {
-        navigate(DashboardView.class);
-        assertThat(navEntryLabels()).contains("Expense types");
+    void adminReachesThisRouteThroughTheTabBarRatherThanTheShellMenu() {
+        navigate(ExpenseTypeView.class);
+
+        assertThat($(ReferenceTabs.class).single().getSelectedTab().getElement()
+                .getTextRecursively()).isEqualTo("Expense Types");
+        assertThat(navEntryLabels()).doesNotContain("Expense types");
+        assertThat(NavGroup.of(ExpenseTypeView.class, "expense-types"))
+                .contains(NavGroup.REFERENCE_TABLES);
     }
 
     @Test
     @WithUserDetails(LocalUserSeeder.PLAIN_USER_EMAIL)
-    void userSeesNoMenuEntry() {
+    void userSeesNoTabForARouteTheyCannotReach() {
         navigate(DashboardView.class);
-        assertThat(navEntryLabels()).doesNotContain("Expense types");
+
+        assertThat(new ReferenceTabs(ExpenseTypeView.class, authenticationContext)
+                .getChildren()).isEmpty();
     }
 
     @Test

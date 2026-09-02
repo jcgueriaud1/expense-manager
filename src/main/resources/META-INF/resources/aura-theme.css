@@ -61,9 +61,21 @@ html {
   --em-card-radius: 12px;      /* between --vaadin-radius-m 9 and --vaadin-radius-l 15 */
   --em-card-padding: 20px;     /* between --vaadin-padding-l 16 and --vaadin-padding-xl 24 */
   --em-section-gap: 40px;      /* beyond --vaadin-gap-xl 24, the top of the scale */
-  --em-font-size-title: 24px;  /* beyond --aura-font-size-xl 18, the top of the scale */
-  --em-font-size-metric: 28px; /* beyond --aura-font-size-xl 18, the top of the scale */
-  --em-font-size-total: 20px;  /* beyond --aura-font-size-xl 18, the top of the scale */
+  /*
+   * The display ramp above the text scale, which stops at --aura-font-size-xl 18.
+   *
+   * -title was 24px until #169. The design draws its page heading at 24 on the
+   * report-list frame and at 40 on the reference-table frames — same role, same
+   * token, two values — and typography.md re-decided it as 40. That reflows every
+   * page heading in the app, and two consumers move with it that arguably should
+   * not: report-card's title and the shell's small-screen greeting share this
+   * property only because all three happened to be 24. Splitting them is the
+   * report-list issue's and the shell issue's call, not this one's.
+   */
+  --em-font-size-title: 40px;   /* beyond --aura-font-size-xl 18, the top of the scale */
+  --em-font-size-section: 30px; /* beyond --aura-font-size-xl 18 — in-page section headings */
+  --em-font-size-metric: 28px;  /* beyond --aura-font-size-xl 18, the top of the scale */
+  --em-font-size-total: 20px;   /* beyond --aura-font-size-xl 18, the top of the scale */
 }
 
 /*

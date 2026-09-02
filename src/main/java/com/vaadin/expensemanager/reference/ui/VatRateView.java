@@ -13,6 +13,7 @@ import com.vaadin.flow.component.textfield.BigDecimalField;
 import com.vaadin.flow.data.binder.Binder;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
+import com.vaadin.flow.spring.security.AuthenticationContext;
 
 import jakarta.annotation.security.RolesAllowed;
 
@@ -43,13 +44,14 @@ public class VatRateView extends ReferenceConfigView<VatRateDto> {
 
     private final transient ReferenceDataService service;
 
-    public VatRateView(ReferenceDataService service) {
+    public VatRateView(ReferenceDataService service,
+            AuthenticationContext authenticationContext) {
         super("VAT rates",
                 "The VAT rates expense lines are filed against. Deactivating a "
                         + "rate hides it from new lines but keeps it on existing "
                         + "ones — nothing is deleted, so past reports keep their "
                         + "original rate.",
-                "Add VAT rate");
+                "Add VAT rate", authenticationContext);
         this.service = service;
 
         grid.addColumn(dto -> formatPercent(dto.value()))

@@ -194,6 +194,21 @@ class LucideIconTest {
         assertThat(LucideIcon.SIZE_L).isEqualTo("var(--em-icon-size-l)");
     }
 
+    /**
+     * The five glyphs the reference-table design asked for (#169). The
+     * {@code @EnumSource} tests above already cover whatever the enum happens to
+     * hold; this one pins the specific set the spec closed, so deleting a
+     * constant a view still draws fails here rather than rendering an empty box.
+     */
+    @Test
+    void theReferenceTableGlyphsExist() {
+        assertThat(List.of(LucideIcon.ELLIPSIS_VERTICAL, LucideIcon.COPY,
+                        LucideIcon.CAR_TAXI_FRONT, LucideIcon.BED, LucideIcon.UTENSILS))
+                .extracting(LucideIcon::glyph)
+                .containsExactly("ellipsis-vertical", "copy", "car-taxi-front", "bed",
+                        "utensils");
+    }
+
     @Test
     void theVendoredLicenceStaysBesideTheSprite() {
         // Lucide is ISC — attribution is a condition of use, so losing this file

@@ -2,8 +2,9 @@
 
 **Category:** composite
 **Origin:** design
-**Implementation:** none
-**Code:** — (nothing implements it yet)
+**Implementation:** unaudited
+**Code:** `com.vaadin.expensemanager.base.ui.ReferenceTabs`,
+hosted by `AllowanceRatesView` and `ReferenceConfigView` (#169)
 **Design:** node `156:5401` › `Horizontal tabs`, on frame `156:5396`
 "Reference Tables - Allowance Rates"; component definitions `45:580` (`vaadin-tabs`),
 `45:549` / `45:550` (`vaadin-tab`, selected and not)

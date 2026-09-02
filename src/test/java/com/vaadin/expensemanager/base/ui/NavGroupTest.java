@@ -2,6 +2,7 @@ package com.vaadin.expensemanager.base.ui;
 
 import com.vaadin.expensemanager.allowance.ui.AllowanceRatesView;
 import com.vaadin.expensemanager.approval.ui.ApprovalQueueView;
+import com.vaadin.expensemanager.reference.ui.ExpenseTypeView;
 import com.vaadin.expensemanager.report.ui.MyReportsView;
 import com.vaadin.expensemanager.report.ui.ReportDetailView;
 import com.vaadin.expensemanager.user.ui.UserManagementView;
@@ -72,10 +73,28 @@ class NavGroupTest {
     void adminSeesEveryEntryOfEveryGroup() {
         assertThat(visible(NavGroup.ADMIN_TASKS, ADMIN, "ADMIN"))
                 .containsExactly("Approvals", "Review history", "Users");
+        // ONE entry since #169: the reference group's three routes are reached
+        // through ReferenceTabs, and the shell offers a single way in.
         assertThat(visible(NavGroup.REFERENCE_TABLES, ADMIN, "ADMIN"))
-                .containsExactly("VAT rates", "Expense types", "Allowance rates");
+                .containsExactly("VAT rates");
         assertThat(visible(NavGroup.MY_EXPENSES, ADMIN, "ADMIN"))
                 .containsExactly("My reports");
+    }
+
+    /**
+     * The other two reference routes light the pill without being entries of
+     * their own — the same {@code covered()} mechanism {@code /report/5} uses for
+     * My Expenses, and the reason the pill stays {@code aria-current} across all
+     * three routes.
+     */
+    @Test
+    void theOtherTwoReferenceRoutesAreCoveredRatherThanLinked() {
+        assertThat(NavGroup.of(ExpenseTypeView.class, "expense-types"))
+                .contains(NavGroup.REFERENCE_TABLES);
+        assertThat(NavGroup.of(AllowanceRatesView.class, "allowance-rates"))
+                .contains(NavGroup.REFERENCE_TABLES);
+        assertThat(visible(NavGroup.REFERENCE_TABLES, ADMIN, "ADMIN"))
+                .doesNotContain("Expense types", "Allowance rates");
     }
 
     /**
