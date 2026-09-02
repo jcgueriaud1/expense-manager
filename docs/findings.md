@@ -2573,3 +2573,119 @@ Deployment/Observability · UX-spec
   and `last()` helpers would cover the common cases without an index at all.
 - Owner / next step: worked around in the test; worth reporting upstream to the
   browserless-test maintainers as an API-consistency nit.
+
+### F-075 — Vaadin 25 bundles no Lucide and no Aura-native icon set, and a sprite addressed by `symbol` silently drops every presentation attribute
+- Date: 2026-09-01
+- Area: Vaadin / Design toolchain
+- Severity: Medium
+- Task being attempted: issue #163 — replacing all 25 `VaadinIcon` call sites and five
+  `"vaadin:name"` strings with Lucide, the icon set the Figma Aura kit draws with.
+- Expected vs actual, part 1 (**the set**): expected a Vaadin 25.2 app themed with Aura to
+  have an icon collection matching the design kit its own Figma library ships. Actual:
+  Vaadin 25.2 bundles exactly two collections, `VaadinIcon` and `LumoIcon`, both Lumo-era
+  — filled, heavier glyphs on a 16px grid. Aura has **no** icon set of its own. The Figma
+  Aura kit's hand-placed glyphs are Lucide (24px, 2px outline stroke). So an Aura app
+  built from an Aura design has to vendor a third-party set before it can draw a single
+  glyph that matches the design, and the docs' "Custom Icon Collection APIs" page is the
+  only pointer that this is expected of you.
+- Expected vs actual, part 2 (**the sprite**, the expensive half): the docs endorse
+  wrapping a third-party set in a project-local enum, and `SvgIcon(String src, String
+  symbol)` reads as the sprite-sheet constructor. Expected `vaadin-icon` to fetch the
+  sprite and honour the file's own `stroke` / `stroke-width` / `viewBox`, the way it
+  visibly does for a single-file `src`. Actual: in `vaadin-icon-mixin`'s `__srcChanged`,
+  `(symbol || src.includes('#'))` takes a branch that sets
+  `<use href="sprite.svg#id">` and **never fetches the file**. Only the *other* branch —
+  plain `src`, one file per glyph — parses the response and copies `viewBox`, `fill`,
+  `stroke`, `stroke-width`, `stroke-linecap` and `stroke-linejoin` off the file's root
+  `<svg>` onto the rendered one. Down the sprite branch all six are `undefined` and
+  `ifDefined` omits them.
+- Why it bites: a Lucide glyph is *only* strokes — `fill="none" stroke="currentColor"
+  stroke-width="2"` on the root and bare `<path d="…">` inside. Vendor such a file as a
+  `<symbol>` unchanged and the sprite branch renders it with no stroke at all: the glyph
+  is invisible, or (with a `fill` inherited from elsewhere) a black blob that looks
+  plausible in light mode and disappears in dark. Nothing errors, nothing logs. It is the
+  same silent-success shape as F-062, one layer down.
+- Workaround used: put the presentation attributes on **each `<symbol>`** rather than the
+  sprite's root, and assert them per symbol in `LucideIconTest` rather than trusting the
+  generator. `currentColor` does survive the external reference — it resolves against the
+  `<use>` element's context — so one sprite serves both colour schemes once the
+  attributes are in the right place. Verified in the browser in both schemes: the same
+  `plus` symbol renders white on the black primary button and dark on its white dark-mode
+  counterpart.
+- A second, quieter coupling: with no `viewBox` read from the file, the rendered viewBox
+  is `0 0 ${size}` from `vaadin-icon`'s `size` property, which **defaults to 24**. Lucide
+  is a 24 grid, so they agree — by coincidence of matching defaults on both sides, not by
+  anything either declares. A 16- or 20-grid set vendored the same way would render
+  cropped or padded with no clue why. Pinned by a test.
+- Evidence: `@vaadin/icon@25.2.1/src/vaadin-icon-mixin.js` `__srcChanged` (the
+  `if (!src.startsWith('data:') && (symbol || src.includes('#')))` branch) and
+  `vaadin-icon.js` `render()` (`fill="${ifDefined(this.__fill)}"` and siblings, plus
+  `viewBox="${this.__viewBox || \`0 0 ${this.size} ${this.size}\`}"`);
+  `src/main/resources/META-INF/resources/icons/lucide.svg`; ADR-0026.
+- Impact: the visible cost was one design deviation per view survey (#162 recorded two
+  invented glyphs before the set was switched) and, for #163, half a day resolving what
+  the design actually draws. The sprite behaviour cost the sharper risk: had the symbols
+  been vendored verbatim, the suite would have stayed green and the icons would have
+  looked correct until someone opened dark mode.
+- Suggested Vaadin/product improvement: three, in order of value. (1) Ship an Aura icon
+  set, or state in the Aura docs which existing collection is intended — an Aura app
+  currently has no answer to "which icons". (2) Document that `symbol` renders an external
+  `<use>` and consequently ignores the source file's presentation attributes; today the
+  two branches of `__srcChanged` behave very differently and the API surface
+  (`SvgIcon(src, symbol)` vs `SvgIcon(src)`) does not hint at it. Better still, read the
+  attributes in both branches. (3) Warn when a `<use>` resolves to nothing — a mistyped
+  symbol is currently an empty box and total silence, which is what forces an enum plus a
+  test to get a compile-time-ish guarantee.
+- Owner / next step: worked around and covered by `LucideIconTest`; (1) and (2) are worth
+  raising with the Vaadin design-system and Flow-components teams respectively. The
+  invention ledger in ADR-0026 tracks the design-side half — 13 glyphs picked without a
+  drawn reference — and shrinks as views get designed.
+
+### F-076 — A custom-property name in an SVG comment makes the sprite malformed XML, and every icon in the app disappears with no console error
+- Date: 2026-09-02
+- Area: Vaadin / Tooling
+- Severity: Medium
+- Task being attempted: applying the iconography survey's decision to move stroke width out
+  of the sprite's `<symbol>`s and onto the theme's `--vaadin-icon-stroke-width`. The edit
+  removed the attribute and added a comment to the sprite explaining why it must not come
+  back.
+- Expected vs actual: expected a comment to be inert. Actual: every icon in the app
+  vanished. **An XML comment may not contain the string `--`**, and the comment named the
+  property in full — `--vaadin-icon-stroke-width`. That made `lucide.svg` malformed XML, so
+  the browser's SVG parse failed, every external `<use href="icons/lucide.svg#…">` resolved
+  to nothing, and 22 icons rendered as empty boxes.
+- Why it is worse than a normal typo: **nothing reports it.** The console showed zero
+  errors and zero warnings — the parse failure happens inside the browser's own SVG
+  resolution for a `<use>` reference, not in a fetch, so there is no network error and no
+  script error. The file still serves `200 image/svg+xml`. `getComputedStyle` on the
+  `<svg>` and on the `<use>` both still reported `stroke-width: 2px`, because the *host*
+  document's CSS is fine; it is the *referenced* document that failed to parse. Every
+  signal an agent would reach for says the icons are working.
+- The one signal that did show it: `use.getBBox()` returned `0×0` where it had previously
+  returned real geometry. Worth remembering as the cheap probe for "did this `<use>`
+  actually resolve" — it is the only in-page check that distinguishes a resolved reference
+  from a silently failed one.
+- Workaround used: name custom properties in the sprite's comments **without their leading
+  dashes**, with a line in the comment saying why. Then the real fix: a test that parses the
+  sprite as XML. Every other assertion in `LucideIconTest` reads the file as **text**, so
+  all 53 of them passed on a file no browser could parse — which is precisely the shape of
+  gap a test suite is supposed to close. `theSpriteIsWellFormedXml` now fails with the
+  parser's own message ("The string \"--\" is not permitted within comments"), verified by
+  replanting the bug.
+- Evidence: `src/main/resources/META-INF/resources/icons/lucide.svg`;
+  `LucideIconTest#theSpriteIsWellFormedXml`; ADR-0026 decision 4 as amended;
+  `docs/design/foundations/iconography.md`.
+- Impact: caught in the browser within minutes *because* the change was visually verified —
+  and it would not have been caught otherwise. A green 522-test suite, a 200 response and a
+  clean console all agreed the icons were fine. This is the third silent-styling mechanism
+  logged in this area (F-062 frozen fallbacks, F-072 inheritance losing to an element-level
+  rule, F-075 the sprite branch reading no attributes) and the first where the *asset* is
+  the thing that fails.
+- Suggested Vaadin/product improvement: `vaadin-icon` should warn when a `<use>` reference
+  resolves to nothing — it already logs `Error loading icon` for a failed fetch in the
+  single-file branch, so the sprite branch is the asymmetric one. A one-line
+  `console.warn` on an empty bounding box after load would turn this class of bug from
+  invisible to obvious, and would also catch the mistyped-symbol case that forced
+  `LucideIcon` to be an enum in the first place.
+- Owner / next step: fixed and covered by a test. The Vaadin suggestion is worth filing
+  alongside F-075's, since both are about the sprite branch failing quietly.

@@ -7,6 +7,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Function;
 
 import com.vaadin.expensemanager.base.ui.ErrorSummary;
+import com.vaadin.expensemanager.base.ui.LucideIcon;
 import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.VatRateDto;
 import com.vaadin.expensemanager.report.domain.ReceiptRejectedException;
@@ -14,6 +15,7 @@ import com.vaadin.expensemanager.report.domain.ReceiptType;
 import com.vaadin.expensemanager.report.domain.ReceiptValidator;
 import com.vaadin.expensemanager.report.service.ExpenseLineDto;
 import com.vaadin.expensemanager.report.service.ReceiptUpload;
+import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.combobox.ComboBox;
@@ -21,12 +23,10 @@ import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.Span;
-import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.notification.NotificationVariant;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
-import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.textfield.BigDecimalField;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.component.upload.Upload;
@@ -248,7 +248,7 @@ final class LineEditorDialog extends Dialog {
         upload.setMaxFiles(1);
         upload.setMaxFileSize((int) ReceiptValidator.MAX_SIZE_BYTES);
         upload.setAcceptedFileTypes("image/jpeg", "image/png", "application/pdf");
-        var uploadButton = new Button("Upload receipt…", VaadinIcon.UPLOAD.create());
+        var uploadButton = new Button("Upload receipt…", LucideIcon.UPLOAD.create());
         upload.setUploadButton(uploadButton);
         // Client-side rejection (wrong type / too big) — surfaced, never silent.
         upload.addFileRejectedListener(event -> notifyError(event.getErrorMessage()));

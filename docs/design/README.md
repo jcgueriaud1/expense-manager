@@ -26,7 +26,8 @@ docs/design/
 │   ├── spacing.md       density, padding and gap scale
 │   ├── radius.md        corner radii
 │   ├── elevation.md     shadows, surfaces
-│   └── motion.md        transitions
+│   ├── motion.md        transitions
+│   └── iconography.md   the icon set, size scale, colour and stroke
 ├── tokens/
 │   └── token-reference.md   master map: every variable, its value, when to use it
 └── components/      one file per component that exists in this app

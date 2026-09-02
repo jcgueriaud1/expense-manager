@@ -8,6 +8,7 @@ import java.util.Locale;
 import com.vaadin.expensemanager.approval.service.ApprovalService;
 import com.vaadin.expensemanager.approval.service.ReviewedSummaryDto;
 import com.vaadin.expensemanager.base.ui.EmptyState;
+import com.vaadin.expensemanager.base.ui.LucideIcon;
 import com.vaadin.expensemanager.report.domain.ReportStatus;
 import com.vaadin.expensemanager.report.ui.ReportViewSupport;
 import com.vaadin.flow.component.Component;
@@ -63,7 +64,7 @@ public class ReviewHistoryView extends VerticalLayout {
         content.setMaxWidth("46rem");
 
         if (reviewed.isEmpty()) {
-            content.add(new EmptyState("vaadin:archive", "No reviewed reports yet",
+            content.add(new EmptyState(LucideIcon.ARCHIVE.create(), "No reviewed reports yet",
                     "Reports you approve or reject will appear here."));
             add(content);
             return;

@@ -6,6 +6,7 @@ import com.vaadin.expensemanager.allowance.AllowanceRateService;
 import com.vaadin.expensemanager.allowance.DomesticPerDiemDto;
 import com.vaadin.expensemanager.allowance.ForeignPerDiemDto;
 import com.vaadin.expensemanager.base.ui.EditorDialog;
+import com.vaadin.expensemanager.base.ui.LucideIcon;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
@@ -15,8 +16,6 @@ import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.H3;
 import com.vaadin.flow.component.html.Paragraph;
 import com.vaadin.flow.component.html.Span;
-import com.vaadin.flow.component.icon.Icon;
-import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
@@ -68,7 +67,7 @@ public class AllowanceRatesView extends VerticalLayout {
         setPadding(true);
         setSpacing(true);
 
-        var addYear = new Button("Add year", new Icon(VaadinIcon.PLUS),
+        var addYear = new Button("Add year", LucideIcon.PLUS.create(),
                 event -> openAddYearEditor());
         addYear.addThemeVariants(ButtonVariant.PRIMARY);
 
@@ -143,7 +142,7 @@ public class AllowanceRatesView extends VerticalLayout {
         text.setPadding(false);
         text.setSpacing(false);
 
-        var editButton = new Button(new Icon(VaadinIcon.EDIT), event -> edit.run());
+        var editButton = new Button(LucideIcon.PENCIL.create(), event -> edit.run());
         editButton.addThemeVariants(ButtonVariant.TERTIARY);
         editButton.setAriaLabel(editAriaLabel);
 
@@ -156,7 +155,7 @@ public class AllowanceRatesView extends VerticalLayout {
 
     /** The foreign per-diem list for {@code year}: a titled grid with add/edit only. */
     private Component foreignSection(int year) {
-        var addCountry = new Button("Add country", new Icon(VaadinIcon.PLUS),
+        var addCountry = new Button("Add country", LucideIcon.PLUS.create(),
                 event -> openAddCountryEditor(year));
         addCountry.addThemeVariants(ButtonVariant.TERTIARY);
 
@@ -171,7 +170,7 @@ public class AllowanceRatesView extends VerticalLayout {
         foreignGrid.addColumn(dto -> formatMoney(dto.amount()))
                 .setHeader("Per-diem").setAutoWidth(true).setFlexGrow(0);
         foreignGrid.addComponentColumn(dto -> {
-            var edit = new Button(new Icon(VaadinIcon.EDIT),
+            var edit = new Button(LucideIcon.PENCIL.create(),
                     event -> openForeignEditor(year, dto));
             edit.addThemeVariants(ButtonVariant.TERTIARY);
             edit.setAriaLabel("Edit per-diem for " + dto.country());

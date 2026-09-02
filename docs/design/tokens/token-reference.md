@@ -15,6 +15,11 @@ Resolved on Vaadin **25.2.1** at the three Aura-default inputs this app keeps:
 Unitless numbers Aura derives the scales from. **None is overridden**, so the theme file
 does not declare them.
 
+Icons have no input of this kind: neither Aura nor the base styles derive an icon scale.
+`--vaadin-icon-size` is a single global defaulting to `1lh`, and there is no icon size
+ramp — which is why this app mints its own three
+([`../foundations/iconography.md`](../foundations/iconography.md)).
+
 | Property | Value | Notes |
 |---|---|---|
 | `--aura-base-radius` | 3 | range 0–10; design's 9px field radius confirms it |
@@ -38,10 +43,21 @@ The complete list — everything else is Aura stock.
 | `--em-font-size-metric` | `28px` | off-scale: beyond `font-size-xl` 18 — the metric card's figure |
 | `--em-header-color` | `#f16c4e` | the shell bar's brand coral; bound to no design variable, and no Aura hue is near it |
 | `--em-header-text-color` | `#ffffff` | the bar's label colour — pinned, **not** `--aura-accent-contrast-color`, which tracks the accent rather than the bar |
+| `--em-icon-size-s` | `16px` | icon beside small text — the design's 16px trip-row glyph |
+| `--em-icon-size-m` | `20px` | icon in a button slot or field prefix — the design's bound `Button icon size` |
+| `--em-icon-size-l` | `24px` | standalone icon in an app-drawn layout — the design's 24px section chevron |
+| `--vaadin-icon-stroke-width` | `2` | **load-bearing.** A base property, not an `--em-*` one, because the framework has a real property for exactly this. Unset it and every icon renders at the SVG default of `1` — visibly thin, silently |
 
 Plus one rule scoping `--aura-accent-color-light/-dark` to `--aura-neutral-*` on
 non-tertiary buttons. All in
 `src/main/resources/META-INF/resources/aura-theme.css`.
+
+The four icon rows were settled by the iconography survey and **declared by #163's own
+PR**, which is the shortest that gap has ever been — the survey and the implementation
+happened to be in flight together. `--vaadin-icon-stroke-width` is the one row here that
+is not an `--em-*` property: the framework has a real property for exactly that value, so
+it is overridden directly rather than given a twin (the same reasoning that once applied
+to `--aura-app-layout-radius`).
 
 `--em-font-size-total` and `--em-font-size-metric` were decided by the report-list survey
 and declared by **#162**, the first issue to use them — a survey writes no CSS, so the two

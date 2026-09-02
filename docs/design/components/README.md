@@ -35,7 +35,7 @@ source and would go stale here.
 | [`status-history.md`](status-history.md) | composite | design | **drifted** |
 | [`error-summary.md`](error-summary.md) | shared Java component | code | conforms |
 | [`editor-dialog.md`](editor-dialog.md) | shared Java component | code | conforms |
-| [`empty-state.md`](empty-state.md) | shared Java component | code | conforms |
+| [`empty-state.md`](empty-state.md) | shared Java component | code | unaudited |
 | [`theme-switcher.md`](theme-switcher.md) | shared Java component | code | unaudited |
 | [`app-shell.md`](app-shell.md) | shell | design | unaudited — rebuilt in #146 |
 
@@ -82,6 +82,18 @@ a table, not that the right component was chosen for the design's intent.
 > resolved `report-card`'s design reference and added `metric-card` and
 > `report-list-section`. `metric-card` is `none` on purpose — the spec is ahead of the
 > code, which is what that value is for.
+>
+> `empty-state` dropped from `conforms` to `unaudited` in #163, which changed its
+> constructor to take a built icon: the spec was updated by the change that caused the
+> drift, so its `conforms` would have been self-asserted. That is what `unaudited` is for.
+>
+> **One design-origin row needs a survey, not an edit.** `report-list-section`'s *Anatomy*
+> names the chevron as `VaadinIcon.CHEVRON_UP`, an API that #163 removed from the app and
+> that was never what the design drew — the design's node is `lucide/chevron-up`
+> (`134:1768`), and the shipped implementation uses Aura's own `Details` toggle rotated in
+> CSS (correct, per ADR-0026 decision 2). The row is wrong against the design *and*
+> against the code, so it is `/figma-survey`'s to fix; editing it here would launder a
+> design-origin spec into a transcript.
 
 ## Who writes these
 

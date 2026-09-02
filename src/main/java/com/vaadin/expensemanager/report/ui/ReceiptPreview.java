@@ -2,6 +2,7 @@ package com.vaadin.expensemanager.report.ui;
 
 import java.util.function.Supplier;
 
+import com.vaadin.expensemanager.base.ui.LucideIcon;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
@@ -10,7 +11,6 @@ import com.vaadin.flow.component.html.Anchor;
 import com.vaadin.flow.component.html.AnchorTarget;
 import com.vaadin.flow.component.html.AttachmentType;
 import com.vaadin.flow.component.html.Image;
-import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.server.streams.DownloadHandler;
 
 /**
@@ -103,7 +103,7 @@ final class ReceiptPreview {
                 "Open " + filename);
         anchor.setTarget(AnchorTarget.BLANK);
         anchor.getElement().setAttribute("aria-label", "Open receipt: " + filename);
-        var icon = VaadinIcon.FILE_TEXT_O.create();
+        var icon = LucideIcon.FILE_TEXT.create();
         icon.setSize("var(--aura-font-size-s)");
         anchor.addComponentAsFirst(icon);
         anchor.getStyle().set("display", "inline-flex").set("align-items", "center")

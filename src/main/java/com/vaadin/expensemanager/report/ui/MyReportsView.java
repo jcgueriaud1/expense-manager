@@ -12,6 +12,7 @@ import java.util.Locale;
 import com.vaadin.expensemanager.base.ui.EmptyState;
 import com.vaadin.expensemanager.base.ui.HasHeaderState;
 import com.vaadin.expensemanager.base.ui.HeaderState;
+import com.vaadin.expensemanager.base.ui.LucideIcon;
 import com.vaadin.expensemanager.base.ui.MetricCard;
 import com.vaadin.expensemanager.base.ui.ReportListSection;
 import com.vaadin.expensemanager.report.domain.ReportStatus;
@@ -25,8 +26,6 @@ import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.combobox.ComboBox;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.Span;
-import com.vaadin.flow.component.icon.Icon;
-import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
@@ -103,7 +102,7 @@ public class MyReportsView extends VerticalLayout implements HasHeaderState {
         content.setMaxWidth("46rem");
 
         if (reports.isEmpty()) {
-            content.add(new EmptyState("vaadin:file-text-o", "No expense reports yet",
+            content.add(new EmptyState(LucideIcon.FILE_TEXT.create(), "No expense reports yet",
                     "Create your first report to start tracking expenses."));
             add(content);
             return;
@@ -122,7 +121,7 @@ public class MyReportsView extends VerticalLayout implements HasHeaderState {
         var title = new H2("My reports");
         title.addClassName("reports-title");
 
-        var newReport = new Button("New report", new Icon(VaadinIcon.PLUS),
+        var newReport = new Button("New report", LucideIcon.PLUS.create(),
                 event -> getUI().ifPresent(ui -> ui.navigate(ReportDetailView.class)));
         newReport.addThemeVariants(ButtonVariant.PRIMARY);
 
@@ -304,8 +303,8 @@ public class MyReportsView extends VerticalLayout implements HasHeaderState {
     }
 
     private Component tripRow(TripSummaryDto trip) {
-        var plane = new Icon(VaadinIcon.AIRPLANE);
-        plane.setSize("16px");
+        // The design's inline role size, beside the row's 16px text (88:12941).
+        var plane = LucideIcon.PLANE.create(LucideIcon.SIZE_S);
 
         var route = new HorizontalLayout(plane, new Span(trip.destinations()));
         route.setPadding(false);

@@ -8,6 +8,7 @@ import java.util.Locale;
 import com.vaadin.expensemanager.approval.service.ApprovalService;
 import com.vaadin.expensemanager.approval.service.ReviewSummaryDto;
 import com.vaadin.expensemanager.base.ui.EmptyState;
+import com.vaadin.expensemanager.base.ui.LucideIcon;
 import com.vaadin.expensemanager.report.ui.ReportViewSupport;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.html.H2;
@@ -60,7 +61,7 @@ public class ApprovalQueueView extends VerticalLayout {
         content.setMaxWidth("46rem");
 
         if (submitted.isEmpty()) {
-            content.add(new EmptyState("vaadin:inbox", "Nothing to review",
+            content.add(new EmptyState(LucideIcon.INBOX.create(), "Nothing to review",
                     "Submitted reports awaiting approval will appear here."));
             add(content);
             return;
