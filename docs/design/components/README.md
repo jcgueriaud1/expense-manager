@@ -37,7 +37,10 @@ source and would go stale here.
 | [`editor-dialog.md`](editor-dialog.md) | shared Java component | code | conforms |
 | [`empty-state.md`](empty-state.md) | shared Java component | code | unaudited |
 | [`theme-switcher.md`](theme-switcher.md) | shared Java component | code | unaudited |
-| [`app-shell.md`](app-shell.md) | shell | design | unaudited — rebuilt in #146 |
+| [`reference-tabs.md`](reference-tabs.md) | composite | design | none |
+| [`rate-list-card.md`](rate-list-card.md) | composite | design | none |
+| [`row-action-menu.md`](row-action-menu.md) | composite | design | none |
+| [`app-shell.md`](app-shell.md) | shell | design | unaudited — rebuilt in #146; **Navigation row superseded** |
 
 ## The two axes
 
@@ -86,6 +89,13 @@ a table, not that the right component was chosen for the design's intent.
 > `empty-state` dropped from `conforms` to `unaudited` in #163, which changed its
 > constructor to take a built icon: the spec was updated by the change that caused the
 > drift, so its `conforms` would have been self-asserted. That is what `unaudited` is for.
+>
+> The **reference-table frame** (`156:5396`) was surveyed for the allowance-rates
+> redesign. It added `reference-tabs`, `rate-list-card` and `row-action-menu`, all three
+> `none` on purpose — the spec is ahead of the code, which is what that value is for.
+> That survey also re-decided `--em-font-size-title` from 24 to 40 and superseded
+> `app-shell`'s Navigation row by replacing the Reference Tables menu with in-content
+> tabs; `app-shell.md` carries a note, and the shell's own issue owns rewriting it.
 >
 > **One design-origin row needs a survey, not an edit.** `report-list-section`'s *Anatomy*
 > names the chevron as `VaadinIcon.CHEVRON_UP`, an API that #163 removed from the app and

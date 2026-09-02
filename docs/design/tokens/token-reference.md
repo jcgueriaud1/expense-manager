@@ -38,7 +38,8 @@ The complete list — everything else is Aura stock.
 | `--em-card-radius` | `12px` | off-scale: between `radius-m` 9 and `radius-l` 15 |
 | `--em-card-padding` | `20px` | off-scale: between `padding-l` 16 and `padding-xl` 24 |
 | `--em-section-gap` | `40px` | off-scale: beyond `gap-xl` 24 |
-| `--em-font-size-title` | `24px` | off-scale: beyond `font-size-xl` 18 |
+| `--em-font-size-title` | `40px` | off-scale: beyond `font-size-xl` 18. **Was 24px** — re-decided by the reference-table survey; see [`../foundations/typography.md`](../foundations/typography.md) |
+| `--em-font-size-section` | `30px` | off-scale: beyond `font-size-xl` 18 — in-page section headings. **Decided, not yet declared** |
 | `--em-font-size-total` | `20px` | off-scale: beyond `font-size-xl` 18 — the report card's total |
 | `--em-font-size-metric` | `28px` | off-scale: beyond `font-size-xl` 18 — the metric card's figure |
 | `--em-header-color` | `#f16c4e` | the shell bar's brand coral; bound to no design variable, and no Aura hue is near it |
@@ -58,6 +59,16 @@ happened to be in flight together. `--vaadin-icon-stroke-width` is the one row h
 is not an `--em-*` property: the framework has a real property for exactly that value, so
 it is overridden directly rather than given a twin (the same reasoning that once applied
 to `--aura-app-layout-radius`).
+
+`--em-font-size-title` changed value in place, which none of the rows above had done
+before: the reference-table frame draws 40px where the report-list frame drew 24, and the
+40 won. **A changed token is more dangerous than a new one** — a new property renders
+unset until it is declared, which is visible, whereas a changed one keeps rendering and
+simply moves every consumer. Two consumers move here that were never re-surveyed: the
+report card's title and the shell's small-screen greeting, both of which borrowed this
+property when it happened to equal their own value. See
+[`../foundations/typography.md`](../foundations/typography.md) § *Two heading sizes, one
+token*.
 
 `--em-font-size-total` and `--em-font-size-metric` were decided by the report-list survey
 and declared by **#162**, the first issue to use them — a survey writes no CSS, so the two
@@ -105,8 +116,9 @@ only** — there is no bare `--vaadin-padding` / `--vaadin-gap` (F-030).
 
 | Token | Size | Line height | When |
 |---|---|---|---|
+| `--em-font-size-title` | 40 | — | page headings, report card titles |
+| `--em-font-size-section` | 30 | — | in-page section headings |
 | `--em-font-size-metric` | 28 | — | metric card figures |
-| `--em-font-size-title` | 24 | — | page headings, report card titles |
 | `--em-font-size-total` | 20 | — | report card totals |
 | `--aura-font-size-xl` | 18 | 26 | grand total, list title |
 | `--aura-font-size-l` | 16 | 22 | card totals, amounts, detail title |

@@ -61,7 +61,7 @@ avatar is suppressed to match. `aria-haspopup` still announces the menu.
 | Card radius | `--em-card-radius` | 12 |
 | Card surface | `--aura-background-color` | — |
 | Status tints | `--aura-green` / `--aura-blue` / `--aura-red` | the design binds these |
-| Small-screen greeting | `--em-font-size-title` (24) | undesigned |
+| Small-screen greeting | `--em-font-size-title` (**40** since the reference-table survey; was 24) | undesigned |
 
 **Off-scale values, decided here** — each is written as a literal in the `.app-shell*`
 rules with the design value in a comment, because each occurs once and a project property
@@ -75,7 +75,7 @@ for a single use is where a parallel scale starts:
 | 900px | the content column | the design's 900-in-1800 proportion |
 | 80px | content column's top inset | beyond `--vaadin-padding-xl` 24 |
 | 60px | hero bottom padding | beyond the scale |
-| 50px / 20px | greeting / hero status line | beyond `--em-font-size-title` 24 |
+| 50px / 20px | greeting / hero status line | beyond `--em-font-size-title` — which is now 40, leaving the 50px greeting only 10px above it. Back to the designer |
 | 100px | pill radius | a pill, not a corner; beyond `--vaadin-radius-l` 15 |
 | 441×236 | the illustration | the asset's own geometry |
 
@@ -162,7 +162,7 @@ Three groups, hand-authored in `NavGroup` — `@Menu` was removed from all eight
 |---|---|---|
 | My Expenses | link | `/reports`, and `/report/<id>` lights it without being an entry |
 | Admin Tasks | menu | `/approvals`, `/approval-history`, `/users`, and `/review/<id>` |
-| Reference Tables | menu | `/vat-rates`, `/expense-types`, `/allowance-rates` |
+| Reference Tables | menu — **superseded**, see below | `/vat-rates`, `/expense-types`, `/allowance-rates` |
 | *(none)* | — | `/` — the design gives the dashboard no nav item; the logo links there |
 
 **Current follows the group, not the route.** Sitting on `/report/5` keeps *My Expenses*
@@ -173,6 +173,19 @@ current. The pill carries `aria-current="page"`, which is the half a screen read
 alias by reading it off the `@RouteAlias` annotation. The design never drew the approver's
 screen, so which group it belongs under is a judgement, taken here and open to the report
 detail issue revisiting it.
+
+> **The Reference Tables menu is superseded.** The reference-table frame `156:5396`
+> draws a three-tab bar inside the content column, and the allowance-rates survey decided
+> the tabs win and this menu goes: the group becomes a single-destination pill — a plain
+> `RouterLink`, the same element type *My Expenses* already uses — and the other two
+> routes become `covered()` entries reached through the tabs. See
+> [`reference-tabs.md`](reference-tabs.md).
+>
+> **This note records the decision; it does not rewrite this file.** Two questions belong
+> to the shell's own issue and are not answered here: which route the pill points at when
+> the user can reach only some of the three, and whether it stays `aria-current` across
+> all three. Until that issue lands, the table above describes what is built and the note
+> describes what was decided — read both.
 
 Access filtering reads each view's own `@RolesAllowed` / `@PermitAll` through
 `AccessAnnotationChecker` — the same annotations the router enforces (ADR-0008). A group
