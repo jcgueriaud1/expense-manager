@@ -11,7 +11,8 @@
 | `--aura-font-weight-semibold` | 600 | 650 | Aura default (600) | design | **settled** |
 | Button / input / checkbox / radio / grid-header weights | not specified | 600 / 500 / 550 / 550 / 600 | unset | design | **settled** |
 | `--aura-line-height-s` | 20 | 18 (default) | 18 (default) | app | **settled** |
-| Page-heading size | 24 | `font-size-xl` 18 | `--em-font-size-title: 24px` | design | **settled** |
+| Page-heading size | **40** (`156:5404`); 24 on the report-list frame | `--em-font-size-title: 24px` | `--em-font-size-title: 40px` | design | **settled** — re-decided, see [Two heading sizes, one token](#two-heading-sizes-one-token) |
+| Section-heading size | 30 (`156:5737`) | — | `--em-font-size-section: 30px` | design | **settled** |
 | Expense row title | 15 | — | `--aura-font-size-l` = 16 (**+1px**) | nearest token | **settled** |
 | Report card total size | 20 | — | `--em-font-size-total: 20px` | design | **settled** |
 | Metric figure size | 28 | — | `--em-font-size-metric: 28px` | design | **settled** |
@@ -32,7 +33,8 @@ At `--aura-base-font-size: 14`, on Vaadin 25.2.1:
 
 | Token | Size | Line height | Used for |
 |---|---|---|---|
-| `--em-font-size-title` | 24 | — | page headings (off-scale, see below) |
+| `--em-font-size-title` | 40 | — | page headings (off-scale, see below) |
+| `--em-font-size-section` | 30 | — | in-page section headings (off-scale, see below) |
 | `--aura-font-size-xl` | 18 | 26 | grand total, list title |
 | `--aura-font-size-l` | 16 | 22 | card totals, amounts, detail title, preview amount |
 | `--aura-font-size-m` | 14 | 20 | body, card titles, line amounts |
@@ -59,14 +61,41 @@ Utility classes in `styles.css`, so a role is named once rather than restated pe
 
 | Design value | Where | Nearest | Decision |
 |---|---|---|---|
-| 24px | every page heading | `xl` 18 — top of the scale | `--em-font-size-title: 24px` |
+| 40px | page heading (`156:5404`) | `xl` 18 — top of the scale | `--em-font-size-title: 40px` |
+| 30px | section heading (`156:5737`) | `xl` 18 — top of the scale | `--em-font-size-section: 30px` |
 | 15px | expense row titles, amounts (16 nodes) | `m` 14 / `l` 16 | accept `l` = 16px (**+1px**) |
 | 20px | report card totals (4 nodes, one per card) | `xl` 18 — top of the scale | `--em-font-size-total: 20px` |
 | 28px | metric figures (3 nodes, and 3 more on Approvals) | `xl` 18 — top of the scale | `--em-font-size-metric: 28px` |
 
-24px has no Aura token at all and appears on every page, so it gets a property. 15px is
-one pixel from a token, and a project property that shadows the type scale for one pixel
-is where per-view drift starts.
+Neither 40 nor 30 has an Aura token anywhere near it, and both appear on every reference
+page, so each gets a property. 15px is one pixel from a token, and a project property that
+shadows the type scale for one pixel is where per-view drift starts.
+
+## Two heading sizes, one token
+
+The design draws its page heading at **24px** on the report-list frame (`116:2499`) and at
+**40px** on the reference-table frames (`156:5404`). Same role, same token, two values —
+the design contradicts itself across frames, and nothing in either frame says which is
+current.
+
+**Decided: 40px, and the 30px section step alongside it.** Taken deliberately over the
+cheaper option of keeping 24 and reporting the drift.
+
+**This reflows every page heading in the app**, which is why it is recorded here as a
+foundation change and not inside a view's spec. Two known consumers move by 16px:
+
+| Consumer | Was | Becomes |
+|---|---|---|
+| every view's page heading (`styles.css:764`) | 24 | 40 |
+| `report-card` title (`styles.css:165`, [`../components/report-card.md`](../components/report-card.md)) | 24 | 40 |
+| app shell's small-screen greeting ([`../components/app-shell.md`](../components/app-shell.md)) | 24 | 40 |
+
+A **report card title is not a page heading** and almost certainly should not follow this
+token to 40px — it shares `--em-font-size-title` today only because both happened to be
+24. Splitting them is a real decision and it belongs to the report-list issue, not to this
+survey; until it is taken, that card's title grows with the page heading. The app shell's
+50px greeting also now sits only 10px above the page heading it was drawn to tower over.
+Both go back to the designer with the frames.
 
 ### The display ramp
 

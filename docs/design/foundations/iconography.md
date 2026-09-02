@@ -12,12 +12,39 @@
 | Stroke width | 2 — Lucide's own | 2, but hardcoded per `<symbol>`, which makes the token inert | `--vaadin-icon-stroke-width: 2`, with the attribute **removed** from the symbols | app | **settled** |
 | Icon colour | inherits the surrounding text colour | `currentColor`, via each symbol's `stroke` | `currentColor` — never `--vaadin-icon-color` | both agree | **settled** |
 | Empty-state glyph size | never designed — the design draws no empty state | `3em` | `3em`, off-scale on purpose | app | **settled** |
-| `lucide/ellipsis-vertical` | drawn — grid and card row overflow (`170:7881`, `178:2033`) | absent; the app draws three separate row buttons | add when the `⋮` redesign lands | design | **open** |
-| `lucide/copy` | drawn (`341:13938`) but **never placed** | absent | leave out until the design places it | design | **settled** |
+| `lucide/ellipsis-vertical` | **placed** — grid and card row overflow (`170:7881`, `178:2033`, on frame `156:5396`) | absent; the app draws separate row buttons | **add** — `ELLIPSIS_VERTICAL` | design | **settled** |
+| `lucide/copy` | **placed** — the "Copy Year" button (`341:12745`) | absent | **add** — `COPY` | design | **settled** |
+| `lucide/car-taxi-front` | drawn — Domestic per Diem row (`156:5700`) | absent | **add** — `CAR_TAXI_FRONT` | design | **settled** |
+| `lucide/bed` | drawn — Kilometre Allowance row (`156:5710`) | absent | **add** — `BED`; see the note below | design | **settled** |
+| `lucide/utensils` | drawn — Meal Allowance row (`156:5720`) | absent | **add** — `UTENSILS` | design | **settled** |
 | Title-edit glyphs | `lumo:checkmark` (`36:503`) + an edit pencil, both 20 and fill-based | absent — the app has no inline title edit | Lucide `check` / `pencil` **if** that UI is ever built | app | **open** |
 
-Two rows are **open**, and both wait on a view the design has drawn but nobody has
-committed to building. Neither is a licence to invent a glyph in the meantime.
+**The two rows that were open are now closed.** Both waited on the design *placing* the
+glyph rather than merely drawing it, and the reference-table frame `156:5396` places
+both: `ellipsis-vertical` as every row's overflow trigger, `copy` in the "Copy Year"
+button. One row remains open — the title-edit glyphs — and it is still not a licence to
+invent a glyph in the meantime.
+
+Five symbols therefore join the vendored sprite, each with its `stroke-width` attribute
+**removed** so `--vaadin-icon-stroke-width` reaches it — that removal is what makes the
+token work at all, and a symbol pasted in unedited renders at Lucide's own width and
+silently stops tracking the theme. `LucideIconTest` checks every enum constant against
+the sprite's actual symbol ids, so a typo fails the build rather than rendering an empty
+box.
+
+### One glyph is semantically wrong, and ships anyway
+
+`bed` labels **Kilometre Allowance** and `car-taxi-front` labels **Domestic per Diem** —
+a hotel glyph on a per-kilometre mileage rate, and a taxi on a daily subsistence rate.
+Only `utensils` on Meal Allowance matches its row. All three are the expense-category
+glyphs that came with the `expense-item-card` component the frame reuses.
+
+Implemented **as drawn** under [ADR-0025](../../adr/0025-figma-design-source-of-truth.md)
+decision 1, and **reported to the designer** with the other measured defects in **#160**.
+This is not the accessibility floor — nothing here rests on the icon, since every row is
+labelled in text — so it is a design call to make rather than one to override. If the
+glyphs were the component's defaults rather than a choice, correcting the frame and
+re-surveying is cheap while nothing depends on them.
 
 ## The set
 
