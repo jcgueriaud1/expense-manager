@@ -65,6 +65,21 @@ status wants it.
 > the theme's accent-to-neutral scoping is scoped to buttons and never reached the
 > badge. Reference: frame `116:2499`, the Submitted pill on the first card.
 
+> **The report-detail frame contradicts the sentence above, and the decision stands.**
+> Frame `116:4444`'s Draft pill (`116:4924`) is a **solid** accent fill —
+> `--aura-accent-color` background, `--aura-accent-contrast-color` text — not the soft
+> tint the report-list frame draws for every status. So "the design draws the pill one
+> way for every status" is true of `116:2499` and false across frames: the design
+> contradicts itself on Draft specifically, drawing it as a tint on the list and a solid
+> on the detail.
+>
+> `DRAFT` stays the **grey tint**. A solid accent pill is the loudest element on a screen
+> whose only other accent is the focus ring, and it would make the least significant
+> status the most prominent — Draft is the resting state of every new report. It also
+> renders solid *blue* rather than neutral, since the theme's accent-to-neutral scoping
+> stops at buttons (F-067). Settled in the app's favour and reported to the designer with
+> the frame's other defects.
+
 ## States
 
 | State | Behaviour |

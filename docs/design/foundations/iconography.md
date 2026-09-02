@@ -17,13 +17,30 @@
 | `lucide/car-taxi-front` | drawn — Domestic per Diem row (`156:5700`) | absent | **add** — `CAR_TAXI_FRONT` | design | **settled** |
 | `lucide/bed` | drawn — Kilometre Allowance row (`156:5710`) | absent | **add** — `BED`; see the note below | design | **settled** |
 | `lucide/utensils` | drawn — Meal Allowance row (`156:5720`) | absent | **add** — `UTENSILS` | design | **settled** |
-| Title-edit glyphs | `lumo:checkmark` (`36:503`) + an edit pencil, both 20 and fill-based | absent — the app has no inline title edit | Lucide `check` / `pencil` **if** that UI is ever built | app | **open** |
+| Title-edit glyphs | `lumo:checkmark` (`36:503`) + an edit pencil (`147:4469`, `lumo:edit`), both 20 and fill-based | absent — the app has no inline title edit | Lucide `check` / `pencil` **if** that UI is ever built | app | **open** — and now decided *not* to be built, see below |
+| Expense-type glyphs | `lucide/plane`, `car-taxi-front`, `bed`, `utensils` at 20 on every report-detail row (`116:4938`, `116:4960`, `116:4970`, `116:4980`) | a hashed colour dot, no glyph | the glyph, from a new `ExpenseType.icon` column | design | **settled** |
+| Attachment paperclip | 13×14 (`215:7042` and 5 siblings) | absent — the app renders a thumbnail | `--em-icon-size-s` = 16 (**+2px**) | nearest token | **settled** |
+| Back-link glyph | 24 (`116:4920`) | `LucideIcon` default = `--em-icon-size-m` 20 | `--em-icon-size-l` = 24 | design | **settled** |
 
 **The two rows that were open are now closed.** Both waited on the design *placing* the
 glyph rather than merely drawing it, and the reference-table frame `156:5396` places
 both: `ellipsis-vertical` as every row's overflow trigger, `copy` in the "Copy Year"
-button. One row remains open — the title-edit glyphs — and it is still not a licence to
-invent a glyph in the meantime.
+button.
+
+**The title-edit row stays open, and will now stay open indefinitely.** It was conditional
+— "if that UI is ever built" — and the report-detail survey decided *not* to build it: the
+design's pencil edits a report `title` field the domain does not have, and adding that
+field was ruled out of scope. So the row is neither closed nor pending work; it is parked
+against a design the app has declined to implement. It remains not a licence to invent a
+glyph, and `LucideIcon.PENCIL` already exists for whenever the decision is revisited.
+
+**Four new rows are settled, and one is a domain change.** The expense-type glyph is not a
+view-side lookup: it comes from an `icon` column on `ExpenseType`, chosen per type by an
+admin. All four glyphs the frame draws are already in the sprite — `plane` from #124 and
+`car-taxi-front` / `bed` / `utensils` from the reference-table survey — so the *sprite*
+needs nothing; the *domain* does. Details in
+[`../components/expense-line-card.md`](../components/expense-line-card.md) § *The glyph
+replaces the colour dot*.
 
 Five symbols therefore join the vendored sprite, each with its `stroke-width` attribute
 **removed** so `--vaadin-icon-stroke-width` reaches it — that removal is what makes the
@@ -58,8 +75,13 @@ The design's icon language splits cleanly by role:
 
 | Role | Set | Size | Draws with | Glyphs seen |
 |---|---|---|---|---|
-| Hand-placed, standalone | **Lucide** | 16 / 24 | `stroke`, 2px | `chevron-up`, `plane`, `ellipsis-vertical`, `copy` |
-| Inside a kit Button's icon slot | **Lumo** | 20 | **`fill`** | `lumo:plus` (`36:902`), `lumo:checkmark` (`36:503`), an edit pencil |
+| Hand-placed, standalone | **Lucide** | 16 / 20 / 24 | `stroke`, 2px | `chevron-up`, `plane`, `ellipsis-vertical`, `copy`, `car-taxi-front`, `bed`, `utensils`, `arrow-left`, a paperclip |
+| Inside a kit Button's icon slot | **Lumo** | 20 | **`fill`** | `lumo:plus` (`36:902`), `lumo:checkmark` (`36:503`), `lumo:edit` (`147:4469`), `lumo:calendar` (`36:900`) |
+
+The report-detail frame is the strongest evidence yet for this split tracking tooling
+rather than design: its `Add` buttons carry `lumo:plus`, its date picker `lumo:calendar`
+and its title pencil `lumo:edit` — every one inside a kit component — while all nine of its
+hand-placed glyphs are Lucide. Same frame, same view, both sets.
 
 [ADR-0025](../../adr/0025-figma-design-source-of-truth.md) makes the design authoritative
 on visual decisions, so overruling it needs a reason better than preference. The reason is

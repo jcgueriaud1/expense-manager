@@ -17,6 +17,12 @@
 | Report card total size | 20 | — | `--em-font-size-total: 20px` | design | **settled** |
 | Metric figure size | 28 | — | `--em-font-size-metric: 28px` | design | **settled** |
 | Metric figure / card title / total weight | 700 (Public Sans Bold) | — | `--aura-font-weight-semibold` = 600 (**−100**) | app | **settled** |
+| Report-detail title size | **24** (`241:10552`) | `--aura-font-size-l` = 16 | `--em-font-size-detail-title: 24px` | design | **settled** — see [A record title is not a page heading](#a-record-title-is-not-a-page-heading) |
+| Grand-total size | 16 (`116:4998`) | `--aura-font-size-xl` = 18 | `--aura-font-size-l` = 16 (**−2px**) | design | **settled** |
+| Totals subtotal value | 14 medium, primary (`116:4990`) | 13, secondary — whole row | `--aura-font-size-m` + medium, primary | design | **settled** |
+| Filenames and trip dates | 12, **primary** (`215:2265`, `116:4943`) | `.muted-xs`, secondary | primary — a filename is content | design | **settled** |
+| Section-heading role | one uppercase 12px style for all three headings | `.section-label` for two, `.status-history-heading` at 13 for the third | `.section-label` everywhere | design | **settled** |
+| Grand-total weight | **800** (Inter Extra Bold, `116:4998`) | 600 | `--aura-font-weight-semibold` = 600 (**−200**) | app | **settled** |
 
 The whole font block was deleted rather than ported: 450/550/650 were tuned for Inter's
 variable-weight axis and are meaningless against Instrument Sans. The design's own
@@ -35,6 +41,7 @@ At `--aura-base-font-size: 14`, on Vaadin 25.2.1:
 |---|---|---|---|
 | `--em-font-size-title` | 40 | — | page headings (off-scale, see below) |
 | `--em-font-size-section` | 30 | — | in-page section headings (off-scale, see below) |
+| `--em-font-size-detail-title` | 24 | — | a record's own title (off-scale, see below) |
 | `--aura-font-size-xl` | 18 | 26 | grand total, list title |
 | `--aura-font-size-l` | 16 | 22 | card totals, amounts, detail title, preview amount |
 | `--aura-font-size-m` | 14 | 20 | body, card titles, line amounts |
@@ -64,6 +71,8 @@ Utility classes in `styles.css`, so a role is named once rather than restated pe
 | 40px | page heading (`156:5404`) | `xl` 18 — top of the scale | `--em-font-size-title: 40px` |
 | 30px | section heading (`156:5737`) | `xl` 18 — top of the scale | `--em-font-size-section: 30px` |
 | 15px | expense row titles, amounts (16 nodes) | `m` 14 / `l` 16 | accept `l` = 16px (**+1px**) |
+| 15px | expense row titles **and** amounts, report detail (12 more nodes) | `m` 14 / `l` 16 | as above — `l` = 16px. The row's name and its amount land on the *same* token, which the app currently splits across 13 and 14 |
+| 24px | report-detail title (`241:10552`) | `xl` 18 — top of the scale | `--em-font-size-detail-title: 24px` |
 | 20px | report card totals (4 nodes, one per card) | `xl` 18 — top of the scale | `--em-font-size-total: 20px` |
 | 28px | metric figures (3 nodes, and 3 more on Approvals) | `xl` 18 — top of the scale | `--em-font-size-metric: 28px` |
 
@@ -112,6 +121,35 @@ token to 40px — it shares `--em-font-size-title` today only because both happe
 survey; until it is taken, that card's title grows with the page heading. The app shell's
 50px greeting also now sits only 10px above the page heading it was drawn to tower over.
 Both go back to the designer with the frames.
+
+### A record title is not a page heading
+
+The report-detail frame (`116:4444`) draws its title at **24px**, where the reference
+frames draw a page heading at 40 and `--em-font-size-title` was re-decided to 40 for that
+role. Third frame, third value for what could be read as one role — so this needed
+deciding rather than defaulting either way.
+
+**It is a different role, and the frame's geometry proves it.** The `Title Text` node is
+769×34 holding a 44-character title: one line at 24px with a 1.4 line height. At 40px the
+same string wraps to two lines in the 900px column and three in a narrower one. The design
+laid it out as a single line of *record data* — the report's name beside its status pill —
+not as a static view name.
+
+That is the argument this file already accepted for `report-card`: "a report card title is
+not a page heading and almost certainly should not follow this token to 40px". Applying it
+here is consistent with that, not a new exception.
+
+**It takes a property rather than the nearest token.** `xl` 18 is 6px away and is the top
+of the text scale, so there is nothing to round to; and 24 is the display ramp's middle
+step, which had no property until now. It is named for its role rather than its size
+(`--em-font-size-detail-title`, not `--em-font-size-heading`) so that it cannot quietly
+become a general-purpose 24 — which is how `--em-font-size-title` came to be shared by a
+page heading and two card titles in the first place.
+
+**It does not resolve `report-card`.** That title is still on `--em-font-size-title` at
+40px and still hierarchy-inverted, and it may well want this same 24px value. Deciding
+that is the report-list issue's, exactly as this file already says; borrowing the new
+property pre-emptively would repeat the mistake it was minted to avoid.
 
 ### The display ramp
 

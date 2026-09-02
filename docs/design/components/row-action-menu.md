@@ -6,7 +6,8 @@
 **Code:** `com.vaadin.expensemanager.base.ui.RowActionMenu` (#169)
 **Design:** node `147:4473` › `Grid Buttons` (grid variant, 36×34) and `178:2029`
 (card variant, 21×34); glyph `lucide/ellipsis-vertical` at `170:7881` / `178:2033`.
-Placed on frame `156:5396` in both the rate card rows and every grid row
+Placed on frame `156:5396` in both the rate card rows and every grid row, and on frame
+`116:4444` on **every** row of the report detail — the card variant, six placements
 
 ## Overview
 
@@ -14,8 +15,15 @@ The vertical-ellipsis (`⋮`) overflow menu that carries a row's actions. It rep
 inline row of icon buttons the reference views draw today.
 
 Use it wherever a repeating row has one or more actions: a `Grid` row, a
-[`rate-list-card.md`](rate-list-card.md) row. **Not** for a view-level action — those stay
-visible buttons in the toolbar ("Add Year", "Copy Year", "Add").
+[`rate-list-card.md`](rate-list-card.md) row, an
+[`expense-line-card.md`](expense-line-card.md) row. **Not** for a view-level action — those
+stay visible buttons in the toolbar ("Add Year", "Copy Year", "Add").
+
+**On the report detail it is the *only* route to a row's actions.** The report-detail
+survey decided the row itself is not clickable, so the menu replaces both the inline
+buttons and the whole-row click-to-edit. That makes the trigger the sole affordance on
+the row, which raises the stakes on everything in
+[What this costs](#what-this-costs-and-why-it-is-still-the-designs-call) below.
 
 **Not** `ContextMenu` on a `Button`. Vaadin's own guidance is explicit: a `MenuBar` with a
 single top-level item *is* a drop-down button, and gives better keyboard and
@@ -82,15 +90,23 @@ Moving actions from three visible buttons into a menu costs a click and hides th
 available actions until it is opened. That is a real regression in discoverability, and it
 is the design's decision under ADR-0025 rather than a neutral one.
 
-Two places it needs watching when it lands:
+Three places it needs watching when it lands:
 - **`VatRateView` and `ExpenseTypeView` carry four row actions each** — edit, move up,
-  move down, activate/deactivate — where this frame's rows carry one. A menu suits four
-  better than four cramped icon buttons do, but the *boundary-disabled* reorder buttons
-  become disabled menu items, which is the case the flag note above is about.
+  move down, activate/deactivate — where the reference frame's rows carry one. A menu
+  suits four better than four cramped icon buttons do, but the *boundary-disabled* reorder
+  buttons become disabled menu items, which is the case the flag note above is about.
 - **The reorder buttons are the app's only affordance for row order.** Behind a menu,
   reordering becomes open-menu-click-close per step. Worth raising before the retrofit.
+- **The report detail loses a one-click edit on its largest target.** Editing a line goes
+  from clicking anywhere on the row to opening a 21px menu and choosing Edit. The row also
+  carries the most actions of any caller: a trip row has four (Edit, Remove, and its
+  allowance rows' own), and a generated allowance line has up to three (Receipt, Override,
+  Reset to calculated). Keeping the click as an unadvertised shortcut alongside the menu
+  was the alternative and was **not** taken — the design draws no click affordance, and
+  ADR-0025 gives it the call.
 
-Neither is in this survey's scope; both go to the reference-view issues.
+The first two go to the reference-view issues; the third is the report-detail redesign's,
+and is the row to check first in its visual verification.
 
 ## Cross-references
 

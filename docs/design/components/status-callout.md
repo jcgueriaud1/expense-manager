@@ -4,7 +4,25 @@
 **Origin:** **unresolved**
 **Implementation:** unaudited — origin not established
 **Code:** `styles.css` — `.status-callout*`; `ReportDetailView`
-**Design:** **unresolved.** No callout was found in frame `116:4444`, but absence in one frame is not proof
+**Design:** **unresolved.** Frame `116:4444` draws no callout — but it is a `DRAFT`
+report, which is the one status the app hides the callout on too, so the frame agrees with
+the code and settles nothing. See [Origin](#why-the-origin-is-still-unresolved)
+
+## Why the origin is still unresolved
+
+The report-detail survey re-read frame `116:4444` in full and found no callout node. That
+is **weaker evidence than it looks**: the frame's report is a `DRAFT`, and `DRAFT` is
+exactly the status on which `updateStatusCallout` hides the callout. So the frame shows
+what the app already shows, and says nothing about whether the design specifies a callout
+for `REJECTED`, `APPROVED` or `SUBMITTED`.
+
+Resolving this needs a frame drawing one of those three statuses. Until then the origin
+stays `unresolved`, treated as `design` per the README, and the values below remain the
+app's own — written from the stylesheet in #144 and never checked against a design.
+
+Worth asking the designer for directly: a rejected report is the one state on this screen
+that has something to *explain* rather than label, and it is the state the callout exists
+for.
 
 ## Overview
 
