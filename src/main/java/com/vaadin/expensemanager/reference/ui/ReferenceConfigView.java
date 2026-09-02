@@ -2,16 +2,19 @@ package com.vaadin.expensemanager.reference.ui;
 
 import java.util.List;
 
+import com.vaadin.expensemanager.base.ui.LucideIcon;
+import com.vaadin.expensemanager.base.ui.ReferenceTabs;
+import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.Paragraph;
-import com.vaadin.flow.component.icon.Icon;
-import com.vaadin.flow.component.icon.VaadinIcon;
+import com.vaadin.flow.component.icon.AbstractIcon;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
+import com.vaadin.flow.spring.security.AuthenticationContext;
 
 /**
  * Abstract base for the two ADMIN reference-data screens ({@link VatRateView},
@@ -21,6 +24,12 @@ import com.vaadin.flow.component.orderedlayout.VerticalLayout;
  * accessible icon button, the boundary-disabled reorder buttons, and the
  * text-status active toggle (ADR-0020) — are provided as {@code protected}
  * helpers.
+ *
+ * <p>Both screens carry the shared {@link ReferenceTabs} bar above the heading —
+ * the sub-navigation across the three reference routes, which replaced the
+ * shell's Reference Tables menu in #169. It is added here rather than per
+ * subclass because it is identical on both, and its access filtering is what
+ * keeps a route the user cannot reach out of the bar.
  *
  * <p>Each subclass configures the grid's columns and its actions cell with the
  * plain Vaadin API and implements the two kind-specific hooks: {@link #fetchItems}
@@ -37,11 +46,16 @@ abstract class ReferenceConfigView<T> extends VerticalLayout {
 
     private List<T> items = List.of();
 
-    protected ReferenceConfigView(String heading, String intro, String addButtonText) {
+    protected ReferenceConfigView(String heading, String intro, String addButtonText,
+            AuthenticationContext authenticationContext) {
         setPadding(true);
         setSpacing(true);
 
-        var addButton = new Button(addButtonText, new Icon(VaadinIcon.PLUS),
+        // getClass(), not a per-subclass constant: the tab that must render
+        // selected is the one for whichever concrete view is being constructed.
+        add(new ReferenceTabs(selfType(), authenticationContext));
+
+        var addButton = new Button(addButtonText, LucideIcon.PLUS.create(),
                 event -> openEditor(null));
         addButton.addThemeVariants(ButtonVariant.PRIMARY);
 
@@ -56,6 +70,20 @@ abstract class ReferenceConfigView<T> extends VerticalLayout {
         }
         grid.setAllRowsVisible(true);
         add(grid);
+    }
+
+    /**
+     * This view's own class, for the tab bar's selected entry.
+     *
+     * <p>Not {@code getClass()} straight through: Spring method security proxies
+     * every {@code @RolesAllowed} view, so at runtime that is
+     * {@code VatRateView$$SpringCGLIB$$0} — which {@code ReferenceTabs} matches
+     * by assignability anyway (F-070), but naming the mechanism here is cheaper
+     * than rediscovering it.
+     */
+    @SuppressWarnings("unchecked")
+    private Class<? extends Component> selfType() {
+        return (Class<? extends Component>) getClass();
     }
 
     /** The display-ordered rows to show (called on every {@link #refresh}). */
@@ -80,16 +108,24 @@ abstract class ReferenceConfigView<T> extends VerticalLayout {
         return items.indexOf(item);
     }
 
-    /** An accessible, theme-agnostic (Aura/Lumo) tertiary icon button. */
-    protected Button iconButton(VaadinIcon icon, String ariaLabel, Runnable action) {
-        var button = new Button(new Icon(icon), event -> action.run());
+    /**
+     * An accessible tertiary icon button.
+     *
+     * <p>The icon arrives built rather than as a collection member: typed to
+     * {@link LucideIcon} this base would pin both subclasses to one icon set, which
+     * is exactly the coupling #163 removed. {@link AbstractIcon} is the common
+     * supertype of every icon Vaadin has, so a subclass can pass whatever it needs
+     * without this class knowing where glyphs come from.
+     */
+    protected Button iconButton(AbstractIcon<?> icon, String ariaLabel, Runnable action) {
+        var button = new Button(icon, event -> action.run());
         button.addThemeVariants(ButtonVariant.TERTIARY);
         button.setAriaLabel(ariaLabel);
         return button;
     }
 
     /** A reorder icon button, disabled at the list boundary. */
-    protected Button reorderButton(VaadinIcon icon, String ariaLabel, boolean enabled,
+    protected Button reorderButton(AbstractIcon<?> icon, String ariaLabel, boolean enabled,
             Runnable action) {
         var button = iconButton(icon, ariaLabel, action);
         button.setEnabled(enabled);

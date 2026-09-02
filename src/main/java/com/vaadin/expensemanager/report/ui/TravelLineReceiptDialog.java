@@ -4,6 +4,7 @@ import java.io.ByteArrayInputStream;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 
+import com.vaadin.expensemanager.base.ui.LucideIcon;
 import com.vaadin.expensemanager.report.domain.ReceiptRejectedException;
 import com.vaadin.expensemanager.report.domain.ReceiptType;
 import com.vaadin.expensemanager.report.domain.ReceiptValidator;
@@ -15,7 +16,6 @@ import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.Span;
-import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.notification.NotificationVariant;
 import com.vaadin.flow.component.upload.Upload;
@@ -115,7 +115,7 @@ final class TravelLineReceiptDialog extends Dialog {
         upload.setMaxFiles(1);
         upload.setMaxFileSize((int) ReceiptValidator.MAX_SIZE_BYTES);
         upload.setAcceptedFileTypes("image/jpeg", "image/png", "application/pdf");
-        var uploadButton = new Button("Upload receipt…", VaadinIcon.UPLOAD.create());
+        var uploadButton = new Button("Upload receipt…", LucideIcon.UPLOAD.create());
         upload.setUploadButton(uploadButton);
         upload.addFileRejectedListener(event -> notifyError(event.getErrorMessage()));
 

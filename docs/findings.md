@@ -1923,3 +1923,818 @@ Deployment/Observability · UX-spec
   client constraint should never be the only thing standing between the user and a
   rule — the server rule it mirrors has to be user-facing too.
 
+### F-059 — A project-scoped MCP server can be committed but not *used*: the same session that adds it can never call it
+- Date: 2026-08-26
+- Area: Tooling/Template
+- Severity: Medium
+- Task being attempted: issue #142 — set up the Figma → Vaadin toolchain, whose
+  acceptance criterion is a smoke test (`get_design_context` on node `88-12278`)
+  proving the setup works rather than merely being present.
+- Expected vs actual: expected that writing the `Figma` entry into `.mcp.json` — the
+  project-scoped file, chosen precisely so every dev gets the server without hand
+  configuration — would make the server reachable. Actual: `claude mcp list` reports
+  it as `⏸ Pending approval (run \`claude\` to approve)`. A project-scoped server is
+  gated on two things the agent that wrote the config cannot do: the user approving
+  the newly-appeared entry, and an interactive OAuth round-trip via `/mcp`. The tool
+  namespace for the current session was fixed at startup, so even after approval no
+  `mcp__Figma__*` tool exists until the session restarts.
+- Workaround used: none available in-session. Everything else in the issue was
+  completed and committed; the smoke test was handed back to the user as an explicit
+  blocked item rather than reported as done or quietly skipped.
+- Evidence: `claude mcp list` output above; `.mcp.json` at this commit.
+- Impact: this is the general shape of "an agent sets up its own tooling". Config
+  changes that alter the *tool namespace* — MCP servers above all — are always at
+  least one session-boundary and one human approval away from being exercisable, so
+  an issue that both configures a server and requires proof it works cannot be closed
+  in one pass. The failure is worse when unnoticed: the skills that depend on the
+  server degrade to guessing from layer names rather than erroring, so an unauthenticated
+  run produces plausible-looking layout invented from nothing. That's why
+  `DEVELOPMENT.md` now names the symptom ("layout invented from thin air → check
+  `/mcp` first") instead of just the setup step.
+- Suggested Vaadin/product improvement: not Vaadin's — Claude Code's. Two things would
+  help: (a) a way for a session to re-read `.mcp.json` and pick up newly approved
+  servers without a restart, and (b) making a *pending* server visible to the model as
+  a named, unusable tool rather than as absence, so "the server isn't authenticated"
+  is distinguishable from "this capability doesn't exist". Today both look identical.
+- Owner / next step: user to approve the `Figma` entry and authenticate via `/mcp`,
+  then re-run the smoke test on this branch and post the node `88-12278` report to
+  issue #142. Splitting "configure" from "prove it works" into two issues would have
+  made this a non-event.
+- Owner / next step: resolved the only way it could be — the user approved the entry
+  and authenticated, and the smoke test then ran in the following session (see F-061
+  for what it found). Splitting "configure" from "prove it works" into two issues
+  would have made this a non-event.
+
+### F-060 — A vendored skill's own reference file doesn't exist upstream, and the skill gives no sign of it
+- Date: 2026-08-26
+- Area: AI
+- Severity: Low
+- Task being attempted: issue #142 — copying `figma-to-aura-theme` from
+  `juuso-vaadin/figma-to-vaadin-skill` at commit `3a9289c` as a project-owned skill.
+- Expected vs actual: expected the skill's bundled references to come across with it.
+  Actual: `figma-to-aura-theme/SKILL.md` instructs the agent three separate times to
+  consult `property-values.md` for the Aura named-colour, background-colour and
+  curated-font tables — the tables that decide every value it emits — and no such file
+  exists at that commit. The whole repo is four `SKILL.md` files plus three
+  `references/layouts-*.md` belonging to a different skill.
+- Workaround used: recorded the gap in the skill's own `## Provenance` section, with
+  the substitute source: `get_theme_css_properties theme=aura` via the `vaadin-skills`
+  plugin.
+- Evidence: `git ls-files` at `3a9289c15df9e7a7659f0d92fee204ad1dc65c14`;
+  `.agents/skills/figma-to-aura-theme/SKILL.md`, the "see `property-values.md`" lines.
+- Impact: the specific failure mode is quiet. An agent told "find the closest named
+  colour in `property-values.md`" and unable to open it does not stop — it matches
+  against remembered colour names instead, and emits a `--aura-accent-color-light`
+  that looks deliberate and cites a table nobody can check. Every value the skill
+  produces has this property. More generally: copying a skill is not copying a file,
+  and a dangling reference inside one is invisible until the step that needs it runs.
+- Suggested Vaadin/product improvement: upstream should either ship `property-values.md`
+  or stop referencing it. Beyond that, a skill that depends on a bundled reference
+  should say what to do when it's missing — "look it up with X" — rather than assuming
+  presence; and skill-vendoring tooling should validate that in-skill relative links
+  resolve, the way a link checker does for docs.
+- Owner / next step: **Answered by the spike (issue #143).** The skill *is* usable
+  without `property-values.md` — but only via a substitute it never mentions, and the
+  substitute the Provenance section suggested is not sufficient on its own.
+  `get_theme_css_properties theme=aura` supplies the *defaults* (base-font-size 14,
+  contrast 1, surface level 1 / opacity 0.5, overlay opacity 0.85, and "accent defaults
+  to `var(--aura-blue)`") but carries **no palette hex values, no named light/dark
+  accent pairs, no background table and no curated font list** — precisely the four
+  tables the skill cites. What worked instead: read Aura's own computed properties out
+  of the *running app*, where the formulas are visible
+  (`--vaadin-radius-m = round(baseRadius*2px + 3px, 1px)`,
+  `--vaadin-gap-m = round(baseSize*0.75*1px, 1px)`,
+  `--aura-font-size-m = round(baseFontSize/16 * 1rem, 0.0625rem)`), and resolve palette
+  colours through a canvas probe. That is how the spike established, without guessing,
+  that this design is stock Aura: `#3266e4` is exactly `oklch(0.55 0.2 264)` =
+  `--aura-blue`, and `#b3329d` is exactly the default `--vaadin-user-color-2`.
+  **No values were invented.** The luck is that the design needed no colour matching at
+  all — had its accent been custom, the skill's own path offered only an invented named
+  pairing. Two of the skill's stated value sets are also wrong: it claims
+  `--aura-base-radius` takes the discrete set `-1, 0, 3, 4, 7` when the docs give a
+  0–10 range with a default of 3 (`-1` is outside it); its density set 12/16/20 is a
+  subset of the documented 12–24. Report upstream, and add the
+  "measure the running app" technique to the project copy.
+
+### F-061 — `get_design_context` on a page node fails with "you have nothing selected", which is not the problem
+- Date: 2026-08-26
+- Area: Tooling/Template
+- Severity: Medium
+- Task being attempted: issue #142's acceptance smoke test — `get_design_context` on
+  node `88-12278`, the node in the design URL the issue was written against.
+- Expected vs actual: expected design context for that node, or a clear refusal.
+  Actual: `You currently have nothing selected. You need to select a layer first
+  before using this tool.` The `nodeId` **was** supplied and **was** valid — the real
+  cause is that `88-12278` is a *canvas* (a page), and `get_design_context` accepts
+  only layers. On a page node it silently discards the argument and falls back to the
+  desktop app's current selection, then reports the fallback's failure as if it were
+  the caller's mistake. `get_metadata` accepts the same node without complaint, which
+  is how the page's structure was read instead.
+- Workaround used: call `get_metadata` on the page for the hierarchy, then
+  `get_design_context` on individual frames inside it (proved on `213:1721`, the "Add
+  Expense" dialog — full output, with per-component Vaadin annotations).
+- Evidence: Figma Debug UUID `3eddcf4c-ebc5-40c2-903b-83efba47800f`. The same call
+  against frame `213:1721` succeeds.
+- Impact: the error names a precondition the caller did not violate and cannot fix
+  from an MCP client — there is no way to "select a layer" over the remote server, and
+  an agent has no selection at all. It reads as "the integration is broken" rather
+  than "wrong node type", so the obvious next move is to re-authenticate or re-check
+  the MCP setup — exactly the wrong direction. Worse for an agent working from a
+  pasted URL: a designer who copies a link while a *page* is active hands over a node
+  id that every design-to-code skill will choke on, with an error pointing nowhere
+  near the cause. Cost here was a wrong-turn diagnosis on a task whose whole purpose
+  was proving the setup worked.
+- Suggested Vaadin/product improvement: Figma's — when `nodeId` resolves to a node
+  type the tool cannot handle, say so ("node 88:12278 is a CANVAS; get_design_context
+  requires a FRAME/COMPONENT/INSTANCE — call get_metadata to list its children"), and
+  never silently substitute the current selection for an explicitly-passed argument.
+  Falling back to a different input than the one supplied is the root problem; the
+  misleading message is the symptom.
+- Owner / next step: reported in the issue #142 smoke-test comment. Worth folding the
+  "page node → get_metadata first" rule into `figma-to-vaadin` step 1 if a second run
+  hits it; upstream's step 1 already suggests `get_metadata` as the fallback for
+  truncated responses, but not for this failure.
+
+### F-062 — The Figma Aura kit emits `--lumo-*` custom properties, which are undefined in an Aura app
+- Date: 2026-08-26
+- Area: AI
+- Severity: High
+- Task being attempted: issue #142's smoke test — reading `get_design_context` output
+  for the "Add Expense" dialog to see what a real design-to-code run would produce.
+- Expected vs actual: expected an Aura-themed design to yield `--aura-*` / `--vaadin-*`
+  tokens. Actual: the reference code is threaded with `--lumo-*` — `--lumo-font-family`,
+  `--lumo-font-size-m`, `--lumo-border-radius-m`, `--lumo-border-radius-l` — every one
+  written with a hardcoded fallback, e.g.
+  `rounded-[var(--lumo-border-radius-m,9px)]`. The variables genuinely are named that
+  way in the shared "Aura / Vaadin Design System" Figma library (the
+  `figma-to-aura-theme` skill notes the kit "may label some variables with `lumo-`
+  prefixes"), so this is faithful output, not a bug in the export.
+- Workaround used: the project-owned `figma-to-vaadin` copy carries a **Project
+  overrides** section forbidding `--lumo-*` and naming the `--aura-*` / `--vaadin-*`
+  replacements, written before this run and confirmed necessary by it.
+- Evidence: `get_design_context` on node `213:1721`; `CLAUDE.md`'s Aura-not-Lumo rule;
+  `docs/theming-layouts.md`.
+- Impact: this is the worst possible shape for a wrong value. `--lumo-*` is undefined
+  under Aura, so it contributes nothing — but every occurrence ships with a plausible
+  hardcoded fallback, so the CSS *renders*, at a frozen literal that looks right today
+  and silently stops tracking the theme forever. Nothing errors, nothing looks broken,
+  and dark mode is where it surfaces — months later, as "some corners are the wrong
+  colour". Upstream's own gotcha list warns about exactly this pattern
+  (`var(--name, fallback)` where the name doesn't exist) without noticing that the
+  Figma kit it reads from is a systematic source of it. Any run that pastes the
+  reference code through without the override would seed it across every view.
+- Suggested Vaadin/product improvement: rename the variables in the Figma Aura library
+  to their `--aura-*` / `--vaadin-*` equivalents, or have the design-to-code path map
+  the `lumo-` prefixed kit variables to real Aura properties the way
+  `figma-to-aura-theme` says a human should. Failing that, `figma-to-vaadin` should
+  state the hazard itself — it is not an app-specific preference, it applies to every
+  Aura project consuming this kit.
+- Owner / next step: **Re-checked by the spike (issue #143): the guard holds.** A full
+  run over both frames produced **zero** `--lumo-*` properties, zero `LumoUtility`, zero
+  `LUMO_*` variants and zero `getStyle().set(...)` in the generated Java and CSS. But it
+  is doing constant work, not guarding a rare case: both nodes' `get_design_context`
+  output is saturated with `--lumo-*` — several dozen occurrences across the two frames,
+  every one carrying a hardcoded fallback, across four properties (`--lumo-font-family`,
+  `--lumo-font-size-m/-s/-l`, `--lumo-border-radius-m/-l`). Every text node carries at
+  least the font-family and font-size pair, so the count scales with the frame. The
+  override earns its
+  place on literally every run, and any project consuming this kit without an equivalent
+  rule will seed frozen literals across its whole UI. Worth reporting upstream — the
+  hazard belongs in `figma-to-vaadin` itself, not in each project's copy. A separate
+  wrinkle found alongside it: `LumoIcon` is a *third* `lumo`-named thing, and unlike the
+  other two it is legitimate — a supported Vaadin 25.2 icon set, present on this Aura
+  app's classpath via `vaadin-lumo-theme-25.2.1.jar`, and what the Figma annotations
+  correctly prescribe (`lumo:plus`, `lumo:edit`, `lumo:calendar`, …). An agent
+  pattern-matching on "lumo" would wrongly swap in `VaadinIcon` and change the rendered
+  icon size. It also lives in `com.vaadin.flow.theme.lumo`, not beside `VaadinIcon` in
+  `com.vaadin.flow.component.icon` — one compile error's worth of trap.
+
+### F-063 — A Figma file that *consumes* the Aura kit as a library hides its variables from the skill's own mode-detection instruction
+- Date: 2026-08-26
+- Area: AI
+- Severity: High
+- Task being attempted: issue #143's spike — Step 1 of `figma-to-aura-theme`, which
+  decides `color-scheme` by asking whether the file has one mode or two. The skill's
+  literal instruction: "If the file has **multiple modes** (e.g. light/dark), use
+  `use_figma` instead, and read each variable's value across all of its modes in one
+  pass (`variable.valuesByMode`)".
+- Expected vs actual: expected the documented `use_figma` route to enumerate the
+  design's modes. Actual: the obvious implementation —
+  `figma.variables.getLocalVariableCollectionsAsync()` — returns **only the file's own
+  local collections**. In the Expense Manager file that is one collection ("Collection
+  1", 1 mode, 9 variables, none of them Aura's). Every Aura variable is **remote**,
+  living in the shared "Aura colors" / "Aura sizes" libraries. An agent following the
+  instruction literally finds one mode and concludes `color-scheme: light`. The truth
+  is that "Aura colors" is a remote collection with **two** modes, Light and Dark.
+- Workaround used: don't enumerate collections — enumerate *bindings*. Walk a node's
+  `boundVariables`, resolve each id with `getVariableByIdAsync`, then
+  `getVariableCollectionByIdAsync`. Remote collections and their `valuesByMode` are
+  fully readable that way; 34 bound variables resolved across three collections.
+- Evidence: issue #143 spike, file `Irsp3cgi1WX3GiLGpJZECa`. `getLocalVariableCollections`
+  → `[{name: "Collection 1", remote: false, modes: ["Mode 1"], varCount: 9}]`. The
+  binding walk → `{name: "Aura colors", remote: true, modes: ["Light", "Dark"]}`.
+- Impact: the failure is silent and inverts the single most visible theme decision. A
+  design that ships both schemes gets an app that only ever renders light, and nothing
+  errors — the skill's own rule ("If only one mode exists → implement that mode only")
+  fires confidently on a wrong premise. It hits *every* file that consumes the shared
+  Aura kit as a library, which is how the kit is meant to be consumed, so this is the
+  normal case and not an edge one. Two aggravating factors: you must run the expensive
+  `use_figma` path merely to discover whether you needed it, and `use_figma` is a
+  **write** tool — the skill routes a read-only variable query through the one Figma
+  tool that can mutate the design file.
+- Suggested Vaadin/product improvement: the skill should say to resolve variables from
+  a node's `boundVariables` rather than from local collections, and should note that
+  `get_variable_defs` already flattens aliases to the active mode's value (which is why
+  it is useless for mode detection). Better still, Figma should expose a read-only
+  variables-with-modes call so design-to-code never needs the write tool for this.
+- Owner / next step: reported here; the binding-walk script is in the spike report,
+  `docs/figma-toolchain-spike.md`. Worth folding into the project copy of
+  `figma-to-aura-theme` before issue #144 depends on it.
+
+### F-064 — The design's own spacing, radius and type values systematically miss the Aura token scale
+- Date: 2026-08-26
+- Area: UX-spec
+- Severity: Medium
+- Task being attempted: issue #143's spike — implementing Figma nodes `116:4444` and
+  `213:1721` with `--vaadin-*` / `--aura-*` tokens, as `docs/theming-layouts.md`
+  requires ("use tokens — not hard-coded px").
+- Expected vs actual: expected a design drawn from the Aura Figma kit to land on Aura's
+  token scale. Actual: it splits cleanly in two. Everything inherited from a **kit
+  component** lands exactly on a token; everything the designer **drew by hand** lands
+  between tokens. Measured against the real scale (radius s/m/l = 5/9/15 px, padding
+  and gap xs…xl = 4/8/12/16/24 px, font-size xs…xl = 12/13/14/16/18 px):
+  | Design value | Where | Nearest tokens | Match |
+  |---|---|---|---|
+  | 9 px | field radius | `--vaadin-radius-m` = 9 | ✅ |
+  | 14 px | field label / input | `--aura-font-size-m` = 14 | ✅ |
+  | 13 px | Net/VAT label | `--aura-font-size-s` = 13 | ✅ |
+  | 12 px | row subtitle, section label | `--aura-font-size-xs` = 12 | ✅ |
+  | 16 px | totals amount | `--aura-font-size-l` = 16 | ✅ |
+  | 34 px | button height | derived from base-size 16 | ✅ |
+  | **12 px** | card radius | m = 9, l = 15 | ❌ between |
+  | **20 px** | card padding, card gap | l = 16, xl = 24 | ❌ between |
+  | **40 px** | section gap | xl = 24 | ❌ far off |
+  | **24 px** | report title | font xl = **18**, the top of the scale | ❌ exceeds |
+  | **15 px** | expense row title | m = 14, l = 16 | ❌ between |
+- Workaround used: token values taken throughout, accepting a 1–5 px divergence per
+  card and heading, and recorded in the spike report rather than hard-coding raw px.
+- Evidence: issue #143 spike; token values read from the running app with
+  `getComputedStyle`; design values from `get_design_context` on both nodes.
+- Impact: this is a standing tax on every per-view issue, not a one-off. Each view has
+  to choose between (a) tokens, and being visibly a few pixels off the design on every
+  card and heading, (b) raw px, which renders correctly today and silently stops
+  tracking the theme — the exact failure mode F-062 describes, and (c) inventing a
+  project-level custom-property scale for the design's own values. Without a decision
+  recorded up front, different views will make different choices and the app drifts.
+  The title is the sharpest case: 24 px has no Aura token at all, because Aura's type
+  scale stops at 18 px, so *every* page heading needs an answer.
+- Suggested Vaadin/product improvement: ours, not Vaadin's — pick option (c) and define
+  the handful of extra properties once, or get the design corrected to the kit's scale.
+  Vaadin's side: the Aura Figma kit could expose the size variables for radius/padding
+  so a designer drawing a card picks a token instead of typing `12`.
+- Owner / next step: **Decided by issue #144** (`/figma-theme`), recorded in
+  `docs/design/foundations/` (radius, spacing, typography), with the rule in ADR-0025. Option (c)
+  for the four recurring 3–6px gaps — `--em-card-radius` 12, `--em-card-padding` 20,
+  `--em-section-gap` 40, `--em-font-size-title` 24 — plus one exact Aura override
+  (`--aura-app-layout-radius: 12px`), and the nearest token for the 1–2px cases (15→16,
+  10→8) so the type scale stays the single source for text. **One row of the table above
+  is wrong:** 12px is *not* off-scale — it is exactly `--aura-font-size-xs` at base 14
+  (see F-068). It was recorded as a match against the app's then-current base of 15,
+  which happened to give the same verdict for the wrong reason.
+
+### F-065 — `docs/theming-layouts.md` prescribes `setPadding(String)`, which does not exist
+- Date: 2026-08-26
+- Area: Docs
+- Severity: Medium
+- Task being attempted: issue #143's spike — writing card padding the way this repo's
+  binding layout standard says to.
+- Expected vs actual: `docs/theming-layouts.md` documents
+  `layout.setPadding("var(--vaadin-padding-m)")` in **three** places — the decision
+  table row "Custom padding value | accepts any CSS value", the ✅ Java example, and the
+  ❌ counter-example's fix comment. Actual: it does not compile.
+  `ThemableLayout` (vaadin-ordered-layout-flow 25.2.1) declares
+  `setSpacing(boolean)`, `setSpacing(String)`, `setSpacing(float, Unit)`,
+  `getSpacing()` — and for padding only `setPadding(boolean)`. There is no String
+  overload, no `getPadding()`, no `(float, Unit)`. The API is asymmetric; the document
+  assumed it was symmetric.
+- Workaround used: `setPadding(false)` plus the padding value in the scoped CSS class,
+  which the same document's "Falling back to CSS" section already allows.
+- Evidence: `javap` on `com/vaadin/flow/component/orderedlayout/ThemableLayout.class`
+  from `vaadin-ordered-layout-flow-25.2.1.jar`; compile errors in the spike at
+  `SpikeItemCard.java:36` and `SpikeTotalsBox.java:33`.
+- Impact: low blast radius so far but a bad shape. Production code calls
+  `setSpacing(String)` 12 times and `setPadding(String)` zero times — because it
+  cannot — so the error has sat in the standard undetected since it was written, purely
+  because nobody followed that row. It is exactly the kind of instruction an agent
+  *does* follow literally: the document is named as binding authority by
+  `CLAUDE.md` and by the project copy of `figma-to-vaadin`, so every future generated
+  view starts by trying the one API call that fails.
+- Suggested Vaadin/product improvement: ours — fix the three places in
+  `docs/theming-layouts.md` to say padding is boolean-only and custom values go in the
+  scoped CSS class. Vaadin's — give `setPadding` the same String/(float, Unit)
+  overloads `setSpacing` has; the asymmetry has no obvious justification.
+- Owner / next step: **Fixed** — PR #148 (`fix-f065-theming-layouts` → `main`), raised
+  separately from the spike branch, which is never merged. All three bad occurrences are
+  gone: the decision-table row now says there is no Java API and points at the scoped CSS
+  class, the ✅ example uses `setPadding(false)` + `addClassName(...)`, and the ❌
+  counter-example's fix comment points at CSS rather than at the missing setter. A new
+  "The spacing/padding asymmetry" section shows the real signatures so the next reader
+  sees why, and the CSS fallback table gains a "Custom padding on any layout" row.
+  Verified: `grep -rn 'setPadding("' src/main/java/` returns nothing, so the document and
+  the codebase now agree. Still open upstream — Vaadin giving `setPadding` the same
+  `String` / `(float, Unit)` overloads `setSpacing` has would remove the trap at source.
+
+### F-066 — `figma-to-vaadin` has no "this view already exists" branch, so on a mature app it generates a rival implementation
+- Date: 2026-08-26
+- Area: AI
+- Severity: High
+- Task being attempted: issue #143's spike — running `figma-to-vaadin` against the two
+  frames the design provides for screens this app already ships.
+- Expected vs actual: expected a design-to-code skill aimed at an existing codebase to
+  reconcile with what is there. Actual: its workflow is unconditionally *implement* —
+  fetch context, check annotations, research components, resolve preferences, write
+  code, verify. No step asks whether the route, view or dialog already exists. Figma
+  node `116:4444` is the report detail screen, which the app implements in
+  `report/ui/ReportDetailView.java` (75 KB); node `213:1721` is "Add Expense", which
+  the app implements in `report/ui/LineEditorDialog.java` (20 KB). Run as written, the
+  skill produces a second, thinner implementation of both.
+- Workaround used: the spike's output was written to a `report.ui.spike` package at
+  `/spike/report/<id>`, deliberately parallel to the real views, and the useful output
+  treated as the **delta** rather than the code.
+- Evidence: issue #143 spike; `docs/figma-toolchain-spike.md` lists the delta.
+- Impact: the generated view *looks* closer to the design than the real one, because it
+  does far less — no review mode, no optimistic locking, no receipt validation, no
+  quantity overrides, no status transitions. That is a genuinely dangerous comparison to
+  put in front of a reviewer: the honest reading is "the design is simpler than the
+  app", not "the generated code is better". Left unnoticed, the natural next step is to
+  keep the generated file, and a 75 KB view's behaviour is quietly lost. The framing
+  matters for the whole `#142` follow-up series: the per-view issues are **restyling and
+  reconciliation** tasks against existing views, and this skill is built for greenfield.
+- Suggested Vaadin/product improvement: add a step between "fetch design context" and
+  "implement" — search the codebase for an existing view serving the same route or
+  entity, and if one exists, produce a diff against it rather than a new class. Failing
+  that, the skill should at least say which of the two it is doing.
+- Owner / next step: the per-view issues should be written as "change view X to match
+  frame Y", never "implement frame Y". Worth adding the guard to the project copy.
+
+### F-067 — Figma's Vaadin annotations record the button *variant* but drop its accent scoping, and the skill's own precedence rule then points the wrong way
+- Date: 2026-08-26
+- Area: AI
+- Severity: Medium
+- Task being attempted: issue #143's spike — mapping the design's Save and Submit
+  buttons to Vaadin.
+- Expected vs actual: the design paints both buttons near-black (`#0a0b0d`, bound to
+  the kit's `Accent colors/Accent neutral`), and the Figma **variant name** is
+  `Color=Accent neutral`. The **annotation** on the same node says
+  `Vaadin component: <vaadin-button theme="primary">`. Under Aura, `PRIMARY` alone
+  renders in the accent colour — blue. So the annotation is a faithful record of the
+  variant and a wrong record of the colour, and following it produces a blue button
+  where the design is black.
+- Workaround used: `ButtonVariant.PRIMARY` plus Aura's `aura-accent-neutral` utility
+  class, which scopes the accent for that subtree. Verified in the browser: the
+  rendered background is `oklch(0.15 0.0038 248)` with white text.
+- Evidence: `get_design_context` on nodes `213:1721` and `116:4446`; annotations on
+  `132:384` / `132:385`; the design's own fill `bg-[var(--accent-colors\/accent-neutral,#0a0b0d)]`.
+- Impact: the skill's step 2 says "Annotations override guesses from layer names" — a
+  sound rule that is exactly backwards here, because the **layer name** carries the
+  information the annotation lost. The same pattern appears twice more in these two
+  frames: node `143:2109` is annotated `theme="tertiary icon"`, and `icon` is Lumo-only
+  and silently does nothing under Aura (F-017); and Unit Price is annotated
+  `<vaadin-text-field>` when it is a currency amount the app already edits with a
+  `BigDecimalField`. So three of the annotations in two frames need overriding. They
+  remain far better than guessing — every input carries a component name — but they
+  cannot be treated as final.
+- Suggested Vaadin/product improvement: Figma's Vaadin kit should emit the accent
+  scoping alongside the theme variant (`theme="primary" class="aura-accent-neutral"`),
+  since the variant axis is literally named `Color=`. The skill should soften
+  "annotations override" to "annotations override layer names for *component choice*;
+  check the layer name and the rendered fill for *colour*".
+- Owner / next step: captured in `docs/figma-toolchain-spike.md`; worth a note in the
+  project copy's Project overrides section next to the existing `LUMO_*` rule.
+  **Superseded globally by issue #144:** the theme now scopes the accent to neutral for
+  every non-tertiary button, reaching the same `oklch(0.15 0.0038 248)` without the
+  per-button class. Per-view code should *not* add `aura-accent-neutral` — the annotation
+  is still wrong about the colour, but the app no longer needs a per-button remedy.
+
+### F-068 — Aura's docs give the wrong default for `--aura-font-size-xs`, on the design's most-used text size
+- Date: 2026-08-27
+- Area: Docs
+- Severity: Medium
+- Task being attempted: issue #144 — `/figma-theme` step 6 looks each Aura default up
+  with `get_theme_css_properties theme=aura` before writing the theme, precisely so a
+  declaration never merely re-asserts a default.
+- Expected vs actual: expected the documented font-size defaults to match the running
+  app. Actual: the docs state `--aura-font-size-xs` "default corresponds to `11px`". The
+  formula and the running app both give **12px** at the default base of 14. The other
+  four steps (13/14/16/18) match. Read from the app, the real derivation is
+  `clamp(0.625rem, round(font-size-m * 0.85, 0.0625rem), 0.8125rem)` — `0.875 × 0.85 =
+  0.74375rem`, which rounds to `0.75rem` = 12px, inside the clamp.
+- Workaround used: trusted the measurement over the docs, and recorded both the formula
+  and the discrepancy in `docs/design/tokens/token-reference.md` so the next run does
+  not re-derive it.
+- Evidence: `get_theme_css_properties theme=aura vaadin_version=25.2` ("The default
+  corresponds to `11px`") against a probe element on the running app at 25.2.1 returning
+  `12px`; the design's own local variable set names `XS: 11`, `S: 12`.
+- Impact: a 1px docs error, but it landed on the single most consequential value in this
+  design. 12px is the design's most-used text size — 28 of 65 text nodes in frame
+  `116:4444`. Trusting the docs would have classified all 28 as **off-scale**, and the
+  recorded decision would then have been either a fifth `--em-*` property or an accepted
+  divergence on every caption and section label in the app — a fabricated problem with a
+  real cost, defended by a citation. It also nearly inverted the base-font-size decision:
+  scored against the wrong scale, base 15 looked like the better fit (44 nodes exact vs
+  20); scored against the real one, base 14 wins outright (48 vs 17). The general shape:
+  an authoritative-looking default is more dangerous than a missing one, because nobody
+  measures what the docs already answered.
+- Suggested Vaadin/product improvement: Vaadin's — correct the `--aura-font-size-xs`
+  default in the Aura typography docs, and publish the derivation for all five steps.
+  The scale is not a geometric ramp (`xs` is a clamped 0.85 of `m`, `s` is the
+  *midpoint* of `m` and `xs`), so a reader who infers a constant ratio from one sample
+  gets two steps wrong. Better still, ship the resolved table per base size.
+- Owner / next step: recorded in `docs/design/tokens/token-reference.md`, with
+  all five formulas and an explicit warning that the docs disagree. Worth reporting
+  upstream to the Vaadin docs team.
+
+### F-069 — The design renders three font families while declaring one, so "the design is the source of truth" needs a carve-out
+- Date: 2026-08-27
+- Area: UX-spec
+- Severity: Medium
+- Task being attempted: issue #144 — reading frame `116:4444`'s global typography to
+  settle `--aura-font-family`.
+- Expected vs actual: expected the frame's text to use the family its own variable
+  declares. Actual: `Typography/Font-family` (a bound Aura kit variable) and the local
+  `Font` variable both say **Instrument Sans**, and the frame's 65 text nodes render in
+  **three** families — Instrument Sans (11 nodes), **Inter** (44), and **Public Sans**
+  (10). The kit-driven text is Instrument Sans; the hand-drawn text is not.
+- Workaround used: took the *variable* as authoritative and left `--aura-font-family` at
+  the Aura default (Instrument Sans, which is what the variable names). The stray
+  families are reported as design defects rather than reproduced.
+- Evidence: a `use_figma` binding walk over the frame's subtree returning a
+  `fontName.family + style` histogram — `Inter Bold` 18, `Inter Regular` 20,
+  `Public Sans Regular` 7, `Public Sans SemiBold` 3, against `Typography/Font-family:
+  "Instrument Sans"` from the remote "Aura sizes" collection.
+- Impact: this is the finding that forced a decision into ADR-0025 rather than a
+  workaround into one issue. A literal reading of "Figma is the source of truth" would
+  have shipped three font families, or picked whichever family the majority of nodes
+  happened to use — which here is Inter, i.e. exactly the value the design was supposed
+  to be replacing. The same split shows up in spacing (F-064): values inherited from a
+  kit component land on the token scale, values typed by hand do not. So the useful rule
+  is not "the design wins" but **"the design's variables and kit components win; its
+  hand-drawn values are a proposal to reconcile against the scale"** (ADR-0025 decision
+  4). Without that, a design-to-code toolchain faithfully reproduces a designer's
+  leftovers and calls it fidelity.
+- Suggested Vaadin/product improvement: partly ours — the design needs its stray text
+  nodes rebound to the typography variables. Vaadin's side: the Aura Figma kit could
+  expose typography as text *styles* rather than only as variables, so hand-drawn text
+  cannot silently drift off the declared family; and `get_design_context` could flag
+  when a node's rendered value contradicts a variable bound in the same file, which is
+  the machine-checkable version of this whole finding.
+- Owner / next step: recorded in `docs/design/foundations/typography.md` and as
+  ADR-0025 decision 4. The design fix is the designer's; raise the stray families and
+  the design's own 12px "S" step (against Aura's 13px `s`) with them.
+
+### F-070 — Spring Security proxies the view, so the class the navigation chain reports is a CGLIB subclass and `Class` equality silently matches nothing
+- Date: 2026-08-27
+- Area: Vaadin
+- Severity: Medium
+- Task being attempted: issue #146 — lighting the correct nav group for the current
+  route, by matching `AfterNavigationEvent.getActiveChain().get(0).getClass()` against
+  the view classes a `NavGroup` lists.
+- Expected vs actual: expected `MyReportsView.class`. Actual
+  `MyReportsView$$SpringCGLIB$$0` — every view in this app carries `@RolesAllowed` or
+  `@PermitAll` at class level (ADR-0008), so Spring method security proxies it. The
+  `equals` comparison matched nothing at all, for every route.
+- Workaround used: `isAssignableFrom` instead of `equals` in `NavGroup#contains`, with
+  the reason written next to it so nobody "simplifies" it back.
+- Evidence: a temporary probe printing the chain's class from `MainLayout#afterNavigation`
+  on the running app — `view=class com.vaadin.expensemanager.report.ui.MyReportsView$$SpringCGLIB$$0`.
+  The failing assertion was `NavigationShellUiTest#currentGroupFollowsTheGroupNotTheRoute`.
+- Impact: this is a **silent, total** failure of a feature that has no error path: the nav
+  simply never marks anything current, and every route looks like an unclassified one.
+  There is no exception, no log line, and no compile-time signal — the types are correct.
+  Two things made it easy to walk into. First, the code it replaced never met it:
+  `MenuEntry#menuClass()` reports the *declared* class, so the old `@Menu`-driven side
+  nav compared proxies to nothing. Second, a browserless test reproduces it exactly, but
+  only if the test asserts the *current* state rather than the presence of the items —
+  the four tests that only checked which links render all passed.
+- Suggested Vaadin/product improvement: Vaadin's — `AfterNavigationEvent` (and
+  `getActiveChain()`) could expose the *route target* class rather than the runtime one,
+  or offer `getNavigationTarget()` alongside, since the router already knows the
+  registered class. Failing that, the Flow/Spring docs should say plainly that a view
+  annotated for method security arrives proxied, next to the security annotations that
+  cause it. This will bite anything that keys off the view class — analytics, per-view
+  layout switches, breadcrumbs.
+- Owner / next step: fixed in `NavGroup#contains`, and covered by
+  `NavigationShellUiTest#currentGroupFollowsTheGroupNotTheRoute`. Worth reporting
+  upstream to Flow.
+
+### F-071 — A `ContextMenu`'s items are invisible to the browserless tester, so navigation behind a menu cannot be asserted from the rendered tree
+- Date: 2026-08-27
+- Area: Verification
+- Severity: Low
+- Task being attempted: issue #146 — replacing four view tests that asserted "an admin
+  sees this view in the navigation, a plain user does not" against the old `SideNavItem`
+  list.
+- Expected vs actual: expected `find(RouterLink.class).all()` to return the links inside
+  the two nav group menus. Actual: it returns only the two links in the light DOM (the
+  logo and the single-entry group). A `ContextMenu`'s items are attached as a virtual
+  child of its target and never appear in the component tree the tester walks, open or
+  closed.
+- Workaround used: assert against the model the shell renders from —
+  `NavGroup.allVisibleTo(authenticationContext)` — and leave the rendered menu to visual
+  verification. The access filtering itself is unit-tested against the real
+  `AccessAnnotationChecker` in `NavGroupTest`.
+- Evidence: a probe test on the running Spring context printing every discoverable
+  `RouterLink` while signed in as an admin: two results, where the bar renders eight
+  destinations.
+- Impact: modest but worth knowing before designing the assertion, not after. The
+  practical rule: anything an overlay owns — `ContextMenu`, `MenuBar` submenus, `Dialog`
+  content before it opens — is outside what a browserless test can see, so a test that
+  needs it either drives the component's own API or moves the guarantee into a model that
+  can be tested directly. Choosing the latter is not a weaker test here, but it does move
+  the "did we render it" half onto the visual pass, which is worth saying out loud rather
+  than quietly losing.
+- Suggested Vaadin/product improvement: Vaadin's — the browserless tester could expose
+  overlay content through the owning component (a `find(..., withinOverlayOf(menu))`
+  scope, or simply including virtual children in the walk). The `MenuBar` API is
+  reachable from Java (`getItems().getSubMenu()`), so the information exists; only the
+  locator DSL cannot reach it.
+- Owner / next step: recorded here; the four tests now assert the model. Worth raising
+  with the browserless-testing maintainers.
+
+### F-072 — A container's `color` never reaches an `h1`–`h6` or `a`: Aura re-declares it at element level, and inheritance loses to any matching rule
+- Date: 2026-08-28
+- Area: Vaadin
+- Severity: Medium
+- Task being attempted: issue #146's app shell — a coral header bar that sets its text
+  colour once, on the bar, and lets the logo, the nav pills and the greeting inherit it.
+- Expected vs actual: expected `.app-header { color: var(--em-header-text-color) }` to
+  reach the greeting `H1` inside it, since `.app-header` (specificity 0,1,0) far outranks
+  Aura's `:where(h1,h2,h3,h4,h5,h6) { color: var(--vaadin-text-color) }` (specificity
+  **0,0,0**). Actual: the greeting rendered black on coral. Specificity is not the
+  comparison being made — the bar's white arrives at the `H1` by *inheritance*, and an
+  inherited value loses to **any** declaration that matches the element itself, at any
+  specificity, zero included. `:where()` resets are built to be easy to override, but only
+  by a rule targeting the element; an ancestor's colour is not that.
+- Workaround used: `color: inherit` on the affected element's own class — a matching
+  declaration that opts back into inheritance. `styles.css:.app-header__greeting` and
+  `styles.css:.summary-heading`.
+- Evidence: `:where(h1,h2,h3,h4,h5,h6){color:var(--vaadin-text-color)}` in
+  `META-INF/resources/aura/aura.css` (`vaadin-aura-theme-25.2.5.jar`);
+  `styles.css:383` (`.app-header`), `styles.css:530` (`.app-header__greeting`);
+  `styles.css:88` (`.error-summary`), `styles.css:103` (`.summary-heading`);
+  `AppHeader.java:55`, `ErrorSummary.java:80`.
+- Impact: **two instances shipped, found by audit, not by looking.** The header greeting
+  (white → black on coral) and the validation summary's heading (`--aura-red-text` →
+  `--vaadin-text-color` inside a red callout). Both had the same signature: the class
+  overrides *some* of what Aura resets on that element — `.app-header__greeting` sets
+  `font-size`, `line-height` and `font-weight`, `.summary-heading` sets `font-weight` and
+  `font-size` — and not `color`, while an ancestor declares it. In both, the sibling `a`
+  was handled (`.app-header__logo { color: inherit }`, `.error-summary-link` declares the
+  token) and the heading was not, so the author had met the mechanism and not generalised
+  it. This is a third way Aura fails silently, beside F-062's undefined-property-frozen-
+  at-a-fallback and F-013/F-017's accepted-and-ignored variant: here the declaration is
+  valid, defined and applied, and simply never reaches the element that needed it.
+  Worst of all, an accessibility gate **prefers the bug** — black on `#f16c4e` measures
+  6.99:1, the design's white 3.00:1 — so a contrast pass is not merely silent but
+  actively wrong, and nothing in a build or a test run mentions any of it.
+- Suggested Vaadin/product improvement: Aura's element-level resets are load-bearing for
+  unstyled markup and should not go. But `color` is the one property whose reset routinely
+  fights an app's own container colour, and Aura already re-declares it on exactly two
+  subjects — `h1`–`h6` and `a:any-link`. Documenting that pair in the theming docs as
+  "does not inherit your colour; re-declare it" would cost a sentence. A stronger fix:
+  reset only what typography needs (`font-size`, `font-weight`, `line-height`) and leave
+  `color` to inherit, letting `--vaadin-text-color` reach headings from `:root` the way it
+  reaches every `Span`.
+- Owner / next step: both instances fixed; recorded in `app-shell.md` and
+  `error-summary.md`; the general rule and the audit that finds it are in
+  `docs/theming-layouts.md` § *Inherited properties*. Worth raising with the Aura team as
+  a docs gap at minimum.
+
+### F-073 — A design frame's sample data can contradict its own copy, and a survey that reads the mock as spec implements the wrong rule
+- Date: 2026-08-28
+- Area: Process / Figma
+- Severity: Medium
+- Task being attempted: surveying frame `116:2499` "My Expenses" (the report list) for
+  issue #147, whose acceptance criteria required the "Needs you" metric definition to be
+  *confirmed against the design* rather than assumed.
+- Expected vs actual: expected the frame to state one definition. It states two. The
+  metric card reads `2 · €1234.00 · 1 rejected` and the shell greeting reads "2 items
+  need you attention", which together say drafts + rejected with rejected broken out.
+  But the frame's own card placement says the opposite: the two cards drawn under
+  `section-attention` carry **Submitted** and **Approved** badges, while the **Rejected**
+  card sits under `section-submitted-closed`. Read literally, "needs your attention"
+  would mean submitted + approved and exclude rejected outright — the inverse of the
+  metric directly above it, and the inverse of the app's existing
+  `ReportStatus.isEditable()` grouping.
+- Why it is easy to get wrong: the placement is the more *concrete* signal. Copy can be
+  read as loose, but three cards sorted into two named sections looks like a decision
+  someone made. It is not: mock rows are dressed to show every badge colour once, so the
+  distribution is chosen for visual coverage rather than for semantics. Nothing in the
+  frame marks which of the two signals is load-bearing.
+- Resolution: copy wins over sample data. Two independent pieces of *prose* agreed
+  (metric sub-line, greeting), the app already implemented that rule, and the placement
+  had an obvious non-semantic motive. Recorded as settled in `metric-card.md` with the
+  contradiction named, so the next survey does not reopen it.
+- The general rule this yields: **a frame's copy and structure are specification; its
+  row-level content is illustration.** Take counts, statuses and groupings from labels,
+  captions and layer names, never from which mock record landed in which group. Where
+  only the content answers a question, the question is unanswered — raise it with the
+  designer rather than inferring.
+- Suggested Vaadin/product improvement: none for Vaadin. For the design process: a frame
+  whose mock data is deliberately unrepresentative should say so in a note, the way an
+  annotation marks a component. Cheaper than either side guessing.
+- Owner / next step: settled for #147; raised with the designer in the survey follow-up
+  issue alongside the "CLOSEd" casing typo, the "need you attention" wording, and the
+  20/24/28 display ramp.
+
+### F-074 — The browserless locator's `atIndex` is 1-based, so the idiomatic Java `atIndex(0)` throws
+- Date: 2026-08-28
+- Area: Verification
+- Severity: Low
+- Task being attempted: issue #162's collapsible sections — closing the *first* of two
+  `Details` from a browserless test and asserting the count survives the collapse.
+- Expected vs actual: expected `findDetails().withClassName("report-list-section")
+  .atIndex(0)` to select the first match, the way every index in Java's own collection
+  and stream APIs does. Actual: `IllegalArgumentException: Index must be greater than
+  zero, but was 0` — the locator counts from 1, so the first element is `atIndex(1)`.
+- Workaround used: `atIndex(1)`, with a one-line comment at the call site so the next
+  reader does not "fix" it back.
+- Evidence: `com.vaadin.browserless.locator.Locator.atIndex(Locator.java:269)`,
+  `browserless-test-shared-1.1.2`; `MyReportsViewUiTest
+  #bothSectionsStartExpandedAndCollapsingOneKeepsItsCountVisible`.
+- Impact: one failed test run, no more — the exception fires immediately and names the
+  rule, so this is the cheap kind of surprise. Logged because the sibling APIs a test
+  reaches for in the same breath (`components()`, `List::get`, `Stream::skip`) are all
+  0-based, so the mismatch will recur for every author who meets it, and because an agent
+  writing the call has no signal short of running it.
+- Suggested Vaadin/product improvement: either accept 0-based indices (the Java
+  convention, and what the surrounding APIs use) or say so in the method's javadoc —
+  neither the name nor the signature hints at 1-based counting. Failing both, `first()`
+  and `last()` helpers would cover the common cases without an index at all.
+- Owner / next step: worked around in the test; worth reporting upstream to the
+  browserless-test maintainers as an API-consistency nit.
+
+### F-075 — Vaadin 25 bundles no Lucide and no Aura-native icon set, and a sprite addressed by `symbol` silently drops every presentation attribute
+- Date: 2026-09-01
+- Area: Vaadin / Design toolchain
+- Severity: Medium
+- Task being attempted: issue #163 — replacing all 25 `VaadinIcon` call sites and five
+  `"vaadin:name"` strings with Lucide, the icon set the Figma Aura kit draws with.
+- Expected vs actual, part 1 (**the set**): expected a Vaadin 25.2 app themed with Aura to
+  have an icon collection matching the design kit its own Figma library ships. Actual:
+  Vaadin 25.2 bundles exactly two collections, `VaadinIcon` and `LumoIcon`, both Lumo-era
+  — filled, heavier glyphs on a 16px grid. Aura has **no** icon set of its own. The Figma
+  Aura kit's hand-placed glyphs are Lucide (24px, 2px outline stroke). So an Aura app
+  built from an Aura design has to vendor a third-party set before it can draw a single
+  glyph that matches the design, and the docs' "Custom Icon Collection APIs" page is the
+  only pointer that this is expected of you.
+- Expected vs actual, part 2 (**the sprite**, the expensive half): the docs endorse
+  wrapping a third-party set in a project-local enum, and `SvgIcon(String src, String
+  symbol)` reads as the sprite-sheet constructor. Expected `vaadin-icon` to fetch the
+  sprite and honour the file's own `stroke` / `stroke-width` / `viewBox`, the way it
+  visibly does for a single-file `src`. Actual: in `vaadin-icon-mixin`'s `__srcChanged`,
+  `(symbol || src.includes('#'))` takes a branch that sets
+  `<use href="sprite.svg#id">` and **never fetches the file**. Only the *other* branch —
+  plain `src`, one file per glyph — parses the response and copies `viewBox`, `fill`,
+  `stroke`, `stroke-width`, `stroke-linecap` and `stroke-linejoin` off the file's root
+  `<svg>` onto the rendered one. Down the sprite branch all six are `undefined` and
+  `ifDefined` omits them.
+- Why it bites: a Lucide glyph is *only* strokes — `fill="none" stroke="currentColor"
+  stroke-width="2"` on the root and bare `<path d="…">` inside. Vendor such a file as a
+  `<symbol>` unchanged and the sprite branch renders it with no stroke at all: the glyph
+  is invisible, or (with a `fill` inherited from elsewhere) a black blob that looks
+  plausible in light mode and disappears in dark. Nothing errors, nothing logs. It is the
+  same silent-success shape as F-062, one layer down.
+- Workaround used: put the presentation attributes on **each `<symbol>`** rather than the
+  sprite's root, and assert them per symbol in `LucideIconTest` rather than trusting the
+  generator. `currentColor` does survive the external reference — it resolves against the
+  `<use>` element's context — so one sprite serves both colour schemes once the
+  attributes are in the right place. Verified in the browser in both schemes: the same
+  `plus` symbol renders white on the black primary button and dark on its white dark-mode
+  counterpart.
+- A second, quieter coupling: with no `viewBox` read from the file, the rendered viewBox
+  is `0 0 ${size}` from `vaadin-icon`'s `size` property, which **defaults to 24**. Lucide
+  is a 24 grid, so they agree — by coincidence of matching defaults on both sides, not by
+  anything either declares. A 16- or 20-grid set vendored the same way would render
+  cropped or padded with no clue why. Pinned by a test.
+- Evidence: `@vaadin/icon@25.2.1/src/vaadin-icon-mixin.js` `__srcChanged` (the
+  `if (!src.startsWith('data:') && (symbol || src.includes('#')))` branch) and
+  `vaadin-icon.js` `render()` (`fill="${ifDefined(this.__fill)}"` and siblings, plus
+  `viewBox="${this.__viewBox || \`0 0 ${this.size} ${this.size}\`}"`);
+  `src/main/resources/META-INF/resources/icons/lucide.svg`; ADR-0026.
+- Impact: the visible cost was one design deviation per view survey (#162 recorded two
+  invented glyphs before the set was switched) and, for #163, half a day resolving what
+  the design actually draws. The sprite behaviour cost the sharper risk: had the symbols
+  been vendored verbatim, the suite would have stayed green and the icons would have
+  looked correct until someone opened dark mode.
+- Suggested Vaadin/product improvement: three, in order of value. (1) Ship an Aura icon
+  set, or state in the Aura docs which existing collection is intended — an Aura app
+  currently has no answer to "which icons". (2) Document that `symbol` renders an external
+  `<use>` and consequently ignores the source file's presentation attributes; today the
+  two branches of `__srcChanged` behave very differently and the API surface
+  (`SvgIcon(src, symbol)` vs `SvgIcon(src)`) does not hint at it. Better still, read the
+  attributes in both branches. (3) Warn when a `<use>` resolves to nothing — a mistyped
+  symbol is currently an empty box and total silence, which is what forces an enum plus a
+  test to get a compile-time-ish guarantee.
+- Owner / next step: worked around and covered by `LucideIconTest`; (1) and (2) are worth
+  raising with the Vaadin design-system and Flow-components teams respectively. The
+  invention ledger in ADR-0026 tracks the design-side half — 13 glyphs picked without a
+  drawn reference — and shrinks as views get designed.
+
+### F-076 — A custom-property name in an SVG comment makes the sprite malformed XML, and every icon in the app disappears with no console error
+- Date: 2026-09-02
+- Area: Vaadin / Tooling
+- Severity: Medium
+- Task being attempted: applying the iconography survey's decision to move stroke width out
+  of the sprite's `<symbol>`s and onto the theme's `--vaadin-icon-stroke-width`. The edit
+  removed the attribute and added a comment to the sprite explaining why it must not come
+  back.
+- Expected vs actual: expected a comment to be inert. Actual: every icon in the app
+  vanished. **An XML comment may not contain the string `--`**, and the comment named the
+  property in full — `--vaadin-icon-stroke-width`. That made `lucide.svg` malformed XML, so
+  the browser's SVG parse failed, every external `<use href="icons/lucide.svg#…">` resolved
+  to nothing, and 22 icons rendered as empty boxes.
+- Why it is worse than a normal typo: **nothing reports it.** The console showed zero
+  errors and zero warnings — the parse failure happens inside the browser's own SVG
+  resolution for a `<use>` reference, not in a fetch, so there is no network error and no
+  script error. The file still serves `200 image/svg+xml`. `getComputedStyle` on the
+  `<svg>` and on the `<use>` both still reported `stroke-width: 2px`, because the *host*
+  document's CSS is fine; it is the *referenced* document that failed to parse. Every
+  signal an agent would reach for says the icons are working.
+- The one signal that did show it: `use.getBBox()` returned `0×0` where it had previously
+  returned real geometry. Worth remembering as the cheap probe for "did this `<use>`
+  actually resolve" — it is the only in-page check that distinguishes a resolved reference
+  from a silently failed one.
+- Workaround used: name custom properties in the sprite's comments **without their leading
+  dashes**, with a line in the comment saying why. Then the real fix: a test that parses the
+  sprite as XML. Every other assertion in `LucideIconTest` reads the file as **text**, so
+  all 53 of them passed on a file no browser could parse — which is precisely the shape of
+  gap a test suite is supposed to close. `theSpriteIsWellFormedXml` now fails with the
+  parser's own message ("The string \"--\" is not permitted within comments"), verified by
+  replanting the bug.
+- Evidence: `src/main/resources/META-INF/resources/icons/lucide.svg`;
+  `LucideIconTest#theSpriteIsWellFormedXml`; ADR-0026 decision 4 as amended;
+  `docs/design/foundations/iconography.md`.
+- Impact: caught in the browser within minutes *because* the change was visually verified —
+  and it would not have been caught otherwise. A green 522-test suite, a 200 response and a
+  clean console all agreed the icons were fine. This is the third silent-styling mechanism
+  logged in this area (F-062 frozen fallbacks, F-072 inheritance losing to an element-level
+  rule, F-075 the sprite branch reading no attributes) and the first where the *asset* is
+  the thing that fails.
+- Suggested Vaadin/product improvement: `vaadin-icon` should warn when a `<use>` reference
+  resolves to nothing — it already logs `Error loading icon` for a failed fetch in the
+  single-file branch, so the sprite branch is the asymmetric one. A one-line
+  `console.warn` on an empty bounding box after load would turn this class of bug from
+  invisible to obvious, and would also catch the mistyped-symbol case that forced
+  `LucideIcon` to be an enum in the first place.
+- Owner / next step: fixed and covered by a test. The Vaadin suggestion is worth filing
+  alongside F-075's, since both are about the sprite branch failing quietly.
+
+### F-077 — A component spec's "Tokens used" table cannot distinguish what the theme already does from what you must declare, so it reads as five times more CSS than the view needs
+- Date: 2026-09-02
+- Area: Design toolchain (`figma-survey` spec format)
+- Severity: Low
+- Task being attempted: issue #169 — building the reference-table design, whose tab bar
+  spec (`docs/design/components/reference-tabs.md`) carries an eleven-row *Tokens used*
+  table: bar background, bar radius, bar padding, tab radius, tab padding, label size and
+  weight, unselected and selected label colour, selected fill, selected border, selected
+  shadow.
+- Expected vs actual: the table reads as a list of things the implementation must set —
+  it is written as `Part | Token | Design value`, with no column for *who supplies it*.
+  Implementing it literally means writing eleven declarations. In fact Aura's stock
+  `vaadin-tabs` already renders **nine of the eleven** exactly as specified: it sets the
+  bar's background to `--vaadin-background-container`, derives the bar radius as
+  `--vaadin-tab-border-radius + --vaadin-tabs-padding`, puts the tab corner on
+  `--vaadin-radius-m`, sets the label to `--aura-font-weight-medium`, and gives
+  `vaadin-tab[selected]` an `--aura-surface-color` fill, a 1px border and
+  `--aura-shadow-s`. Only two rows genuinely differ from the theme — the bar's padding
+  (Aura 3px, design 4px) and the two label colours (Aura uses `--vaadin-text-color` /
+  `--aura-accent-text-color`, the design wants secondary / plain text).
+- Why it happened, and why it is not the surveyor's fault: a survey never boots the app
+  (that is the deliberate split with `/figma-theme`), and reading `aura.css` in a jar to
+  work out which of eleven values the theme already produces is exactly the kind of
+  resolved-value work the spec format hands to a running app. The table is *correct* about
+  every value; it simply cannot say which ones are free.
+- Cost when implemented literally: the first draft of `.reference-tabs` re-declared all of
+  it — a background, a radius, a padding, a per-tab radius and padding, a label font-size
+  and weight, and two `vaadin-tab` rules. That is nine declarations fighting rules that
+  already agreed with them, and every one is a place the app stops tracking the theme. It
+  also nearly hid the two real divergences in the noise.
+- Evidence: `styles.css` § *Reference tables* as committed (three declarations plus one
+  `a:any-link` rule, against a nine-declaration first draft);
+  `docs/design/components/reference-tabs.md` § *Tokens used*;
+  `vaadin-aura-theme-25.2.1.jar!/META-INF/resources/aura/aura.css` rules for
+  `vaadin-tabs` and `vaadin-tab[selected]`.
+- Suggested improvement: give the *Tokens used* table a **Source** column with three
+  values — `theme` (Aura already produces this; assert it, do not declare it), `declare`
+  (the theme differs, the app must set it), `unverified` (nobody has checked). A survey can
+  fill `unverified` honestly for every row without booting anything, and whoever
+  implements or runs `/figma-theme` promotes each row to `theme` or `declare` once a
+  browser has answered. That turns the eleven-row table from a work list into a checklist
+  whose two interesting rows are visible, and it is the same "resolved values are the
+  running app's to supply" split the folder already makes for the global theme.
+- Owner / next step: a `figma-survey` change. Not done here — this issue only found the
+  problem, and altering the spec format mid-implementation is how a contract becomes a
+  transcript. Note that the same shape applies to `row-action-menu.md`, whose "No property
+  is overridden" line turned out to be right for a different reason than it implies: Aura
+  needed a variant (`TERTIARY`) and a chevron suppressed, neither of which is a property.

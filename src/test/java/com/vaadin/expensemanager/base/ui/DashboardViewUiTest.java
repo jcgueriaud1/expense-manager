@@ -2,8 +2,7 @@ package com.vaadin.expensemanager.base.ui;
 
 import com.vaadin.browserless.SpringBrowserlessTest;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
-import com.vaadin.flow.component.button.Button;
-import com.vaadin.flow.component.html.Span;
+import com.vaadin.flow.component.menubar.MenuBar;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -57,21 +56,29 @@ class DashboardViewUiTest extends SpringBrowserlessTest {
         assertThat(text).doesNotContain("administrator");
     }
 
+    /**
+     * Identity and logout survived the shell redesign (#146) — both moved from
+     * the {@code AppLayout} navbar to behind the avatar, because the designed
+     * bar has no room beside the three nav links (#145 decision 1).
+     */
     @Test
     @WithUserDetails(LocalUserSeeder.PLAIN_USER_EMAIL)
     void headerShowsIdentityAndLogout() {
         navigate(DashboardView.class);
 
-        // Identity: the current user's name is rendered in the shell header.
-        var names = $(Span.class).all().stream().map(Span::getText).toList();
-        assertThat(names).anyMatch(t -> t.contains("Demo User"));
+        var accountMenu = $(MenuBar.class).all().stream()
+                .flatMap(bar -> bar.getItems().stream())
+                .flatMap(item -> item.getSubMenu().getItems().stream())
+                .toList();
 
-        // A usable logout control is present in the header.
-        var signOut = $(Button.class).all().stream()
-                .filter(b -> "Sign out".equals(b.getText()))
+        assertThat(accountMenu).extracting(item -> item.getElement().getTextRecursively())
+                .contains("Demo User", "Sign out");
+
+        var signOut = accountMenu.stream()
+                .filter(item -> "Sign out".equals(item.getElement().getTextRecursively()))
                 .findFirst()
-                .orElseThrow(() -> new AssertionError("No 'Sign out' button in the shell"));
-        assertThat(test(signOut).isUsable()).isTrue();
+                .orElseThrow(() -> new AssertionError("No 'Sign out' item in the shell"));
+        assertThat(signOut.isEnabled()).isTrue();
     }
 
     private static String textOf(DashboardView root) {

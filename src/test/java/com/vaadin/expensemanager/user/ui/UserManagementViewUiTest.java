@@ -15,7 +15,8 @@ import com.vaadin.expensemanager.user.UserSummaryDto;
 import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.grid.GridLocator;
-import com.vaadin.flow.component.sidenav.SideNavItem;
+import com.vaadin.expensemanager.base.ui.NavGroup;
+import com.vaadin.flow.spring.security.AuthenticationContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -59,6 +60,10 @@ class UserManagementViewUiTest extends SpringBrowserlessTest implements Locators
         POSTGRES.start();
     }
 
+    /** Resolves the signed-in user for {@code navEntryLabels()}. */
+    @Autowired
+    protected AuthenticationContext authenticationContext;
+
     @Autowired
     private UserRepository userRepository;
 
@@ -83,14 +88,14 @@ class UserManagementViewUiTest extends SpringBrowserlessTest implements Locators
     @WithUserDetails(ADMIN_EMAIL)
     void adminSeesMenuEntry() {
         navigate(DashboardView.class);
-        assertThat(menuItemPaths()).contains("users");
+        assertThat(navEntryLabels()).contains("Users");
     }
 
     @Test
     @WithUserDetails(LocalUserSeeder.PLAIN_USER_EMAIL)
     void userSeesNoMenuEntry() {
         navigate(DashboardView.class);
-        assertThat(menuItemPaths()).doesNotContain("users");
+        assertThat(navEntryLabels()).doesNotContain("Users");
     }
 
     @Test
@@ -240,9 +245,18 @@ class UserManagementViewUiTest extends SpringBrowserlessTest implements Locators
         throw new AssertionError("No row for " + email);
     }
 
-    private List<String> menuItemPaths() {
-        return find(SideNavItem.class).all().stream()
-                .map(SideNavItem::getPath)
+    /**
+     * The navigation entries the signed-in user can reach, by label (#146).
+     *
+     * <p>Was the {@code @Menu}-generated side-nav paths. The nav is now
+     * hand-authored in {@code NavGroup} and two of its three groups render as
+     * menus, whose items the browserless tester cannot see (F-071) — so this
+     * asks the model the shell renders from, and the rendered menu is left to
+     * visual verification.
+     */
+    private List<String> navEntryLabels() {
+        return NavGroup.allVisibleTo(authenticationContext).stream()
+                .map(NavGroup.NavItem::label)
                 .toList();
     }
 }

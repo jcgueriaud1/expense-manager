@@ -5,6 +5,7 @@ import java.util.Locale;
 
 import com.vaadin.expensemanager.base.DomainRuleException;
 import com.vaadin.expensemanager.base.ui.ErrorSummary;
+import com.vaadin.expensemanager.base.ui.LucideIcon;
 import com.vaadin.expensemanager.user.Role;
 import com.vaadin.expensemanager.user.UserAdminService;
 import com.vaadin.expensemanager.user.UserSummaryDto;
@@ -16,15 +17,12 @@ import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.Paragraph;
-import com.vaadin.flow.component.icon.Icon;
-import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.radiobutton.RadioButtonGroup;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.data.binder.Binder;
 import com.vaadin.flow.data.value.ValueChangeMode;
-import com.vaadin.flow.router.Menu;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 
@@ -35,8 +33,8 @@ import jakarta.annotation.security.RolesAllowed;
  * (issue #64, Phase 6). Read path only — no mutation in this slice.
  *
  * <p>Structure mirrors {@code ExpenseTypeView}: an H2 header, an intro
- * paragraph, and a {@link Grid} of {@link UserSummaryDto}. The side-nav item is
- * auto-generated from {@code @Menu} and access-filtered, so navigation is gated
+ * paragraph, and a {@link Grid} of {@link UserSummaryDto}. Its top-nav entry is
+ * hand-authored in {@code NavGroup} and access-filtered, so navigation is gated
  * by {@code @RolesAllowed("ADMIN")} here while the real enforcement lives in
  * {@link UserAdminService#list()} (two-layer authorization, ADR-0008).
  *
@@ -56,7 +54,6 @@ import jakarta.annotation.security.RolesAllowed;
  */
 @Route("users")
 @PageTitle("Users")
-@Menu(title = "Users", order = 4, icon = "vaadin:users")
 @RolesAllowed("ADMIN")
 public class UserManagementView extends VerticalLayout {
 
@@ -109,7 +106,7 @@ public class UserManagementView extends VerticalLayout {
 
     /** Per-row action opening the role/access editor for that user. */
     private Button manageButton(UserSummaryDto user) {
-        var button = new Button(new Icon(VaadinIcon.EDIT), event -> openEditor(user));
+        var button = new Button(LucideIcon.PENCIL.create(), event -> openEditor(user));
         button.addThemeVariants(ButtonVariant.TERTIARY);
         button.setAriaLabel("Edit user " + user.email());
         return button;
@@ -225,7 +222,7 @@ public class UserManagementView extends VerticalLayout {
     private HorizontalLayout filters() {
         search.setLabel("Search");
         search.setPlaceholder("Search by name or email");
-        search.setPrefixComponent(new Icon(VaadinIcon.SEARCH));
+        search.setPrefixComponent(LucideIcon.SEARCH.create());
         search.setClearButtonVisible(true);
         search.setWidth("20em");
         search.setValueChangeMode(ValueChangeMode.EAGER);

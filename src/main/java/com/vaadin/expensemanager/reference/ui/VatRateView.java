@@ -4,16 +4,16 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import com.vaadin.expensemanager.base.ui.EditorDialog;
+import com.vaadin.expensemanager.base.ui.LucideIcon;
 import com.vaadin.expensemanager.reference.ReferenceDataService;
 import com.vaadin.expensemanager.reference.VatRateDto;
 import com.vaadin.flow.component.Component;
-import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.textfield.BigDecimalField;
 import com.vaadin.flow.data.binder.Binder;
-import com.vaadin.flow.router.Menu;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
+import com.vaadin.flow.spring.security.AuthenticationContext;
 
 import jakarta.annotation.security.RolesAllowed;
 
@@ -25,8 +25,8 @@ import static com.vaadin.expensemanager.reference.ui.ReferenceViewSupport.format
  *
  * <p>An admin can <strong>add, edit, reorder, and deactivate</strong> rates.
  * Two-layer authorization (ADR-0008): {@code @RolesAllowed("ADMIN")} gates
- * navigation (a USER can't reach the route and the auto-menu hides its
- * {@code @Menu} entry), while the real enforcement is
+ * navigation (a USER can't reach the route, and the top nav hides the
+ * entry that leads to it), while the real enforcement is
  * {@link ReferenceDataService}'s method security. There is no delete — the only
  * removal is <em>deactivate</em>, which flips the {@code active} flag so the row
  * is hidden from new line choices but retained for historical lines (ADR-0018);
@@ -39,19 +39,19 @@ import static com.vaadin.expensemanager.reference.ui.ReferenceViewSupport.format
  */
 @Route("vat-rates")
 @PageTitle("VAT rates")
-@Menu(title = "VAT rates", order = 2, icon = "vaadin:money")
 @RolesAllowed("ADMIN")
 public class VatRateView extends ReferenceConfigView<VatRateDto> {
 
     private final transient ReferenceDataService service;
 
-    public VatRateView(ReferenceDataService service) {
+    public VatRateView(ReferenceDataService service,
+            AuthenticationContext authenticationContext) {
         super("VAT rates",
                 "The VAT rates expense lines are filed against. Deactivating a "
                         + "rate hides it from new lines but keeps it on existing "
                         + "ones — nothing is deleted, so past reports keep their "
                         + "original rate.",
-                "Add VAT rate");
+                "Add VAT rate", authenticationContext);
         this.service = service;
 
         grid.addColumn(dto -> formatPercent(dto.value()))
@@ -73,13 +73,13 @@ public class VatRateView extends ReferenceConfigView<VatRateDto> {
         int index = indexOf(dto);
         String label = formatPercent(dto.value());
 
-        var edit = iconButton(VaadinIcon.EDIT, "Edit rate " + label, () -> openEditor(dto));
-        var up = reorderButton(VaadinIcon.ARROW_UP, "Move rate " + label + " up",
+        var edit = iconButton(LucideIcon.PENCIL.create(), "Edit rate " + label, () -> openEditor(dto));
+        var up = reorderButton(LucideIcon.ARROW_UP.create(), "Move rate " + label + " up",
                 index > 0, () -> {
                     service.moveVatRate(dto.id(), -1);
                     refresh();
                 });
-        var down = reorderButton(VaadinIcon.ARROW_DOWN, "Move rate " + label + " down",
+        var down = reorderButton(LucideIcon.ARROW_DOWN.create(), "Move rate " + label + " down",
                 index >= 0 && index < currentItems().size() - 1, () -> {
                     service.moveVatRate(dto.id(), 1);
                     refresh();

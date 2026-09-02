@@ -26,7 +26,24 @@ pin them first, aim every test at them, stop only when they are met.
    verification. When you visually verify, follow the
    [`visual-verification`](../visual-verification/SKILL.md) skill and view every
    route the ticket touches.
-4. **Commit** on a feature branch off `main`.
+4. **Design spec — conform or author, depending on origin.** When the change
+   touches a component's appearance, check `docs/design/components/` and let the
+   spec's **Origin** decide which way authority runs.
+   - **`design` origin** — the spec is the contract. Take tokens and states from it
+     rather than choosing values; a difference is a bug in *your* code. **Never edit
+     the spec to match what you built** — that turns the contract into a transcript
+     and makes the drift invisible. Where the design has moved, or a component you
+     are building has no file, run
+     [`figma-survey`](../figma-survey/SKILL.md), which owns design-origin specs.
+   - **`code` origin, or a new shared component the design never drew** — an error
+     summary, an empty state, a dialog scaffold you are inventing to satisfy an
+     ADR — the code is the source, so **you** author the spec, in this change.
+     There is no design to survey. Follow the template in
+     `docs/design/components/README.md`, and account for all six states with `n/a`
+     plus a reason where one cannot occur.
+   - Either way, leave **Implementation** for the audit. Asserting `conforms` about
+     your own change is asserting something you did not independently check.
+5. **Commit** on a feature branch off `main`.
 
 ## While you work
 

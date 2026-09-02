@@ -32,8 +32,9 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p><strong>History by year, not by an {@code active} flag</strong> — the
  * deliberate contrast with ADR-0018. Each year's decision is its own row;
- * {@link #addYear} seeds a new year from the most recent existing one and never
- * mutates a prior year's rows.
+ * {@link #copyYear} seeds a new year from a named existing one and never mutates
+ * a prior year's rows, and {@link #addYear} is that same call with the source
+ * defaulted to the most recent year.
  */
 @Service
 public class AllowanceRateService {
@@ -114,28 +115,58 @@ public class AllowanceRateService {
      * every prior year untouched. The copied figures are a starting point an
      * admin then corrects against that year's Verohallinto decision. Rejects a
      * year that already exists, or when no prior year exists to copy from.
+     *
+     * <p><strong>This is {@link #copyYear} with the source defaulted</strong> —
+     * the same operation, one decision fewer. PRD 4.4 pins the "copies the latest
+     * year" meaning to this action, so #169 kept it rather than turning it into
+     * an empty-year action when the design split the toolbar in two; see
+     * {@code AllowanceRatesView}'s javadoc for what each button now means.
      */
     @RolesAllowed("ADMIN")
     @Transactional
     public void addYear(int year) {
-        if (domesticRepository.findByYear(year).isPresent()) {
-            throw new DomainRuleException("Year " + year + " already has allowance rates");
-        }
         int source = availableYears().stream().mapToInt(Integer::intValue).max()
                 .orElseThrow(() -> new DomainRuleException(
                         "No existing year to copy rates from"));
+        copyYear(source, year);
+    }
 
-        var domestic = domesticRepository.findByYear(source).orElseThrow();
-        domesticRepository.save(new DomesticPerDiemRate(year, domestic.getFullDayAmount(),
-                domestic.getPartialDayAmount(), domestic.getFullDayMinHours(),
-                domestic.getPartialDayMinHours()));
+    /**
+     * Copies a <em>named</em> source year's rates — domestic per-diem, kilometre
+     * rate, meal allowance and every foreign per-diem — into {@code targetYear},
+     * which must not already have any (#169, the design's "Copy Year" toolbar
+     * action).
+     *
+     * <p>Rejects a target that exists and a source that does not, both as
+     * {@link DomainRuleException} so the editor dialog surfaces them in its error
+     * summary rather than the generic error dialog (ADR-0020). Copying a year
+     * onto itself is the same rule twice over and fails on the first.
+     *
+     * <p>Under {@code @RolesAllowed("ADMIN")} like every other mutation here: the
+     * real enforcement point, independent of the ADMIN-only route (ADR-0008).
+     */
+    @RolesAllowed("ADMIN")
+    @Transactional
+    public void copyYear(int sourceYear, int targetYear) {
+        if (domesticRepository.findByYear(targetYear).isPresent()) {
+            throw new DomainRuleException(
+                    "Year " + targetYear + " already has allowance rates");
+        }
+        var domestic = domesticRepository.findByYear(sourceYear).orElseThrow(
+                () -> new DomainRuleException(
+                        "Year " + sourceYear + " has no allowance rates to copy"));
 
-        kilometreRepository.findByYear(source).ifPresent(km ->
-                kilometreRepository.save(new KilometreRate(year, km.getAmountPerKm())));
-        mealRepository.findByYear(source).ifPresent(meal ->
-                mealRepository.save(new MealAllowanceRate(year, meal.getAmount())));
-        foreignRepository.findByYearOrderByCountryAsc(source).forEach(fpd ->
-                foreignRepository.save(new ForeignPerDiemRate(year, fpd.getCountry(), fpd.getAmount())));
+        domesticRepository.save(new DomesticPerDiemRate(targetYear,
+                domestic.getFullDayAmount(), domestic.getPartialDayAmount(),
+                domestic.getFullDayMinHours(), domestic.getPartialDayMinHours()));
+
+        kilometreRepository.findByYear(sourceYear).ifPresent(km ->
+                kilometreRepository.save(new KilometreRate(targetYear, km.getAmountPerKm())));
+        mealRepository.findByYear(sourceYear).ifPresent(meal ->
+                mealRepository.save(new MealAllowanceRate(targetYear, meal.getAmount())));
+        foreignRepository.findByYearOrderByCountryAsc(sourceYear).forEach(fpd ->
+                foreignRepository.save(new ForeignPerDiemRate(targetYear, fpd.getCountry(),
+                        fpd.getAmount())));
     }
 
     @RolesAllowed("ADMIN")

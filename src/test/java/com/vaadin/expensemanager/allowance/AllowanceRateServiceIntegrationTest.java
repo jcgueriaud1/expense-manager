@@ -3,6 +3,7 @@ package com.vaadin.expensemanager.allowance;
 import java.math.BigDecimal;
 
 import com.vaadin.expensemanager.base.AbstractIntegrationTest;
+import com.vaadin.expensemanager.base.DomainRuleException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
@@ -118,6 +119,63 @@ class AllowanceRateServiceIntegrationTest extends AbstractIntegrationTest {
     void addYearRejectsAnExistingYear() {
         assertThatThrownBy(() -> service.addYear(2026))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    // -------------------------------------------------------- copy a year
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void copyYearSeedsANamedTargetFromANamedSource() {
+        service.copyYear(2026, 2030);
+
+        assertThat(service.domesticPerDiem(2030)).get()
+                .satisfies(d -> assertThat(d.fullDayAmount())
+                        .isEqualByComparingTo("54.00"));
+        assertThat(service.kilometreRate(2030)).isPresent();
+        assertThat(service.mealAllowance(2030)).isPresent();
+        assertThat(service.foreignPerDiems(2030)).hasSize(12);
+        assertThat(service.availableYears()).containsExactly(2030, 2026);
+
+        // The source year is untouched — history by year, never mutated in place.
+        service.updateMealAllowance(2030, new BigDecimal("20"));
+        assertThat(service.mealAllowance(2026).orElseThrow().amount())
+                .isEqualByComparingTo("13.50");
+    }
+
+    /**
+     * Both refusals are {@code DomainRuleException}, so the editor dialog can put
+     * them in its error summary instead of the generic error dialog (ADR-0020).
+     */
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void copyYearRejectsAnExistingTargetAndAMissingSource() {
+        assertThatThrownBy(() -> service.copyYear(2026, 2026))
+                .isInstanceOf(DomainRuleException.class)
+                .hasMessageContaining("2026 already has allowance rates");
+        assertThatThrownBy(() -> service.copyYear(1999, 2030))
+                .isInstanceOf(DomainRuleException.class)
+                .hasMessageContaining("1999 has no allowance rates to copy");
+        assertThat(service.availableYears()).containsExactly(2026);
+    }
+
+    /** Add Year is Copy Year with the source defaulted, and shares its guards. */
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void addYearIsCopyYearFromTheLatestSource() {
+        service.copyYear(2026, 2028);
+        service.addYear(2029);
+
+        // Seeded from 2028, the latest — not from 2026.
+        service.updateMealAllowance(2028, new BigDecimal("20"));
+        assertThat(service.availableYears()).containsExactly(2029, 2028, 2026);
+        assertThat(service.mealAllowance(2029)).isPresent();
+    }
+
+    @Test
+    @WithMockUser(roles = "USER")
+    void copyYearIsAdminOnly() {
+        assertThatThrownBy(() -> service.copyYear(2026, 2030))
+                .isInstanceOf(AccessDeniedException.class);
     }
 
     // ------------------------------------------------------- add a country

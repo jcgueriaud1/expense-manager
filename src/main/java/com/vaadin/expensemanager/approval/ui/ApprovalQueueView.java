@@ -8,6 +8,7 @@ import java.util.Locale;
 import com.vaadin.expensemanager.approval.service.ApprovalService;
 import com.vaadin.expensemanager.approval.service.ReviewSummaryDto;
 import com.vaadin.expensemanager.base.ui.EmptyState;
+import com.vaadin.expensemanager.base.ui.LucideIcon;
 import com.vaadin.expensemanager.report.ui.ReportViewSupport;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.html.H2;
@@ -15,7 +16,6 @@ import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
-import com.vaadin.flow.router.Menu;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.router.RouterLink;
@@ -27,8 +27,8 @@ import jakarta.annotation.security.RolesAllowed;
  * awaiting review, across all owners, newest submission first.
  *
  * <p>Two-layer authorization (ADR-0008): {@code @RolesAllowed("ADMIN")} gates
- * navigation (a USER can't reach the route and the auto-menu hides its
- * {@code @Menu} entry), while the real enforcement is {@link ApprovalService}'s
+ * navigation (a USER can't reach the route, and the top nav hides the
+ * entry that leads to it), while the real enforcement is {@link ApprovalService}'s
  * method security. Each row is a {@link RouterLink} into the report detail view's
  * {@code /review/{id}} alias (a real, keyboard-operable link, ADR-0020), where the
  * admin reviews it read-only and approves. When the queue is empty the shared
@@ -41,7 +41,6 @@ import jakarta.annotation.security.RolesAllowed;
  */
 @Route("approvals")
 @PageTitle("Approvals")
-@Menu(title = "Approvals", order = 5, icon = "vaadin:inbox")
 @RolesAllowed("ADMIN")
 public class ApprovalQueueView extends VerticalLayout {
 
@@ -62,7 +61,7 @@ public class ApprovalQueueView extends VerticalLayout {
         content.setMaxWidth("46rem");
 
         if (submitted.isEmpty()) {
-            content.add(new EmptyState("vaadin:inbox", "Nothing to review",
+            content.add(new EmptyState(LucideIcon.INBOX.create(), "Nothing to review",
                     "Submitted reports awaiting approval will appear here."));
             add(content);
             return;

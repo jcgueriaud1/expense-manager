@@ -5,7 +5,6 @@ import com.vaadin.expensemanager.user.CurrentUser;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.Paragraph;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
-import com.vaadin.flow.router.Menu;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 
@@ -17,8 +16,11 @@ import jakarta.annotation.security.PermitAll;
  * <p>A single adaptive dashboard — not separate user/admin routes — that greets
  * the logged-in user by name and renders role-conditional content (an admin
  * sees a different note than a plain user). Per-role <em>navigation</em> is
- * handled separately by the auto-generated menu; this view handles per-role
- * <em>content</em>.
+ * handled separately by the shell's hand-authored top navigation; this view
+ * handles per-role <em>content</em>.
+ *
+ * <p>The design gives {@code /} no nav item of its own (#146), so the shell's
+ * logo links here.
  *
  * <p>Deliberately thin for Phase 1: no placeholder cards for unbuilt features.
  * Later phases accrete their own sections (P2 recent reports, P5 pending
@@ -26,7 +28,6 @@ import jakarta.annotation.security.PermitAll;
  */
 @Route("")
 @PageTitle("Dashboard")
-@Menu(title = "Dashboard", order = 0, icon = "vaadin:dashboard")
 @PermitAll
 public class DashboardView extends VerticalLayout {
 

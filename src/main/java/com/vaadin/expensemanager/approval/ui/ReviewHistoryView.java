@@ -8,6 +8,7 @@ import java.util.Locale;
 import com.vaadin.expensemanager.approval.service.ApprovalService;
 import com.vaadin.expensemanager.approval.service.ReviewedSummaryDto;
 import com.vaadin.expensemanager.base.ui.EmptyState;
+import com.vaadin.expensemanager.base.ui.LucideIcon;
 import com.vaadin.expensemanager.report.domain.ReportStatus;
 import com.vaadin.expensemanager.report.ui.ReportViewSupport;
 import com.vaadin.flow.component.Component;
@@ -16,7 +17,6 @@ import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
-import com.vaadin.flow.router.Menu;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.router.RouterLink;
@@ -30,8 +30,8 @@ import jakarta.annotation.security.RolesAllowed;
  * is the look-back at reports already decided on.
  *
  * <p>Two-layer authorization (ADR-0008): {@code @RolesAllowed("ADMIN")} gates
- * navigation (a USER can't reach the route and the auto-menu hides its
- * {@code @Menu} entry), while the real enforcement is {@link ApprovalService}'s
+ * navigation (a USER can't reach the route, and the top nav hides the
+ * entry that leads to it), while the real enforcement is {@link ApprovalService}'s
  * method security. Each row is a {@link RouterLink} into the report detail view's
  * {@code /review/{id}} alias (a real, keyboard-operable link, ADR-0020), which
  * renders read-only with the full status history. When there is nothing yet the
@@ -44,7 +44,6 @@ import jakarta.annotation.security.RolesAllowed;
  */
 @Route("approval-history")
 @PageTitle("Review history")
-@Menu(title = "Review history", order = 6, icon = "vaadin:archive")
 @RolesAllowed("ADMIN")
 public class ReviewHistoryView extends VerticalLayout {
 
@@ -65,7 +64,7 @@ public class ReviewHistoryView extends VerticalLayout {
         content.setMaxWidth("46rem");
 
         if (reviewed.isEmpty()) {
-            content.add(new EmptyState("vaadin:archive", "No reviewed reports yet",
+            content.add(new EmptyState(LucideIcon.ARCHIVE.create(), "No reviewed reports yet",
                     "Reports you approve or reject will appear here."));
             add(content);
             return;

@@ -4,19 +4,19 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.vaadin.expensemanager.base.ui.EditorDialog;
+import com.vaadin.expensemanager.base.ui.LucideIcon;
 import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.ReferenceDataService;
 import com.vaadin.expensemanager.reference.VatRateDto;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.combobox.ComboBox;
-import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.data.binder.Binder;
-import com.vaadin.flow.router.Menu;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
+import com.vaadin.flow.spring.security.AuthenticationContext;
 
 import jakarta.annotation.security.RolesAllowed;
 
@@ -41,19 +41,19 @@ import static com.vaadin.expensemanager.reference.ui.ReferenceViewSupport.format
  */
 @Route("expense-types")
 @PageTitle("Expense types")
-@Menu(title = "Expense types", order = 3, icon = "vaadin:tags")
 @RolesAllowed("ADMIN")
 public class ExpenseTypeView extends ReferenceConfigView<ExpenseTypeDto> {
 
     private final transient ReferenceDataService service;
 
-    public ExpenseTypeView(ReferenceDataService service) {
+    public ExpenseTypeView(ReferenceDataService service,
+            AuthenticationContext authenticationContext) {
         super("Expense types",
                 "The expense types a line is classified as, each with a default "
                         + "VAT rate a new line pre-fills. Deactivating a type hides "
                         + "it from new lines but keeps it on existing ones — nothing "
                         + "is deleted.",
-                "Add expense type");
+                "Add expense type", authenticationContext);
         this.service = service;
 
         grid.addColumn(ExpenseTypeDto::name)
@@ -76,14 +76,14 @@ public class ExpenseTypeView extends ReferenceConfigView<ExpenseTypeDto> {
     private Component actions(ExpenseTypeDto dto) {
         int index = indexOf(dto);
 
-        var edit = iconButton(VaadinIcon.EDIT, "Edit expense type " + dto.name(),
+        var edit = iconButton(LucideIcon.PENCIL.create(), "Edit expense type " + dto.name(),
                 () -> openEditor(dto));
-        var up = reorderButton(VaadinIcon.ARROW_UP, "Move " + dto.name() + " up",
+        var up = reorderButton(LucideIcon.ARROW_UP.create(), "Move " + dto.name() + " up",
                 index > 0, () -> {
                     service.moveExpenseType(dto.id(), -1);
                     refresh();
                 });
-        var down = reorderButton(VaadinIcon.ARROW_DOWN, "Move " + dto.name() + " down",
+        var down = reorderButton(LucideIcon.ARROW_DOWN.create(), "Move " + dto.name() + " down",
                 index >= 0 && index < currentItems().size() - 1, () -> {
                     service.moveExpenseType(dto.id(), 1);
                     refresh();

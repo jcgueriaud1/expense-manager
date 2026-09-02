@@ -160,6 +160,120 @@ scroller.setSizeFull();
   spans (finding F-029). Fall back to palette tokens (`--aura-red`, `--aura-green`, …) and
   `color-mix(...)` only for surfaces the components don't provide.
 
+## Icons — Lucide, via `LucideIcon`
+
+Every glyph the app draws comes from **Lucide**, through the `LucideIcon` enum
+(ADR-0026). `VaadinIcon`, `LumoIcon`, and the `"vaadin:name"` / `"lumo:name"` string
+forms are out of `src/main/java`, and `IconSetGuardTest` fails the build if one comes
+back.
+
+```java
+new Button("Add expense", LucideIcon.PLUS.create())            // SIZE_M (20), the default
+icon = LucideIcon.PLANE.create(LucideIcon.SIZE_S)              // 16, inline beside text
+```
+
+- **Three role sizes, and they are properties, not numbers.** `SIZE_S` 16 inline beside
+  small text, `SIZE_M` 20 in a button slot or field prefix, `SIZE_L` 24 standalone in a
+  layout the app drew. `create()` applies `SIZE_M`. A raw CSS length is right only where
+  the design has no role size and the glyph should track its own text — today that is
+  `EmptyState`'s `3em` and `ReceiptPreview`'s link glyph, and nothing else.
+- **Stroke width is not yours to set.** It comes from `--vaadin-icon-stroke-width` in
+  `aura-theme.css`, and reaches the glyph only because no `<symbol>` declares
+  `stroke-width` itself. Add that attribute back and the token dies silently.
+- **This governs glyphs the app draws, not a component's own.** A combo box's dropdown
+  arrow, a `Details` summary's chevron, a grid's sort indicator, an `Upload`'s drop-zone
+  glyph: those ship with their component and stay. The report list's chevron is the
+  worked example — the design draws `lucide/chevron-up`, and it is satisfied by Aura's
+  own toggle rotated in CSS, not by an icon of ours.
+- **A new glyph comes from the design.** Read the name off the Figma frame, drop the
+  upstream file into `META-INF/resources/icons/lucide.svg` unmodified, add the enum
+  constant. If the design draws no glyph there, that is a question for the designer —
+  ADR-0026 carries a ledger of the ones picked without one, and it is meant to shrink.
+- **Every `<symbol>` needs its own `stroke="currentColor"`** (plus `fill`, the two
+  `stroke-line*`, and `viewBox` — but **never** `stroke-width`, see above). Addressed by
+  `symbol`, `vaadin-icon` renders `<use href="…">` against the external file and reads
+  *no* attribute off it, so anything on the sprite's root `<svg>` is silently ignored. A
+  symbol missing it renders black — correct-looking in light mode, invisible in dark.
+  F-075.
+- **`--vaadin-icon-color` does nothing here.** It applies as `fill`, and a Lucide glyph is
+  `fill="none"`. Colour the parent instead; the icon follows via `currentColor`.
+
+The colour rule follows from `currentColor`: an icon takes its parent's text colour, so
+tint it by colouring the parent, not the glyph. That is what makes one sprite serve both
+colour schemes, and a red `TRASH_2` in an error-variant button costs nothing.
+
+Full reasoning, the design nodes behind each size, and what is still unverified:
+[`design/foundations/iconography.md`](design/foundations/iconography.md).
+
+## Inherited properties — headings and links don't get yours
+
+Declaring an inherited property on a container does **not** reach every descendant. Aura
+re-declares some properties on bare element selectors, and an inherited value loses to any
+rule that matches the element itself — **at any specificity, zero included**. Aura's reset
+is `:where(h1,h2,h3,h4,h5,h6)`, specificity 0,0,0, and it still beats `.app-header`'s
+0,1,0, because the two are not competing on specificity: one matches the element, the
+other only inherits to it. Nothing errors (F-072).
+
+What Aura re-declares, derived from `aura.css` in `vaadin-aura-theme-25.2.5.jar`:
+
+| Element | Properties it will not inherit from your container |
+|---|---|
+| `h1`–`h6` | `color`, `font-weight`, `font-size`, `line-height` |
+| `a:any-link` | `color` |
+| `b`, `strong`, `th` | `font-weight` |
+| `code`, `pre`, `figcaption` | `font-size`, `font-weight`, `line-height` |
+
+**The rule:** when a container declares one of these properties, every descendant in the
+table needs its own declaration for it — `color: inherit` to take the container's value,
+or the token directly. `Span`, `Div` and Vaadin components inherit correctly and need
+nothing. Re-derive the table after a Vaadin upgrade rather than trusting this copy; a
+hardcoded list goes stale in exactly the silent way the rule exists to prevent.
+
+### The audit
+
+Two checks. Neither needs Figma, and neither needs to know the right colour — both detect
+a contradiction internal to the CSS and the DOM. Which property to test is not a judgement
+call either: it is the intersection of *what the theme resets on this element* and *what
+project CSS declares on an ancestor of it*, and both sets come from CSS.
+
+**Static.** Parse `aura.css` with a real CSS parser (it ships minified, with `@supports` /
+`@scope` / `@media` nesting) and emit an `(element, property)` pair only when the
+selector's **subject** — the rightmost compound, pseudo-elements stripped — is that bare
+element type. Without the subject rule, `…::part(label)`, `ol li::marker` and
+`b,blockquote,pre code,strong` all produce false pairs. Then flag:
+
+> an ancestor declares `P` · the element is in the table for `P` · no project rule matching
+> the element declares `P`.
+
+The high-precision signature is a class that overrides *some but not all* of what the
+theme resets on its element: both F-072 instances set `font-size`/`font-weight` and not
+`color`. Containment is the weak edge — `.app-*` names carry their block (`__`), the
+flat-dash majority (`.status-callout-heading`) don't, and the sound alternative is a
+dataflow through `addClassName`/`add()` in Java. So this check is precise where BEM holds
+and silent elsewhere; treat it as a fast screen, not a proof.
+
+**Runtime.** The rendered DOM settles containment exactly, including dynamic classes:
+
+```js
+computed(E)[P] !== computed(inheritanceParent(E))[P] && !projectCssDeclares(E.classList, P)
+```
+
+`inheritanceParent` is not `parentElement` — inheritance follows the flattened tree, so
+slotted content (`.app-nav__item` is a `vaadin-button`) inherits through its `assignedSlot`
+and naive parent-walking reports garbage at every shadow boundary. CDP
+`CSS.getMatchedStylesForNode` is worth adding for the *report* rather than the detection:
+"loses to `aura.css :where(h1,h2,h3,h4,h5,h6)`" is fixable, "greeting is rgb(0,0,0)" starts
+a debugging session.
+
+**Conformance is a separate, slower pass** and the only one with an oracle — and the oracle
+is `docs/design/`, never Figma directly. The specs record deliberate divergences from the
+design; `app-shell.md` holds one exactly here (the bar's text is pinned, not bound to
+`aura-accent-contrast-color`, which flips to black above accent lightness 0.62), so a check
+resolving Figma's own variable could assert black-on-coral and call it conformance.
+
+**Do not rely on a contrast gate for this class of bug.** It can invert: black on the
+header's `#f16c4e` measures 6.99:1 and the design's white 3.00:1, so axe prefers the defect.
+
 ## Known gap
 
 Arbitrary spacing values that don't map to an `xs`/`s`/`m`/`l`/`xl` token must be hard-coded

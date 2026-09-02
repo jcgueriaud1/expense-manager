@@ -30,5 +30,7 @@ Status values: `Accepted`, `Superseded by ADR-XXXX`, `Deprecated`.
 | [0022](0022-form-models-top-level.md) | Binder form-backing models are top-level classes, not view inner classes | Accepted |
 | [0023](0023-expense-line-quantity.md) | Expense-line quantity: `amount` becomes a unit price, gross derived | Accepted |
 | [0024](0024-generated-line-quantity-override.md) | Generated lines corrected by overriding the quantity, never the amount | Accepted |
+| [0025](0025-figma-design-source-of-truth.md) | Figma is the design-system source of truth, for visual decisions only | Accepted |
+| [0026](0026-lucide-icon-set.md) | Lucide is the app's icon set, delivered as one vendored SVG sprite | Accepted |
 
 See also: [../glossary.md](../glossary.md) · [../plan.md](../plan.md) · [../findings.md](../findings.md)

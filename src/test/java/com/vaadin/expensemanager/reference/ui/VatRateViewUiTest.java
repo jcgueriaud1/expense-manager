@@ -38,14 +38,14 @@ class VatRateViewUiTest extends AbstractReferenceDataViewUiTest {
     @WithUserDetails("admin@vaadin.com")
     void adminSeesMenuEntry() {
         navigate(DashboardView.class);
-        assertThat(menuItemPaths()).contains("vat-rates");
+        assertThat(navEntryLabels()).contains("VAT rates");
     }
 
     @Test
     @WithUserDetails(LocalUserSeeder.PLAIN_USER_EMAIL)
     void userSeesNoMenuEntry() {
         navigate(DashboardView.class);
-        assertThat(menuItemPaths()).doesNotContain("vat-rates");
+        assertThat(navEntryLabels()).doesNotContain("VAT rates");
     }
 
     @Test

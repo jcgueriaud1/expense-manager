@@ -1,0 +1,30 @@
+# Resolved agent preferences for this repo.
+#
+# The literal filename `.agent-context` is what the `figma-to-vaadin` skill looks
+# for in the project root. It reads these four keys instead of asking, so a run
+# never re-derives them by auto-detection and never drifts between sessions.
+#
+# All four are decisions, not detections — the "why" for each is below. Change a
+# value here, not in the skill.
+
+# Vaadin layout Java APIs for structure, plain CSS with --vaadin-* / --aura-*
+# tokens for the rest. Matches docs/theming-layouts.md, which forbids LumoUtility
+# and Tailwind outright. Pinned even though it is now the only legal value for
+# this repo, so the intent survives an upstream re-sync that reintroduces the
+# other options.
+layout-approach: vaadin-css
+
+# Split a view into a container plus reusable sub-components that fire their own
+# events. Matches the existing *ViewSupport helpers and the shared base/ui
+# components.
+architecture: composed-components
+
+# Real Postgres and real services from day one — wire views to the existing
+# repository/service/entity rather than inventing sample data. Generate sample
+# data only where a design frame genuinely needs it.
+sample-data: use-existing-data
+
+# Visually verify against the Figma design and report — never auto-fix. The first
+# runs are a spike whose output is a reference, not code to keep; auto-fix rounds
+# would obscure the failure modes we want to catalogue in docs/findings.md.
+verification: verify
