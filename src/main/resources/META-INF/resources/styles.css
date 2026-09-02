@@ -254,9 +254,43 @@
     color: var(--vaadin-text-color-secondary);
     font-size: var(--aura-font-size-xs);
 }
+/*
+ * A RECORD's own title, not a page heading — docs/design/components/
+ * report-detail-header.md. --em-font-size-detail-title (24) is its own property
+ * for exactly that reason: --em-font-size-title is 40 and is the page-heading
+ * role, and sharing one size-shaped property between the two roles is what moved
+ * two card titles nobody had surveyed.
+ *
+ * Weight 600, not the 700 the design draws — Aura's scale stops at semibold,
+ * settled in foundations/typography.md for every heading on every frame.
+ */
 .report-detail-title {
     font-weight: var(--aura-font-weight-semibold);
-    font-size: var(--aura-font-size-l);
+    font-size: var(--em-font-size-detail-title);
+    /* One line, as the frame's own geometry draws it (769×34 for 44 characters).
+       The title renders the report's additionalInformation, which is capped at 2000
+       characters, so it has to truncate rather than reflow the header. */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    /*
+     * LOAD-BEARING, and the reason `overflow: hidden` alone did nothing.
+     *
+     * The title sits in a VerticalLayout, whose default horizontal alignment is
+     * START — so its items size to their *content* on the cross axis, and a nowrap
+     * string has no width limit at all. Measured: the Span grew to 3332px and took
+     * the whole page into a horizontal scroll, with the ellipsis never getting a
+     * narrower box to apply to. `max-width: 100%` is what caps it against the
+     * column; `min-width: 0` releases the flex item's `auto` minimum so it may
+     * actually shrink to that cap. Both are needed, and the two ancestor rules
+     * below release the same `auto` minimum up the chain.
+     */
+    max-width: 100%;
+    min-width: 0;
+}
+.report-detail-title-group,
+.report-detail-title-column {
+    min-width: 0;
 }
 
 .status-callout {
@@ -288,51 +322,183 @@
     border: 1px solid var(--aura-accent-border-color);
 }
 
+/*
+ * Status history — docs/design/components/status-history.md.
+ *
+ * ONE box holding every entry, its entries separated by rules; the app used to
+ * build one bordered box per entry, which the design does not. No top rule on the
+ * section either: the 40px --em-section-gap that separates every other section is
+ * the whole separator.
+ *
+ * The surface, the horizontal padding, the shadow token and the entry rules are
+ * app-side inference, not design values — the design's node is hidden and draws no
+ * fill, no border and only vertical padding, in a box with a single entry, so
+ * nothing in it shows how two entries separate. They are taken from
+ * .expense-item-card on the grounds that a box on this page should look like the
+ * other boxes on this page. The spec records which rows are which.
+ */
 .status-history {
     display: flex;
     flex-direction: column;
     gap: var(--vaadin-gap-s);
-    border-top: 1px solid var(--vaadin-border-color-secondary);
-    padding-top: var(--vaadin-padding-m);
 }
-.status-history-heading {
-    font-weight: var(--aura-font-weight-semibold);
-    font-size: var(--aura-font-size-s);
-}
-.status-history-entry {
-    padding: var(--vaadin-padding-s);
-    border-radius: var(--vaadin-radius-m);
+.status-history-box {
+    display: flex;
+    flex-direction: column;
+    gap: var(--vaadin-gap-s);
+    padding: var(--em-card-padding);
+    border-radius: var(--em-card-radius);
     background: var(--aura-surface-color);
-    border: 1px solid var(--vaadin-border-color);
+    box-shadow: var(--aura-shadow-xs);
 }
-.status-history-label { font-weight: var(--aura-font-weight-semibold); }
+/* The rule between entries: 8 above it, 8 below, and no separator element — the
+   box's gap gives the space above, the entry's own padding the space below. */
+.status-history-box > *:not(:first-child) {
+    border-block-start: 1px solid var(--vaadin-border-color-secondary);
+    padding-block-start: var(--vaadin-gap-s);
+}
+.status-history-label {
+    font-weight: var(--aura-font-weight-semibold);
+    font-size: var(--aura-font-size-m);
+}
 .status-history-comment {
     font-size: var(--aura-font-size-s);
     font-style: italic;
     margin-top: var(--vaadin-gap-xs);
 }
 
-.line-card {
-    padding: var(--vaadin-padding-l);
-    border: 1px solid var(--vaadin-border-color);
-    border-radius: var(--vaadin-radius-l);
+/*
+ * One titled section: its heading row 20px above its card, 40px from the section
+ * either side of it (the root layout's own spacing supplies the 40).
+ */
+.report-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--em-card-padding);
+}
+
+/*
+ * The section card — docs/design/components/expense-item-card.md.
+ *
+ * ONE card per section, holding every row in it, which is the design's re-cut of
+ * the line list and the opposite of the .line-card-per-line this replaces.
+ *
+ * THE RULE IS 20 ABOVE AND 20 BELOW, and the arithmetic is easy to get wrong. The
+ * design draws the separator as its own Line node with the card's 20px gap on BOTH
+ * sides, so two rows sit 40px apart with the rule centred. A border-block-end on
+ * the row would give 20px in total and read half as tight. So: the card's `gap`
+ * contributes the 20 above the rule, the row's own padding-block-start the 20
+ * below, and the card's padding gives the first and last rows their outer inset —
+ * with no separator element in the DOM.
+ */
+.expense-item-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--em-card-padding);
+    padding: var(--em-card-padding);
+    border-radius: var(--em-card-radius);
     background: var(--aura-surface-color);
+    box-shadow: var(--aura-shadow-xs);
 }
-.clickable { cursor: var(--vaadin-clickable-cursor, pointer); }
-.category-dot {
-    width: 0.625rem;
-    height: 0.625rem;
-    border-radius: 50%;
+.expense-item-card > *:not(:first-child) {
+    border-block-start: 1px solid var(--vaadin-border-color-secondary);
+    padding-block-start: var(--em-card-padding);
+}
+/*
+ * The travel variant. The design distinguishes the Travel Info card from the
+ * Expenses card by giving it a border and a stronger shadow on the same surface
+ * fill — which is what replaces the accent tint .travel-card used to paint: same
+ * intent, the design's means (ADR-0025).
+ *
+ * The border colour is the theme's, not the design's: the frame draws a raw
+ * rgba(10, 11, 13, 0.5) bound to no variable — 50% of --aura-neutral-light, heavier
+ * than any border in the theme, and an unbound literal cannot track the colour
+ * scheme. Reported to the designer.
+ */
+.expense-item-card--travel {
+    border: 1px solid var(--vaadin-border-color);
+    box-shadow: var(--aura-shadow-s);
+}
+
+/*
+ * One row inside that card — docs/design/components/expense-line-card.md.
+ *
+ * The row has no fill, border, radius or shadow of its own: all four belong to the
+ * card. It is also NOT clickable — the ⋮ menu is the only route to its actions, so
+ * .clickable and the whole-row click-to-edit are withdrawn with the box.
+ */
+/* min-width:0 on every nested flex box in the row, so a long expense name or
+   comment wraps or truncates instead of pushing the amount off a 360px screen
+   (ADR-0020). A flex item's default min-width:auto is what would otherwise refuse
+   to shrink below its content. */
+.expense-row,
+.expense-row-left,
+.expense-row-text {
+    min-width: 0;
+}
+.expense-row-name,
+.expense-row-text .muted-xs {
+    /* break-word, not `anywhere`: it breaks inside a word only when the word alone
+       cannot fit, so a narrow row never renders "Taxi/tr ansport" while there is
+       still a wrap opportunity to take. */
+    overflow-wrap: break-word;
+}
+.expense-row-icon {
+    display: inline-flex;
     flex: none;
-    background: var(--category-color, var(--vaadin-border-color));
+    color: inherit;
 }
-.line-name { font-weight: var(--aura-font-weight-semibold); font-size: var(--aura-font-size-s); }
-.line-amount { font-weight: var(--aura-font-weight-semibold); font-size: var(--aura-font-size-m); }
-.line-receipt { margin-top: var(--vaadin-gap-s); }
+.expense-row-name {
+    font-weight: var(--aura-font-weight-semibold);
+    font-size: var(--aura-font-size-l);
+}
+.expense-row-amount {
+    font-weight: var(--aura-font-weight-semibold);
+    font-size: var(--aura-font-size-l);
+    white-space: nowrap;
+}
+/*
+ * A trip's date range and an attachment's filename render at the PRIMARY colour,
+ * not the secondary one every other sub-line uses. That is the design's decision
+ * and it is deliberate: the date and the filename are the things the user came to
+ * check, not metadata about them.
+ */
+.expense-row-detail {
+    font-size: var(--aura-font-size-xs);
+    color: var(--vaadin-text-color);
+}
+.expense-row-attachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--em-card-padding);
+}
+/*
+ * The attachment chip: a paperclip and the filename. --vaadin-button-text-color is
+ * Aura-supported and is what carries the primary colour into the label — `color` on
+ * the host loses to the theme's own rule on the element (F-072's mechanism).
+ */
+.expense-row-attachment {
+    --vaadin-button-text-color: var(--vaadin-text-color);
+    --vaadin-button-font-size: var(--aura-font-size-xs);
+    --vaadin-button-gap: var(--vaadin-gap-xs);
+    --vaadin-button-padding: 0;
+    --vaadin-button-height: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--vaadin-gap-xs);
+    font-size: var(--aura-font-size-xs);
+    color: var(--vaadin-text-color);
+}
+/* A buffered attachment whose bytes are not in hand: it names the file and does
+   nothing, so it must not read as a control. */
+.expense-row-attachment--inert {
+    cursor: default;
+}
 
 /* The line editor's read-only "Line total" row (unit price × quantity,
    ADR-0023) — a summary figure, not an editable field, so it borrows the totals
-   bar's look rather than a field's. */
+   bar's look rather than a field's. Code origin: the design does not draw the
+   dialog. */
 .line-total-row {
     border-top: 1px solid var(--vaadin-border-color-secondary);
     padding-top: var(--vaadin-padding-xs);
@@ -346,26 +512,22 @@
     font-size: var(--aura-font-size-m);
 }
 
-/* ---- Trip & Allowance card (Phase 4.2/4.3) ---- */
-.travel-card {
-    /* A subtle accent-tinted surface so a trip reads as the report's headline,
-     * distinct from the plain expense-line cards below it. */
-    background: var(--aura-accent-surface);
-    border-color: var(--aura-accent-border-color);
-}
-.travel-card-icon {
-    color: var(--aura-accent-color);
-    width: 1.25rem;
-    height: 1.25rem;
-    flex: none;
-}
+/* ---- A trip and its allowance rows (docs/design/components/travel-card.md) ---- */
 
-/* A generated line's actions (receipt, Quantity Override, reset). Several small
-   buttons on one row, so they wrap onto a second line rather than squeezing the
-   amount off a phone screen (ADR-0020). */
-.travel-line-actions {
-    flex-wrap: wrap;
-    justify-content: flex-end;
+/*
+ * A trip's generated allowance rows are indented and carry no glyph. That indent
+ * is the design's WHOLE expression of "this line belongs to the trip above" —
+ * there is no nesting, no sub-card and no second surface, which is what the
+ * .travel-group wrapper used to supply.
+ *
+ * The 40px reuses --em-section-gap. The property is named for the gap between
+ * sections and this is a horizontal indent, but it is the same 40px design value
+ * and foundations/spacing.md already records `expense-left` among its occurrences.
+ * Minting a second property for the same number is exactly the parallel scale
+ * --em-* is bounded against.
+ */
+.travel-line-row {
+    padding-inline-start: var(--em-section-gap);
 }
 
 /* The line's label plus its "Overridden" badge. Wrapping keeps the badge from
@@ -374,33 +536,63 @@
 .travel-line-heading {
     flex-wrap: wrap;
 }
-.travel-line-heading .line-name {
+.travel-line-heading .expense-row-name {
     white-space: nowrap;
 }
 
-/* A generated line the owner dropped with a zero-count override (issue #132). It is
-   a placeholder for something that is NOT on the report, so it must not read as a
-   line that counts: no surface fill, a dashed edge, and the label at secondary
-   weight. It still has to carry its reason and the way back, so it stays legible
-   rather than merely faded. */
-.travel-line-removed {
-    border-style: dashed;
-    background: transparent;
-}
-.travel-line-removed .line-name {
+/*
+ * A generated line the owner dropped with a zero-count override (issue #132).
+ *
+ * It used to draw a dashed edge on a transparent background, which said "this is a
+ * placeholder, not a line that counts". A row has no edge to dash, so that signal
+ * went with the box. What replaces it is three TEXTUAL signals, which is stronger
+ * than the border was and satisfies ADR-0020 outright: the grey Removed badge, the
+ * "Removed from the report. Reason: …" line, and the absence of any amount in the
+ * right-hand column — which is also the truth, since the row contributes nothing to
+ * the per-diem subtotal or the report total.
+ *
+ * App-origin styling: the design draws no removed state. It is the row most worth
+ * looking at in visual verification.
+ */
+.travel-line-removed .expense-row-name {
     color: var(--vaadin-text-color-secondary);
     font-weight: var(--aura-font-weight-regular);
 }
 
-/* Below tablet width a generated line's three columns — label, amount, actions —
-   no longer fit side by side, and the override actions would otherwise push the
-   card off the screen. Stack the actions under the line instead (ADR-0020). */
+/*
+ * Below tablet width a row's three columns — text, figures, ⋮ — no longer fit side
+ * by side. Every row wraps, not only a generated one: a manual expense row has the
+ * same three columns and, unwrapped, squeezed its name into a two-character column
+ * ("Taxi/tr / ansport"). Undesigned territory, so it follows #145 §3's call for the
+ * shell: nothing hides, things stack (ADR-0020).
+ *
+ * The indent is dropped with the wrap — at that width it costs more than the
+ * nesting it signals is worth.
+ *
+ * The wrap is DIRECTED, the same call #169 made for .rate-row: left to itself,
+ * `justify-content: space-between` puts the figures at the start of line two and the
+ * ⋮ at its end, which reads as a broken layout rather than a narrow one. The auto
+ * margin absorbs the free space first, so whatever follows the text stays at the
+ * right, under the text it belongs to.
+ *
+ * It is targeted at the sibling *immediately after* the text group rather than at
+ * either class by name, because which one that is depends on the row: the figures
+ * column on an expense row, and the ⋮ itself on the two rows that carry no amount —
+ * a trip, and a suppressed line. Naming only .expense-row-right left both of those
+ * with the ⋮ alone at the far left of line two.
+ *
+ * The old .travel-line-actions wrapping rule went with the inline buttons: a ⋮
+ * trigger is one 21px control and has nothing to wrap.
+ */
 @media (max-width: 34rem) {
-    .travel-line-row {
+    .expense-row {
         flex-wrap: wrap;
     }
-    .travel-line-actions {
-        width: 100%;
+    .travel-line-row {
+        padding-inline-start: 0;
+    }
+    .expense-row > .expense-row-left + * {
+        margin-inline-start: auto;
     }
 }
 
@@ -420,26 +612,60 @@
     font-size: var(--aura-font-size-l);
 }
 
+/*
+ * The totals card — docs/design/components/totals-card.md.
+ *
+ * Deliberately the same box as .expense-item-card — same radius, padding, surface
+ * and shadow — so the report reads as one stack of cards. It differs in holding
+ * figures rather than rows, in its tighter 12px rhythm, and in sitting outside any
+ * section wrapper: it has no .section-label above it and the design draws none.
+ *
+ * No border: the design gives totals-box a surface, a radius and a shadow and
+ * nothing else, matching the plain card rather than the --travel one. And no
+ * height — the design's 141px with justify-between is Figma's fixed frame, not a
+ * specification; the box grows with however many allowance rows are visible.
+ */
 .totals-card {
-    padding: var(--vaadin-padding-l);
-    border: 1px solid var(--vaadin-border-color);
-    border-radius: var(--vaadin-radius-l);
+    display: flex;
+    flex-direction: column;
+    gap: var(--vaadin-gap-m);
+    padding: var(--em-card-padding);
+    border-radius: var(--em-card-radius);
     background: var(--aura-surface-color);
+    box-shadow: var(--aura-shadow-xs);
 }
-.totals-row {
+/* A rule between EVERY row, not only above the total — same mechanism as the
+   section card's, over the card's own 12px row gap. A hidden allowance row is
+   display:none, so neither its rule nor its gap renders. */
+.totals-card > *:not(:first-child) {
+    border-block-start: 1px solid var(--vaadin-border-color-secondary);
+    padding-block-start: var(--vaadin-gap-m);
+}
+/* Only the LABEL is secondary. The design puts the figure in the primary colour a
+   step up in size, because the figure is the content. */
+.totals-row-label {
     color: var(--vaadin-text-color-secondary);
     font-size: var(--aura-font-size-s);
-    padding-block: 0.25rem;
+}
+.totals-row-value {
+    color: var(--vaadin-text-color);
+    font-size: var(--aura-font-size-m);
+    font-weight: var(--aura-font-weight-medium);
 }
 .totals-total-row {
-    border-top: 1px solid var(--vaadin-border-color);
-    padding-top: var(--vaadin-gap-s);
+    font-size: var(--aura-font-size-m);
     font-weight: var(--aura-font-weight-semibold);
 }
-.totals-grand { font-weight: var(--aura-font-weight-semibold); font-size: var(--aura-font-size-xl); }
+/* Down from --aura-font-size-xl 18. The design draws it at 16 in weight 800; the
+   size is taken and the weight is not — Aura's scale stops at semibold 600. */
+.totals-grand {
+    font-weight: var(--aura-font-weight-semibold);
+    font-size: var(--aura-font-size-l);
+}
+/* The action bar sits OUTSIDE the card: right-aligned, --em-card-padding block
+   padding, and no top rule — the design draws none. */
 .detail-actions {
-    border-top: 1px solid var(--vaadin-border-color-secondary);
-    padding-top: var(--vaadin-padding-m);
+    padding-block: var(--em-card-padding);
 }
 
 /*
@@ -958,8 +1184,8 @@ vaadin-context-menu-item > a[router-link] {
 /*
  * The 8px separator between the domestic row's two amounts. A literal, not a
  * token: one occurrence, and a *size* — --vaadin-gap-s would be a coincidence of
- * number rather than a shared meaning. Not .category-dot, which is 0.625rem and
- * carries a per-line hue.
+ * number rather than a shared meaning. It is the only dot left in the app:
+ * .category-dot, the report detail's per-line hue, went with #172.
  */
 .rate-row-dot {
     flex-shrink: 0;

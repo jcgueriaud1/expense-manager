@@ -238,9 +238,11 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
         // keep C, add a brand-new line (null id → insert).
         var edited = List.of(
                 ExpenseLineDto.of(lineA.id(), type.getId(), type.getName(),
-                        rate.getId(), rate.getValue(), new BigDecimal("11.00"), "A2"),
+                        type.getIcon(), rate.getId(), rate.getValue(),
+                        new BigDecimal("11.00"), "A2"),
                 ExpenseLineDto.of(lineC.id(), type.getId(), type.getName(),
-                        rate.getId(), rate.getValue(), lineC.amount(), lineC.comment()),
+                        type.getIcon(), rate.getId(), rate.getValue(), lineC.amount(),
+                        lineC.comment()),
                 newLine(type, rate, "40.00", "D"));
         service.update(id, dtoWithLines(id, LocalDate.of(2026, 7, 10),
                 loaded.version(), edited), loaded.version());
@@ -288,8 +290,8 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
         service.update(id, dtoWithLines(id, LocalDate.of(2026, 7, 10),
                 loaded.version(),
                 List.of(ExpenseLineDto.of(line.id(), type.getId(), type.getName(),
-                        rate.getId(), rate.getValue(), new BigDecimal("100.00"),
-                        new BigDecimal("3"), "3 nights"))),
+                        type.getIcon(), rate.getId(), rate.getValue(),
+                        new BigDecimal("100.00"), new BigDecimal("3"), "3 nights"))),
                 loaded.version());
 
         var reloaded = service.findMine(id);
@@ -357,7 +359,8 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
         service.update(id, dtoWithLines(id, LocalDate.of(2026, 7, 10),
                 loaded.version(),
                 List.of(ExpenseLineDto.of(line.id(), type.getId(), type.getName(),
-                        rate.getId(), rate.getValue(), new BigDecimal("23.00"), "publication"))),
+                        type.getIcon(), rate.getId(), rate.getValue(),
+                        new BigDecimal("23.00"), "publication"))),
                 loaded.version());
 
         var reloaded = service.findMine(id);
@@ -1686,16 +1689,16 @@ class ExpenseReportServiceIntegrationTest extends AbstractIntegrationTest {
 
     private static ExpenseLineDto newLine(ExpenseType type, VatRate rate,
             String amount, String comment) {
-        return ExpenseLineDto.of(null, type.getId(), type.getName(), rate.getId(),
-                rate.getValue(), new BigDecimal(amount), comment);
+        return ExpenseLineDto.of(null, type.getId(), type.getName(), type.getIcon(),
+                rate.getId(), rate.getValue(), new BigDecimal(amount), comment);
     }
 
     /** A new line with an explicit quantity — {@code unitPrice} is per item. */
     private static ExpenseLineDto newLine(ExpenseType type, VatRate rate,
             String unitPrice, String quantity, String comment) {
-        return ExpenseLineDto.of(null, type.getId(), type.getName(), rate.getId(),
-                rate.getValue(), new BigDecimal(unitPrice), new BigDecimal(quantity),
-                comment);
+        return ExpenseLineDto.of(null, type.getId(), type.getName(), type.getIcon(),
+                rate.getId(), rate.getValue(), new BigDecimal(unitPrice),
+                new BigDecimal(quantity), comment);
     }
 
     private static ReportDetailDto draftDto(LocalDate date, String info) {

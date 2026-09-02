@@ -74,22 +74,25 @@ class ReferenceDataServiceIntegrationTest extends AbstractIntegrationTest {
         var rate25 = service.activeVatRates().stream()
                 .filter(r -> r.value().compareTo(new BigDecimal("25.5")) == 0).findFirst().orElseThrow();
 
-        var created = service.createExpenseType("Mileage", rate0.id());
+        var created = service.createExpenseType("Mileage", rate0.id(), "map-pin");
         assertThat(created.defaultVatRateId()).isEqualTo(rate0.id());
+        assertThat(created.icon()).isEqualTo("map-pin");
 
-        service.updateExpenseType(created.id(), "Mileage allowance", rate25.id());
+        service.updateExpenseType(created.id(), "Mileage allowance", rate25.id(), null);
 
         var reloaded = service.allExpenseTypes().stream()
                 .filter(t -> t.id().equals(created.id())).findFirst().orElseThrow();
         assertThat(reloaded.name()).isEqualTo("Mileage allowance");
         assertThat(reloaded.defaultVatRateId()).isEqualTo(rate25.id());
+        // Clearing the picker stores no glyph, rather than an empty string.
+        assertThat(reloaded.icon()).isNull();
     }
 
     @Test
     @WithMockUser(roles = "ADMIN")
     void createExpenseTypeRejectsBlankName() {
         var rate = service.activeVatRates().getFirst();
-        assertThatThrownBy(() -> service.createExpenseType("  ", rate.id()))
+        assertThatThrownBy(() -> service.createExpenseType("  ", rate.id(), null))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 

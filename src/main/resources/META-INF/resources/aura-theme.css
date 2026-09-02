@@ -74,6 +74,16 @@ html {
    */
   --em-font-size-title: 40px;   /* beyond --aura-font-size-xl 18, the top of the scale */
   --em-font-size-section: 30px; /* beyond --aura-font-size-xl 18 — in-page section headings */
+  /*
+   * A *record's* own title, not a page heading — the report detail's report name.
+   * Named for the role rather than the size on purpose: --em-font-size-title moved
+   * two card titles it was never surveyed for precisely because a size-shaped name
+   * invited sharing. 24 is also the display ramp's middle step (20 / 24 / 28).
+   *
+   * Decided by the report-detail survey and declared here by #172, the first issue
+   * to use it. Do NOT reach for it for a page heading; that is -title.
+   */
+  --em-font-size-detail-title: 24px; /* beyond --aura-font-size-xl 18 — a record title */
   --em-font-size-metric: 28px;  /* beyond --aura-font-size-xl 18, the top of the scale */
   --em-font-size-total: 20px;   /* beyond --aura-font-size-xl 18, the top of the scale */
 }

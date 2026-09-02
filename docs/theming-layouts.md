@@ -274,6 +274,46 @@ resolving Figma's own variable could assert black-on-coral and call it conforman
 **Do not rely on a contrast gate for this class of bug.** It can invert: black on the
 header's `#f16c4e` measures 6.99:1 and the design's white 3.00:1, so axe prefers the defect.
 
+## Flex sizing — a truncating child needs two releases (F-080)
+
+The neighbouring silent failure to *Inherited properties*, and the same shape: a complete,
+valid declaration that never does anything.
+
+The textbook truncation recipe —
+
+```css
+overflow: hidden;
+text-overflow: ellipsis;
+white-space: nowrap;
+```
+
+— is **inert on a child of a `VerticalLayout`**, and its failure mode is a page-wide
+horizontal scroll rather than an untruncated string. Two independent mechanisms have to be
+released:
+
+| Mechanism | Why it bites | Release |
+|---|---|---|
+| `VerticalLayout`'s cross-axis alignment defaults to `START` | its items are sized to their **content** horizontally, so a `nowrap` string has no width limit and `overflow: hidden` has nothing to clip against | `max-width: 100%` on the child (or `setWidthFull()` in Java) |
+| A flex item's `min-width` defaults to `auto` | for `nowrap` text that resolves to the whole string's width, so even *with* a `max-width` the item refuses to shrink | `min-width: 0` on the child **and on every flex ancestor** between it and the box you want it to fit |
+
+Measured on the report-detail title: the `Span` rendered 3332px wide and took the document
+to `scrollWidth: 3709` against a 1440 viewport, while every card below it stayed 836px — so
+the page looked right and simply scrolled sideways. `styles.css:.report-detail-title` and
+its two `min-width: 0` ancestor rules are the worked example.
+
+**A browserless test cannot catch this.** The component tree is correct — the `Span` is
+present, classed and populated — and there is no way to express "and it is 3332px wide" in
+that layer. It is also **data-dependent**: a short title renders perfectly. So the audit is
+the same one *Inherited properties* uses — open the page — plus one assertion worth making
+routine on any view that truncates:
+
+```js
+document.documentElement.scrollWidth <= window.innerWidth
+```
+
+Any excess is real horizontal overflow, even when a screenshot looks fine, because a
+screenshot only shows what is in view.
+
 ## Known gap
 
 Arbitrary spacing values that don't map to an `xs`/`s`/`m`/`l`/`xl` token must be hard-coded

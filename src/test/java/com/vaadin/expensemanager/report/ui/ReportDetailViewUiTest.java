@@ -5,21 +5,31 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import com.vaadin.expensemanager.base.ui.RowActionMenu;
 import com.vaadin.expensemanager.report.domain.GeneratedLineKind;
 import com.vaadin.expensemanager.report.domain.QuantityOverride;
 import com.vaadin.expensemanager.report.domain.ReportStatus;
+import com.vaadin.expensemanager.report.service.ExpenseLineDto;
 import com.vaadin.expensemanager.report.service.ReportDetailDto;
 import com.vaadin.expensemanager.report.service.TravelDto;
 import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.VatRateDto;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
+import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.UI;
+import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.checkbox.Checkbox;
+import com.vaadin.flow.component.contextmenu.MenuItem;
 import com.vaadin.flow.component.datepicker.DatePicker;
 import com.vaadin.flow.component.datetimepicker.DateTimePicker;
 import com.vaadin.flow.component.dialog.Dialog;
+import com.vaadin.flow.component.html.Anchor;
+import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.Image;
+import com.vaadin.flow.component.html.Span;
+import com.vaadin.flow.component.icon.SvgIcon;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
+import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.textfield.IntegerField;
 import jakarta.persistence.EntityManager;
 
@@ -100,7 +110,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         var id = seedReport(LocalDate.of(2026, 7, 1), "before");
         navigate(ReportDetailView.class, id);
 
-        findTextArea().withLabel("Additional information").setValue("after");
+        findTextArea().withLabel("Additional Info").setValue("after");
         findDatePicker().withLabel("Report date").setValue(LocalDate.of(2026, 7, 20));
         findButton().withText("Save").click();
 
@@ -134,7 +144,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         var id = seedReport(LocalDate.of(2026, 7, 1), "trip");
         navigate(ReportDetailView.class, id);
 
-        findButton().withText("Add expense").click();
+        findButton().withAriaLabel("Add expense").click();
         findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
                 .selectItem("Parking/supplies/goods");
         findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
@@ -158,7 +168,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         var id = seedReport(LocalDate.of(2026, 7, 1), "trip");
         navigate(ReportDetailView.class, id);
 
-        findButton().withText("Add expense").click();
+        findButton().withAriaLabel("Add expense").click();
 
         // Quantity starts at 1, so the line total is the unit price itself.
         assertThat(findBigDecimalField().withLabel("Quantity").getComponent().getValue())
@@ -178,7 +188,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         var id = seedReport(LocalDate.of(2026, 7, 1), "trip");
         navigate(ReportDetailView.class, id);
 
-        findButton().withText("Add expense").click();
+        findButton().withAriaLabel("Add expense").click();
         findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
                 .selectItem("Parking/supplies/goods");
         findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
@@ -216,7 +226,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         var id = seedReport(LocalDate.of(2026, 7, 1), "trip");
         navigate(ReportDetailView.class, id);
 
-        findButton().withText("Add expense").click();
+        findButton().withAriaLabel("Add expense").click();
         findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
                 .selectItem("Parking/supplies/goods");
         findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
@@ -256,7 +266,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         var id = seedReport(LocalDate.of(2026, 7, 1), "trip");
         navigate(ReportDetailView.class, id);
 
-        findButton().withText("Add expense").click();
+        findButton().withAriaLabel("Add expense").click();
         // Always-enabled Save (ADR-0020): clicking it with nothing filled must
         // not add a line — validation blocks it and the dialog stays open.
         findButton().withText("Save expense").click();
@@ -284,7 +294,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
                 .contains("Submitted");
         assertThat(findButton().withText("Save").exists()).isFalse();
         assertThat(findButton().withText("Submit for approval").exists()).isFalse();
-        assertThat(findButton().withText("Add expense").exists()).isFalse();
+        assertThat(findButton().withAriaLabel("Add expense").exists()).isFalse();
         assertThat(findButton().withText("Delete").exists()).isFalse();
     }
 
@@ -316,7 +326,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
 
         // Edit a report-level field but never click Save — the edit lives only in
         // the working copy until the submit persists it (issue #81).
-        findTextArea().withLabel("Additional information")
+        findTextArea().withLabel("Additional Info")
                 .setValue("edited but not saved");
 
         findButton().withText("Submit for approval").click(); // opens the confirm dialog
@@ -335,7 +345,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         var id = seedReport(LocalDate.of(2026, 7, 1), "trip");
         navigate(ReportDetailView.class, id);
 
-        findButton().withText("Add expense").click();
+        findButton().withAriaLabel("Add expense").click();
         findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
                 .selectItem("Parking/supplies/goods");
         findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
@@ -448,7 +458,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
                 .contains("Submitted");
         assertThat(findButton().withText("Resubmit").exists()).isFalse();
         assertThat(findButton().withText("Save").exists()).isFalse();
-        assertThat(findButton().withText("Add expense").exists()).isFalse();
+        assertThat(findButton().withAriaLabel("Add expense").exists()).isFalse();
     }
 
     @Test
@@ -458,7 +468,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
 
         // Address the feedback but don't click Save — the resubmit must save it
         // as part of the transition (issue #81).
-        findTextArea().withLabel("Additional information")
+        findTextArea().withLabel("Additional Info")
                 .setValue("addressed the feedback");
 
         findButton().withText("Resubmit").click();
@@ -498,9 +508,9 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         assertThat(findButton().withText("Save").exists()).isFalse();
         assertThat(findButton().withText("Submit for approval").exists()).isFalse();
         assertThat(findButton().withText("Delete").exists()).isFalse();
-        assertThat(findButton().withText("Add expense").exists()).isFalse();
-        // The line is shown but its remove affordance is not offered.
-        assertThat(findButton().withAriaLabel("Remove line").exists()).isFalse();
+        assertThat(findButton().withAriaLabel("Add expense").exists()).isFalse();
+        // The line is shown but carries no ⋮ menu at all — not a disabled one.
+        assertThat($(RowActionMenu.class).all()).isEmpty();
     }
 
     @Test
@@ -509,7 +519,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         // "save first" gate (ADR-0021 overrides ADR-0019's save-before-attach).
         navigate(ReportDetailView.class);
 
-        findButton().withText("Add expense").click();
+        findButton().withAriaLabel("Add expense").click();
         findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
                 .selectItem("Parking/supplies/goods");
         findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
@@ -541,7 +551,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         var id = seedReport(LocalDate.of(2026, 7, 1), "trip");
         navigate(ReportDetailView.class, id);
 
-        findButton().withText("Add expense").click();
+        findButton().withAriaLabel("Add expense").click();
         findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
                 .selectItem("Parking/supplies/goods");
         findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
@@ -568,8 +578,8 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         // expense to open the editor, so the receipt cannot be changed.
         assertThat(findButton().withAriaLabel("Preview receipt: hotel.jpg").exists())
                 .isTrue();
-        assertThat(findButton().withText("Add expense").exists()).isFalse();
-        assertThat(findButton().withAriaLabel("Remove line").exists()).isFalse();
+        assertThat(findButton().withAriaLabel("Add expense").exists()).isFalse();
+        assertThat($(RowActionMenu.class).all()).isEmpty();
     }
 
     @Test
@@ -592,9 +602,14 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
                 "invoice.pdf", pdfBytes());
         navigate(ReportDetailView.class, id);
 
-        // A PDF is not thumbnailed — it offers an "open" link (browser viewer).
+        // A PDF is not thumbnailed. On a row it is the design's chip — a paperclip
+        // and the filename — and activating it still opens the browser's PDF viewer
+        // in a new tab (ADR-0021); the "open" verb moved to the accessible name.
         assertThat(getCurrentView().getElement().getTextRecursively())
-                .contains("Open invoice.pdf");
+                .contains("invoice.pdf");
+        assertThat($(Anchor.class).withClassName("expense-row-attachment")
+                .single().getElement().getAttribute("aria-label"))
+                .isEqualTo("Open receipt: invoice.pdf");
     }
 
     @Test
@@ -603,7 +618,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         // previews the buffered bytes directly (no DB round-trip, no receipt id).
         navigate(ReportDetailView.class);
 
-        findButton().withText("Add expense").click();
+        findButton().withAriaLabel("Add expense").click();
         findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
                 .selectItem("Parking/supplies/goods");
         findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
@@ -624,7 +639,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         // receipt was persisted and had an id).
         navigate(ReportDetailView.class);
 
-        findButton().withText("Add expense").click();
+        findButton().withAriaLabel("Add expense").click();
         findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
                 .selectItem("Parking/supplies/goods");
         findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
@@ -645,11 +660,19 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
 
     private static final LocalDateTime DEP = LocalDateTime.of(2026, 7, 1, 8, 0);
 
+    /**
+     * The purpose every seeded trip carries, and therefore the accessible name of
+     * its ⋮ trigger — "Actions for Client visit". A row menu is addressed by the row
+     * it names (row-action-menu.md), which is what makes fourteen of them on one
+     * page distinguishable.
+     */
+    private static final String TRIP = "Client visit";
+
     @Test
     void insertingADomesticTripPreviewsGeneratesAndPersistsThePerDiem() {
         navigate(ReportDetailView.class);
 
-        findButton().withText("Insert travel info").click();
+        findButton().withAriaLabel("Add travel").click();
         findDateTimePicker().withLabel("Departure").setValue(DEP);
         findDateTimePicker().withLabel("Return").setValue(DEP.plusHours(11));
         findComboBox(String.class).withLabel("Destination country")
@@ -685,7 +708,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
     void insertingAForeignTripCostsThePerDiemAgainstTheDestinationCountry() {
         navigate(ReportDetailView.class);
 
-        findButton().withText("Insert travel info").click();
+        findButton().withAriaLabel("Add travel").click();
         findDateTimePicker().withLabel("Departure").setValue(DEP);
         findDateTimePicker().withLabel("Return").setValue(DEP.plusHours(11));
         // The picker lists the seeded foreign countries alongside Finland; pick one.
@@ -716,7 +739,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
     void aTripCannotBeSavedWithNoDestinationCountryChosen() {
         navigate(ReportDetailView.class);
 
-        findButton().withText("Insert travel info").click();
+        findButton().withAriaLabel("Add travel").click();
         findDateTimePicker().withLabel("Departure").setValue(DEP);
         findDateTimePicker().withLabel("Return").setValue(DEP.plusHours(11));
         findTextField().withLabel("Destinations").setValue("Helsinki");
@@ -734,7 +757,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
     void insertingATripWithKmMealParkingShowsEachSubtotalAndFoldsParkingIntoNetVat() {
         navigate(ReportDetailView.class);
 
-        findButton().withText("Insert travel info").click();
+        findButton().withAriaLabel("Add travel").click();
         findDateTimePicker().withLabel("Departure").setValue(DEP);
         findDateTimePicker().withLabel("Return").setValue(DEP.plusHours(11));
         findComboBox(String.class).withLabel("Destination country")
@@ -806,7 +829,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         navigate(ReportDetailView.class, id);
 
         // Re-cost the trip through its editor: 12.5 km → 120 km.
-        findButton().withText("Edit").click();
+        clickRowAction(TRIP, "Edit");
         findBigDecimalField().withLabel("Kilometre allowance (km)")
                 .setValue(new BigDecimal("120"));
         findButton().withText("Save trip").click();
@@ -840,12 +863,12 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         navigate(ReportDetailView.class, id);
 
         // Each earned line is listed under the trip with an attach affordance.
-        assertThat(findButton().withAriaLabel("Add receipt: Per diem allowance (full day)")
-                .exists()).isTrue();
-        assertThat(findButton().withAriaLabel("Add receipt: Parking").exists()).isTrue();
+        assertThat(rowActions("Per diem allowance (full day)"))
+                .contains("Add receipt");
+        assertThat(rowActions("Parking")).contains("Add receipt");
 
         // Attach a receipt to the parking line via its focused editor.
-        findButton().withAriaLabel("Add receipt: Parking").click();
+        clickRowAction("Parking", "Add receipt");
         findUpload().upload("parking.jpg", "image/jpeg", jpegBytes());
         findButton().withText("Save receipt").click();
 
@@ -870,7 +893,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(11));
         navigate(ReportDetailView.class, id);
 
-        findButton().withText("Edit").click();          // the trip card's Edit
+        clickRowAction(TRIP, "Edit");                    // the trip row's menu
         findCheckbox().withLabel("Free lunch provided?").click();
         findButton().withText("Save trip").click();
 
@@ -924,7 +947,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
 
         // Shorten the trip to a whole 24 h through its editor: the partial-day card
         // disappears, the full-day one stays, and the subtotal follows live.
-        findButton().withText("Edit").click();
+        clickRowAction(TRIP, "Edit");
         findDateTimePicker().withLabel("Return").setValue(DEP.plusHours(24));
         findButton().withText("Save trip").click();
 
@@ -1014,8 +1037,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(55));
         navigate(ReportDetailView.class, id);
 
-        findButton().withAriaLabel("Override count: Per diem allowance (full day)")
-                .click();
+        clickRowAction("Per diem allowance (full day)", "Override");
         findIntegerField().withLabel("Count").setValue(1);
         findTextArea().withLabel("Reason for the override").setValue("   ");
         // Always-enabled submit (ADR-0020): the click is allowed, the reason shows.
@@ -1033,8 +1055,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(55));
         navigate(ReportDetailView.class, id);
 
-        findButton().withAriaLabel("Override count: Per diem allowance (partial day)")
-                .click();
+        clickRowAction("Per diem allowance (partial day)", "Override");
         findIntegerField().withLabel("Count").setValue(2);
         findTextArea().withLabel("Reason for the override").setValue("two leftovers");
         findButton().withText("Save override").click();
@@ -1053,8 +1074,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(55));
         navigate(ReportDetailView.class, id);
 
-        findButton().withAriaLabel("Override count: Per diem allowance (full day)")
-                .click();
+        clickRowAction("Per diem allowance (full day)", "Override");
 
         var count = (IntegerField) findIntegerField().withLabel("Count").getComponent();
         assertThat(count.getMin()).isEqualTo(0);
@@ -1068,13 +1088,9 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
                 new BigDecimal("12.00"));
         navigate(ReportDetailView.class, id);
 
-        assertThat(findButton()
-                .withAriaLabel("Override count: Per diem allowance (full day)").exists())
-                .isTrue();
-        assertThat(findButton().withAriaLabel("Override count: Kilometre allowance")
-                .exists()).isFalse();
-        assertThat(findButton().withAriaLabel("Override count: Parking").exists())
-                .isFalse();
+        assertThat(rowActions("Per diem allowance (full day)")).contains("Override");
+        assertThat(rowActions("Kilometre allowance")).doesNotContain("Override");
+        assertThat(rowActions("Parking")).doesNotContain("Override");
     }
 
     @Test
@@ -1084,8 +1100,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         overrideCount("Per diem allowance (full day)", 1, "the Wednesday was personal");
         findButton().withText("Save").click();
 
-        findButton().withAriaLabel("Reset to calculated: Per diem allowance (full day)")
-                .click();
+        clickRowAction("Per diem allowance (full day)", "Reset to calculated");
 
         // Back to the statutory figure, live, and the badge is gone.
         var shown = getCurrentView().getElement().getTextRecursively();
@@ -1115,15 +1130,8 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         var shown = getCurrentView().getElement().getTextRecursively();
         assertThat(shown).contains("Overridden", "Reason: the Wednesday was personal",
                 "Calculated: 2 × €54.00 = €108.00");
-        assertThat(findButton()
-                .withAriaLabel("Override count: Per diem allowance (full day)").exists())
-                .isFalse();
-        assertThat(findButton()
-                .withAriaLabel("Edit override: Per diem allowance (full day)").exists())
-                .isFalse();
-        assertThat(findButton()
-                .withAriaLabel("Reset to calculated: Per diem allowance (full day)")
-                .exists()).isFalse();
+        // A read-only report builds no menu at all, rather than a disabled trigger.
+        assertThat(rowActions("Per diem allowance (full day)")).isEmpty();
     }
 
     @Test
@@ -1154,7 +1162,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
      * override dialog, enters a count and a reason, and confirms.
      */
     private void overrideCount(String lineLabel, int count, String reason) {
-        findButton().withAriaLabel("Override count: " + lineLabel).click();
+        clickRowAction(lineLabel, "Override");
         findIntegerField().withLabel("Count").setValue(count);
         findTextArea().withLabel("Reason for the override").setValue(reason);
         findButton().withText("Save override").click();
@@ -1184,9 +1192,8 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         // back — without which a zero override would be unreachable once made.
         assertThat(shown).contains("Removed",
                 "Removed from the report. Reason: the leftover was personal");
-        assertThat(findButton()
-                .withAriaLabel("Reset to calculated: Per diem allowance (partial day)")
-                .exists()).isTrue();
+        assertThat(rowActions("Per diem allowance (partial day)"))
+                .containsExactly("Reset to calculated");
 
         findButton().withText("Save").click();
 
@@ -1233,8 +1240,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         // no override recorded — cancelling is a full retreat, not a half-applied one.
         var shown = getCurrentView().getElement().getTextRecursively();
         assertThat(shown).contains("Meal allowance", "€13.50").doesNotContain("Removed");
-        assertThat(findButton().withAriaLabel("Edit receipt: Meal allowance").exists())
-                .isTrue();
+        assertThat(rowActions("Meal allowance")).contains("Edit receipt");
 
         var stillThere = service.findMine(id).travels().getFirst()
                 .generatedLine(GeneratedLineKind.MEAL).orElseThrow();
@@ -1254,7 +1260,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         var id = seedReportWithMealTravel(LocalDate.of(2026, 7, 10), DEP,
                 DEP.plusHours(11));
         navigate(ReportDetailView.class, id);
-        findButton().withAriaLabel("Add receipt: Meal allowance").click();
+        clickRowAction("Meal allowance", "Add receipt");
         findUpload().upload("lunch.jpg", "image/jpeg", jpegBytes());
         findButton().withText("Save receipt").click();
 
@@ -1285,9 +1291,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         assertThat(getCurrentView().getElement().getTextRecursively())
                 .contains("Removed from the report. Reason: the leftover was personal");
 
-        findButton()
-                .withAriaLabel("Reset to calculated: Per diem allowance (partial day)")
-                .click();
+        clickRowAction("Per diem allowance (partial day)", "Reset to calculated");
 
         var shown = getCurrentView().getElement().getTextRecursively();
         assertThat(shown).contains("Per diem allowance (partial day)", "€25.00",
@@ -1318,9 +1322,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         // gone with every other mutation surface (the existing DRAFT/REJECTED gating).
         assertThat(getCurrentView().getElement().getTextRecursively())
                 .contains("Removed from the report. Reason: the leftover was personal");
-        assertThat(findButton()
-                .withAriaLabel("Reset to calculated: Per diem allowance (partial day)")
-                .exists()).isFalse();
+        assertThat(rowActions("Per diem allowance (partial day)")).isEmpty();
     }
 
     /**
@@ -1337,7 +1339,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         var id = seedReportWithMealTravel(LocalDate.of(2026, 7, 10), DEP,
                 DEP.plusHours(11));
         navigate(ReportDetailView.class, id);
-        findButton().withAriaLabel("Add receipt: Meal allowance").click();
+        clickRowAction("Meal allowance", "Add receipt");
         findUpload().upload(filename, "image/jpeg", jpegBytes());
         findButton().withText("Save receipt").click();
         findButton().withText("Save").click();
@@ -1411,7 +1413,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
     void editingOnlyThePurposeOrDestinationsNeverPromptsAndNeverClears() {
         var id = seedOverriddenTravel(DEP.plusHours(55));
 
-        findButton().withText("Edit").click();
+        clickRowAction(TRIP, "Edit");
         findTextField().withLabel("Travel purpose").setValue("Client visit (Acme)");
         findTextField().withLabel("Destinations").setValue("Helsinki, Espoo");
         findButton().withText("Save trip").click();
@@ -1485,7 +1487,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
 
         // Stop paying the meal allowance: its count drops 1 → 0. The trip stays not
         // eligible, so the per-diem count is 0 either side and its override stands.
-        findButton().withText("Edit").click();
+        clickRowAction(TRIP, "Edit");
         findCheckbox().withLabel("Pay meal allowance?").click();
         findButton().withText("Save trip").click();
 
@@ -1529,8 +1531,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         // calculation's output, so it can never move the calculation's input.
         var id = seedOverriddenTravel(DEP.plusHours(55));
 
-        findButton().withAriaLabel("Edit override: Per diem allowance (full day)")
-                .click();
+        clickRowAction("Per diem allowance (full day)", "Edit override");
         findIntegerField().withLabel("Count").setValue(2);
         findTextArea().withLabel("Reason for the override")
                 .setValue("both days were personal after all");
@@ -1557,7 +1558,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         // the preview and the report showing different numbers is never a mystery.
         seedOverriddenTravel(DEP.plusHours(55));
 
-        findButton().withText("Edit").click();
+        clickRowAction(TRIP, "Edit");
 
         assertThat(tripPreviewText()).contains(
                 "Per diem allowance (full day): €108.00",
@@ -1574,7 +1575,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         overrideCount("Per diem allowance (partial day)", 0, "the leftover was personal");
         findButton().withText("Save").click();
 
-        findButton().withText("Edit").click();
+        clickRowAction(TRIP, "Edit");
 
         // The calculated preview still lists the partial day (the rules award it), and
         // the note says the report does not.
@@ -1632,7 +1633,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
 
     /** Re-costs the open report's only trip by moving its return time. */
     private void editTripReturn(LocalDateTime returnAt) {
-        findButton().withText("Edit").click();
+        clickRowAction(TRIP, "Edit");
         findDateTimePicker().withLabel("Return").setValue(returnAt);
         findButton().withText("Save trip").click();
     }
@@ -1669,7 +1670,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
     @Test
     void checkingPayMealAllowanceMarksTheTripNotEligibleAndClearsFreeLunch() {
         navigate(ReportDetailView.class);
-        findButton().withText("Insert travel info").click();
+        findButton().withAriaLabel("Add travel").click();
         // Start eligible, with a free lunch selected.
         findCheckbox().withLabel("Free lunch provided?").click();
         assertThat(checkboxValue("Free lunch provided?")).isTrue();
@@ -1686,7 +1687,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
     @Test
     void unselectingNotEligibleClearsPayMealAllowance() {
         navigate(ReportDetailView.class);
-        findButton().withText("Insert travel info").click();
+        findButton().withAriaLabel("Add travel").click();
         // Pay-meal turned it on; turning not-eligible back off must clear pay-meal,
         // since a meal allowance can't stand without "no per-diem".
         findCheckbox().withLabel("Pay meal allowance?").click();
@@ -1701,7 +1702,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
     @Test
     void checkingFreeLunchClearsNotEligibleAndPayMealAllowance() {
         navigate(ReportDetailView.class);
-        findButton().withText("Insert travel info").click();
+        findButton().withAriaLabel("Add travel").click();
         // Get into the not-eligible + pay-meal world first.
         findCheckbox().withLabel("Pay meal allowance?").click();
         assertThat(checkboxValue("Trip not eligible for daily allowance")).isTrue();
@@ -1718,7 +1719,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
     @Test
     void checkingNotEligibleClearsFreeLunch() {
         navigate(ReportDetailView.class);
-        findButton().withText("Insert travel info").click();
+        findButton().withAriaLabel("Add travel").click();
         findCheckbox().withLabel("Free lunch provided?").click();
         assertThat(checkboxValue("Free lunch provided?")).isTrue();
 
@@ -1742,7 +1743,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         assertThat(getCurrentView().getElement().getTextRecursively())
                 .contains("Per diem allowance");
 
-        findButton().withAriaLabel("Remove trip").click();
+        clickRowAction(TRIP, "Remove");
         findButton().withText("Save").click();
 
         assertThat(service.findMine(id).travels()).isEmpty();
@@ -1753,7 +1754,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
     void choosingADepartureConstrainsTheReturnPickerRangeAndViceVersa() {
         navigate(ReportDetailView.class);
 
-        findButton().withText("Insert travel info").click();
+        findButton().withAriaLabel("Add travel").click();
         findDateTimePicker().withLabel("Departure").setValue(DEP);
         findDateTimePicker().withLabel("Return").setValue(DEP.plusHours(11));
 
@@ -1780,7 +1781,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         // summary, not in the generic "something went wrong" dialog (issue #140).
         navigate(ReportDetailView.class);
 
-        findButton().withText("Insert travel info").click();
+        findButton().withAriaLabel("Add travel").click();
         findDateTimePicker().withLabel("Departure").setValue(DEP);
         findComboBox(String.class).withLabel("Destination country")
                 .selectItem("Finland (domestic)");
@@ -1810,7 +1811,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         // case: missing required fields.
         navigate(ReportDetailView.class);
 
-        findButton().withText("Insert travel info").click();
+        findButton().withAriaLabel("Add travel").click();
         findButton().withText("Save trip").click();
 
         // The dialog overlay carries the reasons and stays open; nothing generated.
@@ -1827,7 +1828,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         // reached the summary blank. The tester can't produce partial input, so we
         // assert the messages that prevent a blank error are configured.
         navigate(ReportDetailView.class);
-        findButton().withText("Insert travel info").click();
+        findButton().withAriaLabel("Add travel").click();
 
         for (String label : new String[] { "Departure", "Return" }) {
             var picker = (DateTimePicker) findDateTimePicker().withLabel(label)
@@ -1860,9 +1861,9 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         assertThat(findSpan().withText("No expenses yet — add your first.").exists())
                 .isFalse();
         // …and every mutation surface is gone on a read-only report.
-        assertThat(findButton().withText("Insert travel info").exists()).isFalse();
-        assertThat(findButton().withText("Edit").exists()).isFalse();
-        assertThat(findButton().withAriaLabel("Remove trip").exists()).isFalse();
+        assertThat(findButton().withAriaLabel("Add travel").exists()).isFalse();
+        assertThat(rowActions(TRIP)).isEmpty();
+        assertThat($(RowActionMenu.class).all()).isEmpty();
     }
 
     @Test
@@ -1872,18 +1873,339 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
 
         assertThat(getCurrentView().getElement().getTextRecursively()).contains("€60.00");
 
-        findButton().withAriaLabel("Remove line").click();
+        clickRowAction($(RowActionMenu.class).first(), "Remove");
         findButton().withText("Save").click();
 
         assertThat(service.findMine(id).lines()).isEmpty();
     }
 
+    // ------------------------------------------------ the re-cut layout (#172)
+    //
+    // The design re-cut the line list rather than restyling it: one card per
+    // SECTION holding its lines as rows, where the previous frame drew one bordered
+    // card per line. These pin the shape, not the pixels — spacing, alignment and
+    // colour are what /figma-visual-verification is for.
+
+    @Test
+    void eachSectionIsOneCardHoldingItsLinesAsRows() {
+        var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(31));
+        navigate(ReportDetailView.class, id);
+        findButton().withAriaLabel("Add expense").click();
+        addLineThroughEditor("40.00");
+
+        // Two cards for the whole view, not one per line: the travel variant and the
+        // plain Expenses one.
+        var cards = $(Div.class).withClassName("expense-item-card").all();
+        assertThat(cards).hasSize(2);
+        assertThat(cards.getFirst().getClassNames()).contains("expense-item-card--travel");
+        assertThat(cards.get(1).getClassNames())
+                .doesNotContain("expense-item-card--travel");
+
+        // The travel card holds the trip row and both per-diem rows it generated —
+        // nested INSIDE it, indented, rather than in a wrapper beside it.
+        assertThat(rowsIn(cards.getFirst())).hasSize(3);
+        assertThat(rowsIn(cards.getFirst()).get(1).getClassNames())
+                .contains("travel-line-row");
+        assertThat(rowsIn(cards.get(1))).hasSize(1);
+
+        // And nothing is a .line-card any more.
+        assertThat($(HorizontalLayout.class).withClassName("line-card").all()).isEmpty();
+    }
+
+    @Test
+    void aSectionWithNoRowsRendersNoCard() {
+        var id = seedReport(LocalDate.of(2026, 7, 1), "empty");
+        navigate(ReportDetailView.class, id);
+
+        // A fresh draft has no trip and no line, so both cards are absent while both
+        // headings and their Add actions stand.
+        assertThat($(Div.class).withClassName("expense-item-card").all()).isEmpty();
+        assertThat(findSpan().withText("Travel info").exists()).isTrue();
+        assertThat(findSpan().withText("Expenses").exists()).isTrue();
+        assertThat(findButton().withAriaLabel("Add travel").exists()).isTrue();
+        assertThat(findButton().withAriaLabel("Add expense").exists()).isTrue();
+    }
+
+    @Test
+    void aReadOnlyReportWithNothingInASectionRendersNoSectionAtAll() {
+        // No trip, and read-only: a "TRAVEL INFO" heading over nothing, beside an Add
+        // the report cannot offer, is worse than no section (ADR-0020).
+        var id = seedSubmittedReport(LocalDate.of(2026, 7, 1), "80.00");
+        navigate(ReportDetailView.class, id);
+
+        assertThat(findSpan().withText("Travel info").exists()).isFalse();
+        assertThat(findSpan().withText("Expenses").exists()).isTrue();
+    }
+
+    @Test
+    void anExpenseRowDrawsItsTypesOwnGlyphAndNoColourSwatch() {
+        var id = seedReportWithLine(LocalDate.of(2026, 7, 1), "60.00");
+        navigate(ReportDetailView.class, id);
+
+        // The glyph is the type's persisted icon (ADR-0026), not a colour hashed off
+        // its name. seedReportWithLine files the line under the first active type,
+        // Travel allowance, whose seeded glyph is `plane` (V15).
+        var glyph = $(Span.class).withClassName("expense-row-icon").single();
+        assertThat(find(SvgIcon.class, glyph).single().getSymbol()).isEqualTo("plane");
+        // The hashed swatch is gone, along with the four-way --aura-red collision.
+        assertThat($(Div.class).withClassName("category-dot").all()).isEmpty();
+    }
+
     /**
-     * Opens the line editor for the report's first line card. The card has no Edit
-     * button — the whole card body is the click target ({@code .clickable}) — so the
-     * click goes to that layout rather than to a locator-findable control.
+     * The glyph is optional on {@code ExpenseType}, so a line can legitimately reach
+     * the row with none — and must then render none rather than falling back to a
+     * wrong one. Nothing rests on it: the type name always renders as text beside it
+     * (ADR-0020).
+     *
+     * <p>Runs as the admin because creating a type is {@code @RolesAllowed("ADMIN")},
+     * and a glyphless type is the only honest way to reach this state: the icon comes
+     * off the persisted <em>type</em>, so a null in an input DTO does not survive the
+     * save-and-reload the view actually renders from.
+     */
+    @Test
+    @WithUserDetails("admin@vaadin.com")
+    void aTypeWithNoGlyphChosenRendersNoneAndStillNamesItself() {
+        var rate = firstActiveRate();
+        var type = referenceData.createExpenseType("Glyphless", rate.id(), null);
+        var line = ExpenseLineDto.of(null, type.id(), type.name(), type.icon(),
+                rate.id(), rate.value(), new BigDecimal("12.00"), null);
+        var zero = BigDecimal.ZERO.setScale(2);
+        var id = service.create(new ReportDetailDto(null, LocalDate.of(2026, 7, 1),
+                "seed", ReportStatus.DRAFT, 0L, List.of(line), zero, zero, zero));
+
+        navigate(ReportDetailView.class, id);
+
+        assertThat(find(SvgIcon.class,
+                $(Span.class).withClassName("expense-row-icon").single()).all())
+                .isEmpty();
+        assertThat(findSpan().withText("Glyphless").exists()).isTrue();
+    }
+
+    @Test
+    void aRowIsNotClickableAndTheMenuIsTheOnlyRouteToEditing() {
+        var id = seedReportWithLine(LocalDate.of(2026, 7, 1), "60.00");
+        navigate(ReportDetailView.class, id);
+
+        // Withdrawn with the card the row used to be: no .clickable anywhere, and the
+        // row's own actions are exactly Edit and Remove behind the ⋮.
+        assertThat($(HorizontalLayout.class).withClassName("clickable").all()).isEmpty();
+        assertThat(rowActions("Travel allowance")).containsExactly("Edit", "Remove");
+    }
+
+    @Test
+    void everyRowMenuIsNamedAfterItsRowAndEveryActionCarriesText() {
+        var id = seedReportWithFullTravel(LocalDate.of(2026, 7, 10), DEP,
+                DEP.plusHours(11), new BigDecimal("120"), true, new BigDecimal("12.00"));
+        navigate(ReportDetailView.class, id);
+
+        // "Actions" alone is useless on a page holding five of them, so each names
+        // its row (ADR-0020, row-action-menu.md).
+        // A per-diem-eligible trip earns no meal allowance — the two are mutually
+        // exclusive under the Finnish rule (issue #93) — so this trip's four rows are
+        // the trip itself plus per diem, kilometre and parking.
+        assertThat($(RowActionMenu.class).all())
+                .extracting(ReportDetailViewUiTest::triggerName)
+                .containsExactlyInAnyOrder("Actions for " + TRIP,
+                        "Actions for Per diem allowance (full day)",
+                        "Actions for Kilometre allowance",
+                        "Actions for Parking");
+        // And every item in every menu is text-labelled, never an icon alone.
+        assertThat($(RowActionMenu.class).all()).allSatisfy(menu ->
+                assertThat(menu.getItems().get(0).getSubMenu().getItems())
+                        .isNotEmpty()
+                        .allSatisfy(item -> assertThat(item.getText()).isNotBlank()));
+    }
+
+    @Test
+    void aRowMenusNameFollowsTheTypeTheEditorChanges() {
+        var id = seedReportWithLine(LocalDate.of(2026, 7, 1), "60.00");
+        navigate(ReportDetailView.class, id);
+        assertThat(triggerName($(RowActionMenu.class).single()))
+                .isEqualTo("Actions for Travel allowance");
+
+        // The row keeps its component and re-reads the signal, so the accessible name
+        // has to follow or it goes quietly stale.
+        openLineCardEditor();
+        findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
+                .selectItem("Accommodation");
+        findButton().withText("Save expense").click();
+
+        assertThat(triggerName($(RowActionMenu.class).single()))
+                .isEqualTo("Actions for Accommodation");
+    }
+
+    @Test
+    void bothAddActionsReadAddAndAreToldApartByTheirAccessibleNames() {
+        var id = seedReport(LocalDate.of(2026, 7, 1), "empty");
+        navigate(ReportDetailView.class, id);
+
+        // The design labels both simply "Add", so the page carries two controls with
+        // the same visible name and the aria-label is what names the section.
+        assertThat(findButton().withAriaLabel("Add travel").exists()).isTrue();
+        assertThat(findButton().withAriaLabel("Add expense").exists()).isTrue();
+        assertThat($(Button.class).withCondition(
+                button -> "Add".equals(button.getText())).all()).hasSize(2);
+        // And the back link keeps its own name.
+        assertThat(findButton().withAriaLabel("Back to reports").exists()).isTrue();
+    }
+
+    @Test
+    void onlyTheVatBearingGeneratedLineShowsANetVatSplit() {
+        // Parking is VAT-bearing at 25.5 %; the per-diem, kilometre and meal lines are
+        // statutory tax-free allowances. The design draws the same net/VAT string on
+        // every generated row including the per-diem one, which is mock text rather
+        // than a specification (#173).
+        var id = seedReportWithFullTravel(LocalDate.of(2026, 7, 10), DEP,
+                DEP.plusHours(11), new BigDecimal("120"), true, new BigDecimal("12.00"));
+        navigate(ReportDetailView.class, id);
+
+        assertThat(splitOn("Parking")).startsWith("net ").contains("(25.5 %)");
+        assertThat(splitOn("Per diem allowance (full day)")).isNull();
+        assertThat(splitOn("Kilometre allowance")).isNull();
+
+        // …and the meal allowance, which this trip does not earn, on one that does.
+        navigate(ReportDetailView.class, seedReportWithMealTravel(
+                LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(11)));
+        assertThat(splitOn("Meal allowance")).isNull();
+    }
+
+    @Test
+    void aReadOnlyReportRendersNoRowMenusAndNoAddActionsButKeepsItsReceipts() {
+        var id = seedReportWithReceipt(LocalDate.of(2026, 7, 1), "70.00", "hotel.jpg");
+        service.submit(id, service.findMine(id).version());
+        navigate(ReportDetailView.class, id);
+
+        // No menu at all — not a disabled trigger — and neither Add action.
+        assertThat($(RowActionMenu.class).all()).isEmpty();
+        assertThat(findButton().withAriaLabel("Add expense").exists()).isFalse();
+        assertThat(findButton().withAriaLabel("Add travel").exists()).isFalse();
+        // The receipt stays activatable, so a submitted report's receipts remain
+        // viewable (ADR-0021).
+        assertThat(findButton().withAriaLabel("Preview receipt: hotel.jpg").exists())
+                .isTrue();
+    }
+
+    @Test
+    void anAttachmentRendersAsAPaperclipChipThatStillOpensThePreview() {
+        var id = seedReportWithReceipt(LocalDate.of(2026, 7, 1), "70.00", "hotel.jpg");
+        navigate(ReportDetailView.class, id);
+
+        // The resting state is the design's chip — a paperclip and the filename — and
+        // only the resting state changed: activating it opens the enlarge dialog.
+        var chip = $(Button.class).withClassName("expense-row-attachment").single();
+        assertThat(chip.getText()).isEqualTo("hotel.jpg");
+        assertThat(find(SvgIcon.class, chip).single().getSymbol()).isEqualTo("paperclip");
+
+        test(chip).click();
+        assertThat($(Dialog.class).all()).anySatisfy(dialog ->
+                assertThat(dialog.isOpened()).isTrue());
+        assertThat($(Image.class).exists()).isTrue();
+    }
+
+    @Test
+    void theStatusHistoryIsOneBoxWithItsSharedSectionHeading() {
+        var id = seedRejectedReport(LocalDate.of(2026, 7, 1), "100", "Missing receipt");
+        navigate(ReportDetailView.class, id);
+
+        // One box holding every entry, not one bordered box per entry, under the same
+        // uppercase .section-label role the other two section headings use.
+        var box = $(Div.class).withClassName("status-history-box").single();
+        assertThat(box.getChildren().count()).isEqualTo(2);       // Submitted, Rejected
+        assertThat($(Span.class)
+                .withCondition(span -> "Status history".equals(span.getText()))
+                .single().getClassNames())
+                .contains("section-label");
+        assertThat($(VerticalLayout.class).withClassName("status-history-entry").all())
+                .hasSize(2);
+    }
+
+    /** Adds one expense line through the (already open) editor at the given amount. */
+    private void addLineThroughEditor(String amount) {
+        findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
+                .selectItem(firstActiveType().name());
+        findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
+        findBigDecimalField().withLabel("Unit price (gross, each)")
+                .setValue(new BigDecimal(amount));
+        findButton().withText("Save expense").click();
+    }
+
+    /** The .expense-row children of one section card, in order. */
+    private static List<Component> rowsIn(Div card) {
+        return card.getChildren()
+                .filter(child -> child.getElement().getClassList()
+                        .contains("expense-row"))
+                .toList();
+    }
+
+    /**
+     * The {@code net … · VAT …} sub-line on the named row, or {@code null} if it has
+     * none. Read off the row rather than the whole view, since a manual line beside
+     * it would otherwise satisfy the assertion.
+     */
+    private String splitOn(String rowLabel) {
+        var row = $(HorizontalLayout.class)
+                .withCondition(candidate -> candidate.getElement().getClassList()
+                        .contains("expense-row")
+                        && candidate.getElement().getTextRecursively()
+                                .startsWith(rowLabel))
+                .single();
+        return find(Span.class, row).withCondition(
+                        span -> span.getText().startsWith("net ")).all().stream()
+                .map(Span::getText).findFirst().orElse(null);
+    }
+
+    /**
+     * Opens the line editor for the report's first expense row. The row is no longer
+     * clickable — the ⋮ menu is the only route to editing (#172) — so this opens the
+     * first row's menu and chooses Edit.
      */
     private void openLineCardEditor() {
-        test($(HorizontalLayout.class).withClassName("clickable").first()).click();
+        clickRowAction($(RowActionMenu.class).first(), "Edit");
+    }
+
+    /** The ⋮ trigger's accessible name, which must identify its row. */
+    private static String triggerName(RowActionMenu menu) {
+        return menu.getItems().get(0).getElement().getAttribute("aria-label");
+    }
+
+    /** The one row menu whose trigger names {@code rowLabel}. */
+    private RowActionMenu rowMenu(String rowLabel) {
+        return $(RowActionMenu.class)
+                .withCondition(menu -> ("Actions for " + rowLabel)
+                        .equals(triggerName(menu)))
+                .single();
+    }
+
+    /** Opens the named row's ⋮ and activates the named action. */
+    private void clickRowAction(String rowLabel, String action) {
+        clickRowAction(rowMenu(rowLabel), action);
+    }
+
+    /** Opens a row's ⋮ and activates the named action. */
+    private void clickRowAction(RowActionMenu menu, String action) {
+        List<MenuItem> items = menu.getItems().get(0).getSubMenu().getItems();
+        int index = -1;
+        for (int i = 0; i < items.size(); i++) {
+            if (action.equals(items.get(i).getText())) {
+                index = i;
+            }
+        }
+        assertThat(index).as("menu item '%s' is present", action).isNotNegative();
+        // Index rather than caption path: the top-level trigger is icon-only, so
+        // clickItem(String...) has no root caption to match against.
+        use(menu).clickItem(0, index);
+    }
+
+    /** The text labels a row's ⋮ offers, in order — empty if it has no menu at all. */
+    private List<String> rowActions(String rowLabel) {
+        var menus = $(RowActionMenu.class)
+                .withCondition(menu -> ("Actions for " + rowLabel)
+                        .equals(triggerName(menu)))
+                .all();
+        if (menus.isEmpty()) {
+            return List.of();
+        }
+        return menus.getFirst().getItems().get(0).getSubMenu().getItems().stream()
+                .map(MenuItem::getText).toList();
     }
 }

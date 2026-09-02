@@ -2851,3 +2851,54 @@ Deployment/Observability · UX-spec
 - Owner / next step: closed by #172. Logged because the *shape* — a documented invariant
   that holds while the actual purpose fails, in decoration that no test covers — is the
   reusable lesson, not the dot.
+
+### F-080 — `text-overflow: ellipsis` is inert inside a `VerticalLayout`, and the failure is a page-wide horizontal scroll that a green browserless suite cannot see
+- Date: 2026-09-02
+- Area: Vaadin
+- Severity: Medium
+- Task being attempted: issue #172's report-detail header. The design draws the report
+  title as one 24px line (`241:10575` is 769×34 for a 44-character string), and the app
+  renders `additionalInformation` there — a `TextArea`-backed field capped at 2000
+  characters. So it has to truncate.
+- Expected vs actual: expected the textbook three declarations —
+  `overflow: hidden; text-overflow: ellipsis; white-space: nowrap` — on the title `Span`
+  to ellipse it against the header's width. Actual: the `Span` rendered **3332px wide**
+  and took the whole document to `scrollWidth: 3709` against a 1440 viewport. Every card
+  below it stayed 836px, so the page looked correct and simply scrolled sideways for
+  2269px of nothing.
+- Workaround used: `max-width: 100%` **and** `min-width: 0` on the title, plus
+  `min-width: 0` on both flex ancestors. Two separate mechanisms had to be released:
+  - the `Span` is a flex item of a `VerticalLayout`, whose default cross-axis alignment is
+    `START` (`setDefaultHorizontalComponentAlignment`), so the item is sized to its
+    **content** on the horizontal axis and has no width limit at all — `overflow: hidden`
+    has nothing to clip against. `max-width: 100%` is what supplies the box;
+  - a flex item's default `min-width` is `auto`, which for `nowrap` text is the whole
+    string's width, so even with a `max-width` it refuses to shrink to it. `min-width: 0`
+    is what allows it.
+  `styles.css:.report-detail-title`, `.report-detail-title-group`,
+  `.report-detail-title-column`; `ReportDetailView.headerRow()`.
+- Evidence: measured in the browser, not reasoned — the flex chain reported
+  `SPAN.report-detail-title` at width 3332 with `min-width: auto` inside a
+  `VAADIN-VERTICAL-LAYOUT` at 836. After the fix: 697 and `scrollWidth: 1425`.
+- Impact: **the 95-test browserless suite was green the entire time the page was 2.5×
+  too wide.** That is the finding. A browserless test asserts the component tree, and the
+  tree was right: the `Span` was present, carried the correct class, and held the correct
+  text. Nothing in the fast layer can express "and it is 3332px wide", so the only thing
+  that caught this was opening the page — which is exactly the boundary
+  `implement-use-case` step 3 draws, met in its sharpest form. Note also that the bug was
+  invisible on a *short* title: report 21 with a blank `additionalInformation` renders the
+  "Expense report" fallback and looks perfect, so the failure is data-dependent as well as
+  test-invisible.
+- Suggested Vaadin/product improvement: `VerticalLayout`'s `START` cross-axis default is a
+  reasonable choice and should not change. But it is the reason the single most common
+  truncation recipe on the web does not work inside Vaadin's most common layout, and
+  nothing says so. One sentence in the ordered-layout docs — "items are sized to their
+  content horizontally; a truncating child needs `max-width: 100%` and `min-width: 0`" —
+  would cover it. A `setWidthFull()` on the child is the other cure and is worth naming in
+  the same sentence, since it is the fix a Flow developer would reach for first.
+- Owner / next step: fixed in #172. The general rule, both mechanisms and the
+  `scrollWidth <= innerWidth` assertion are now in `docs/theming-layouts.md` § *Flex
+  sizing*, deliberately placed beside § *Inherited properties* — the two are the same
+  shape of silent failure and belong together. Worth raising with the Vaadin docs team:
+  `VerticalLayout`'s `START` cross-axis default is fine, but nothing says it disables the
+  commonest truncation recipe on the web.

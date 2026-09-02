@@ -3,11 +3,14 @@ package com.vaadin.expensemanager.reference.ui;
 import java.math.BigDecimal;
 
 import com.vaadin.expensemanager.base.ui.DashboardView;
+import com.vaadin.expensemanager.base.ui.LucideIcon;
 import com.vaadin.expensemanager.base.ui.NavGroup;
 import com.vaadin.expensemanager.base.ui.ReferenceTabs;
 import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.VatRateDto;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
+import com.vaadin.flow.component.grid.GridLocator;
+import com.vaadin.flow.component.icon.SvgIcon;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.test.context.support.WithUserDetails;
 
@@ -19,17 +22,20 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * — the ADMIN-only expense-type settings screen (issue #22, ADR-0008/0018).
  *
  * <p>Companion to {@link VatRateViewUiTest}; covers this screen's access control
- * and CRUD, plus the two behaviours unique to expense types: an editor whose
+ * and CRUD, plus the behaviours unique to expense types: an editor whose
  * default-rate {@code ComboBox} offers only <em>active</em> VAT rates (the
- * active-options query on the UI), and a required default rate. Grid cells are
- * read with {@code getCellText} (revised F-018).
+ * active-options query on the UI), a required default rate, and the
+ * <em>optional</em> Lucide glyph a type's report rows draw (#172, ADR-0026). Grid
+ * cells are read with {@code getCellText} (revised F-018).
  */
 class ExpenseTypeViewUiTest extends AbstractReferenceDataViewUiTest {
 
-    private static final int NAME_COL = 0;
-    private static final int RATE_COL = 1;
-    private static final int STATUS_COL = 2;
-    private static final int ACTIONS_COL = 3;
+    /** The glyph column leads, as the glyph leads a report row (#172). */
+    private static final int ICON_COL = 0;
+    private static final int NAME_COL = 1;
+    private static final int RATE_COL = 2;
+    private static final int STATUS_COL = 3;
+    private static final int ACTIONS_COL = 4;
 
     // ------------------------------------------------------- access control
 
@@ -45,6 +51,64 @@ class ExpenseTypeViewUiTest extends AbstractReferenceDataViewUiTest {
         // Each type renders its seeded default VAT rate.
         assertThat(grid.getCellText(0, RATE_COL)).isEqualTo("0 %");
         assertThat(grid.getCellText(3, RATE_COL)).isEqualTo("13.5 %");
+    }
+
+    /**
+     * Every seeded type carries the glyph its report rows draw (#172, V15). The four
+     * the design draws on frame 116:4444 are asserted by name; the rest are the app's
+     * initial choices and only have to be present.
+     */
+    @Test
+    @WithUserDetails("admin@vaadin.com")
+    void everySeededTypeRendersItsGlyph() {
+        navigate(ExpenseTypeView.class);
+        var grid = findGrid(ExpenseTypeDto.class);
+
+        assertThat(glyphOf(grid, 0)).isEqualTo("plane");            // Travel allowance
+        assertThat(glyphOf(grid, 1)).isEqualTo("car-taxi-front");   // Taxi/transport
+        assertThat(glyphOf(grid, 2)).isEqualTo("bed");              // Accommodation
+        assertThat(glyphOf(grid, 3)).isEqualTo("utensils");         // Restaurant/meals
+        for (int row = 0; row < grid.size(); row++) {
+            assertThat(glyphOf(grid, row))
+                    .as("row %d carries a glyph", row).isNotNull();
+        }
+    }
+
+    /**
+     * The glyph is optional and admin-editable: a type saved with the picker
+     * untouched renders no glyph and a dash in its place, and choosing one persists
+     * it. Nothing rests on the glyph — the type name always renders beside it
+     * (ADR-0020) — so "none" has to be a valid, visible state rather than a blank
+     * cell that reads as a rendering failure.
+     */
+    @Test
+    @WithUserDetails("admin@vaadin.com")
+    void theGlyphIsOptionalAndAdminChosen() {
+        navigate(ExpenseTypeView.class);
+        int before = findGrid(ExpenseTypeDto.class).size();
+
+        findButton().withText("Add expense type").click();
+        findTextField().withLabel("Name").setValue("Software licences");
+        findComboBox(VatRateDto.class).withLabel("Default VAT rate").selectItem("25.5 %");
+        findButton().withText("Save").click();
+
+        var grid = findGrid(ExpenseTypeDto.class);
+        assertThat(glyphOf(grid, before)).isNull();
+        assertThat(grid.getCellText(before, ICON_COL)).isEqualTo("—");
+
+        test(rowActionButton(grid, before, ACTIONS_COL,
+                "Edit expense type Software licences")).click();
+        findComboBox(LucideIcon.class).withLabel("Icon").selectItem("archive");
+        findButton().withText("Save").click();
+
+        assertThat(glyphOf(findGrid(ExpenseTypeDto.class), before))
+                .isEqualTo("archive");
+    }
+
+    /** The Lucide symbol id the row's Icon cell renders, or {@code null} if none. */
+    private String glyphOf(GridLocator<?> grid, int row) {
+        return find(SvgIcon.class, grid.getCellComponent(row, ICON_COL))
+                .all().stream().findFirst().map(SvgIcon::getSymbol).orElse(null);
     }
 
     /**

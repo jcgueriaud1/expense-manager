@@ -195,7 +195,8 @@ class ExpenseReportOptimisticLockIntegrationTest {
     private ReportDetailDto dtoWithLine(ExpenseType type, VatRate rate, String amount) {
         var zero = BigDecimal.ZERO.setScale(2);
         var line = ExpenseLineDto.of(null, type.getId(), type.getName(),
-                rate.getId(), rate.getValue(), new BigDecimal(amount), "line");
+                type.getIcon(), rate.getId(), rate.getValue(), new BigDecimal(amount),
+                "line");
         return new ReportDetailDto(null, LocalDate.of(2026, 7, 10), "conflict test",
                 ReportStatus.DRAFT, 0L, List.of(line), zero, zero, zero);
     }
