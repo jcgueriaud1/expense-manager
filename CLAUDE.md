@@ -123,11 +123,12 @@ are this project's own. All need the project-scoped Figma MCP server, see
 what was built. One skill writes it, and everything else conforms to it:
 
 - `/figma-survey` **writes the spec.** Scoped `theme`, it reads the design's global
-  variables across every mode, puts each divergence to you in one pass, and writes
+  variables across every mode, puts each divergence to you in rounds, and writes
   `docs/design/foundations/` plus the inputs in `tokens/`. Scoped to a view or a
   component, it writes `docs/design/components/` — one file per component, states
-  included. It also produces the **delta** for a ticket. It writes no CSS and no
-  Java.
+  included. It ends with the **delta** in the conversation; filing it is a separate
+  step, `/to-tickets` or `/to-spec` run on that conversation. It writes no CSS, no
+  Java, and no issue.
 - `/figma-theme` **applies** the global theme: it reads the settled spec, writes only
   what differs from the Aura defaults, proves it in the browser, and writes the
   *resolved values* table back — the one part of the spec only a running app can
