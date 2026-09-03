@@ -32,6 +32,7 @@ source and would go stale here.
 | [`expense-item-card.md`](expense-item-card.md) | composite | design | none |
 | [`expense-line-card.md`](expense-line-card.md) | composite | design | **drifted** |
 | [`line-editor-dialog.md`](line-editor-dialog.md) | composite | design | **drifted** |
+| [`travel-editor-dialog.md`](travel-editor-dialog.md) | composite | design | **drifted** |
 | [`travel-card.md`](travel-card.md) | composite | design | **drifted** |
 | [`totals-card.md`](totals-card.md) | composite | design | **drifted** |
 | [`status-callout.md`](status-callout.md) | composite | **unresolved** | unaudited |
@@ -158,6 +159,24 @@ a table, not that the right component was chosen for the design's intent.
 > [`../foundations/typography.md`](../foundations/typography.md) § *Label case is undecided*.
 > The survey added **no new `--em-*` property**; every value on the frame resolved to a
 > token or to an already-settled off-scale one.
+>
+> **The travel editor frame (`253:10597`) was surveyed next**, and it added
+> `travel-editor-dialog`, the line editor's sibling, which had never had a file either. It is
+> **drifted** structurally: the design cuts the form into two sections (`DESTINATIONS`,
+> `EXPENSES`) with eyebrows and rules, reorders the fields, and draws the earned lines as
+> transparent rows of the form with `Trip total` last — where the code has a flat form and an
+> accent-tinted preview box with the total on top. The accent that `travel-card` let the
+> preview keep, because its frame did not draw the dialog, is withdrawn now that one does.
+>
+> Two rows went to the **domain**, and both are settled in the app's favour: the frame's
+> `City` label stays `Destinations`, because the field holds a multi-place route; and its
+> two-option radio group becomes a **three-option** one, because two options cannot express
+> the default state (eligible, no free lunch). The group is vertical — an accepted infidelity,
+> since three long labels do not fit the row — and gains the `Daily allowance` label the
+> frame omits, which is the accessibility floor. The km and parking fields keep
+> `BigDecimalField` against a `<vaadin-text-field>` annotation, on the line editor's
+> reasoning. Label case stays **open**; this frame adds six Title Case labels to that ticket's
+> evidence. No new `--em-*` property.
 
 ## Who writes these
 
