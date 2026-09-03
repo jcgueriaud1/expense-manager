@@ -495,21 +495,48 @@
     cursor: default;
 }
 
-/* The line editor's read-only "Line total" row (unit price × quantity,
-   ADR-0023) — a summary figure, not an editable field, so it borrows the totals
-   bar's look rather than a field's. Code origin: the design does not draw the
-   dialog. */
+/*
+ * The line editor's read-only "Total" row (unit price × quantity, ADR-0023) — a
+ * summary figure, not an editable field, so it borrows the totals bar's look
+ * rather than a field's. docs/design/components/line-editor-dialog.md.
+ *
+ * The 1px rule is the frame's raster line; it takes --vaadin-border-color-secondary,
+ * NOT the --aura-border-color-secondary the design's reference code emits — Aura
+ * defines no such property, so that name would freeze at its fallback (F-062).
+ *
+ * padding-block is 20 on BOTH edges and does two jobs: above, it holds the rule's
+ * drawn clearance off the total; below, it adds to the form's own 20px row gap to
+ * make the 40px of clear space the frame draws before the VAT rate.
+ *
+ * Both figures take the design's size and the theme's weight — semibold 600, where
+ * the frame draws Inter Bold/Extra Bold against its own --lumo-font-family binding
+ * (F-069, #173). Same call totals-card.md made for the report's grand total.
+ */
 .line-total-row {
-    border-top: 1px solid var(--vaadin-border-color-secondary);
-    padding-top: var(--vaadin-padding-xs);
+    border-block-start: 1px solid var(--vaadin-border-color-secondary);
+    padding-block: var(--em-card-padding);
 }
 .line-total-label {
-    color: var(--vaadin-text-color-secondary);
-    font-size: var(--aura-font-size-s);
+    color: var(--vaadin-text-color);
+    font-size: var(--aura-font-size-m);
+    font-weight: var(--aura-font-weight-semibold);
 }
 .line-total-value {
+    color: var(--vaadin-text-color);
+    font-size: var(--aura-font-size-l);
     font-weight: var(--aura-font-weight-semibold);
+}
+
+/* The receipt block below the fields — a heading, the attached-file line, and the
+   Upload control. Code origin below the heading: the design draws only the empty
+   state, so the filename/Remove row is ADR-0021's, not the frame's. */
+.receipt-heading {
     font-size: var(--aura-font-size-m);
+    font-weight: var(--aura-font-weight-medium);
+}
+.receipt-status {
+    color: var(--vaadin-text-color-secondary);
+    font-size: var(--aura-font-size-s);
 }
 
 /* ---- A trip and its allowance rows (docs/design/components/travel-card.md) ---- */

@@ -27,8 +27,9 @@ import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.notification.NotificationVariant;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
+import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.textfield.BigDecimalField;
-import com.vaadin.flow.component.textfield.TextField;
+import com.vaadin.flow.component.textfield.TextArea;
 import com.vaadin.flow.component.upload.Upload;
 import com.vaadin.flow.data.binder.Binder;
 import com.vaadin.flow.server.streams.DownloadHandler;
@@ -69,7 +70,7 @@ import static com.vaadin.expensemanager.report.ui.ReportViewSupport.lineGross;
  *
  * <p><strong>Unit price × quantity (ADR-0023).</strong> The money field is the
  * gross price of <em>one</em> item and the quantity (default {@code 1}) multiplies
- * it; a read-only "Line total" row shows the product live off the two fields (not
+ * it; a read-only "Total" row shows the product live off the two fields (not
  * the bean, which is only written on save), so the user sees what the line will
  * book before committing it.
  */
@@ -93,6 +94,8 @@ final class LineEditorDialog extends Dialog {
     private final Span receiptStatus = new Span();
     private final Button removeReceipt = new Button("Remove");
     private final Div receiptPreview = new Div();
+    private final HorizontalLayout receiptStatusRow =
+            new HorizontalLayout(receiptStatus, removeReceipt);
 
     /**
      * @param types    active expense types offered to new lines, in display order
@@ -112,7 +115,7 @@ final class LineEditorDialog extends Dialog {
         this.existing = existing;
         this.savedReceiptSource = savedReceiptSource;
         setHeaderTitle(existing == null ? "Add expense" : "Edit expense");
-        setWidth("28rem");
+        setWidth("26rem");
 
         // Item sets start from the active options; a historical line's now-inactive
         // type/rate is added so it still shows when editing (ADR-0018).
@@ -131,7 +134,8 @@ final class LineEditorDialog extends Dialog {
 
         // Unit price × quantity (ADR-0023). The money field is the price of *one*
         // item; the read-only total below shows what the line will actually book.
-        var amountField = new BigDecimalField("Unit price (gross, each)");
+        var amountField = new BigDecimalField("Unit price");
+        amountField.setHelperText("Gross, each");
         amountField.setRequiredIndicatorVisible(true);
 
         var quantityField = new BigDecimalField("Quantity");
@@ -140,7 +144,8 @@ final class LineEditorDialog extends Dialog {
         var lineTotal = new Span();
         lineTotal.addClassName("line-total-value");
 
-        var commentField = new TextField("Comment");
+        var commentField = new TextArea("Comment");
+        commentField.setMinRows(2);
         commentField.setMaxLength(500);
 
         // Choosing a type pre-fills its default rate (overridable). Guarded by
@@ -194,23 +199,40 @@ final class LineEditorDialog extends Dialog {
         binder.addValueChangeListener(event -> refreshLineTotal.run());
         refreshLineTotal.run();
 
-        var form = new FormLayout(typeField, amountField, quantityField);
-        form.setResponsiveSteps(new FormLayout.ResponsiveStep("0", 1));
+        // A two-column grid, as drawn. The one-column step below 24rem is the app's:
+        // the design draws no small-screen state, and two 173px fields do not survive
+        // a phone.
+        var form = new FormLayout();
+        form.setResponsiveSteps(new FormLayout.ResponsiveStep("0", 1),
+                new FormLayout.ResponsiveStep("24rem", 2));
+        form.setColumnSpacing("var(--em-section-gap)");
+        form.setRowSpacing("var(--em-card-padding)");
+        form.add(typeField, amountField, quantityField);
         // Derived output, not an input: rendered as a summary row (like the report's
         // totals bar) rather than a form item, so it never reads as an empty field.
-        form.add(lineTotalRow(lineTotal));
+        var totalRow = lineTotalRow(lineTotal);
+        form.add(totalRow);
         form.add(vatField, commentField);
-        add(errorSummary, form, receiptSection());
+        var receipt = receiptSection();
+        form.add(receipt);
+        // Everything spans both columns except unit price/quantity, which pair in one
+        // row, and VAT rate, which is drawn half width with the cell beside it empty
+        // (I358:3267;3704:13280;358:3278 is col-1 at 173px in a 386px row).
+        form.setColspan(typeField, 2);
+        form.setColspan(totalRow, 2);
+        form.setColspan(commentField, 2);
+        form.setColspan(receipt, 2);
+        add(errorSummary, form);
 
-        var save = new Button("Save expense", event -> save(onSave));
+        var save = new Button("Save", event -> save(onSave));
         save.addThemeVariants(ButtonVariant.PRIMARY);
         var cancel = new Button("Cancel", event -> close());
         getFooter().add(cancel, save);
     }
 
-    /** The "Line total" summary row — unit price × quantity, live (ADR-0023). */
+    /** The "Total" summary row — unit price × quantity, live (ADR-0023). */
     private static HorizontalLayout lineTotalRow(Span value) {
-        var label = new Span("Line total");
+        var label = new Span("Total");
         label.addClassName("line-total-label");
         var row = new HorizontalLayout(label, value);
         row.setWidthFull();
@@ -221,9 +243,9 @@ final class LineEditorDialog extends Dialog {
     }
 
     /** The always-enabled receipt attach/replace/remove control (ADR-0021). */
-    private Div receiptSection() {
+    private VerticalLayout receiptSection() {
         var heading = new Span("Receipt (optional)");
-        heading.getStyle().setFontWeight("600");
+        heading.addClassName("receipt-heading");
 
         // Server-side magic-byte validation on the buffered bytes: the browser's
         // content type is never trusted, and the stored type is the sniffed one.
@@ -248,25 +270,27 @@ final class LineEditorDialog extends Dialog {
         upload.setMaxFiles(1);
         upload.setMaxFileSize((int) ReceiptValidator.MAX_SIZE_BYTES);
         upload.setAcceptedFileTypes("image/jpeg", "image/png", "application/pdf");
-        var uploadButton = new Button("Upload receipt…", LucideIcon.UPLOAD.create());
+        // The drawn anatomy puts the glyph in the drop label and leaves the button
+        // plain text; the label stays receipt-specific rather than Vaadin's default.
+        var uploadButton = new Button("Upload receipt…");
         upload.setUploadButton(uploadButton);
+        upload.setDropLabelIcon(LucideIcon.UPLOAD.create());
         // Client-side rejection (wrong type / too big) — surfaced, never silent.
         upload.addFileRejectedListener(event -> notifyError(event.getErrorMessage()));
 
         removeReceipt.addThemeVariants(ButtonVariant.TERTIARY, ButtonVariant.ERROR,
                 ButtonVariant.SMALL);
         removeReceipt.addClickListener(event -> remove());
-        receiptStatus.getStyle().setColor("var(--vaadin-text-color-secondary)");
-        receiptStatus.getStyle().setFontSize("var(--aura-font-size-s)");
+        receiptStatus.addClassName("receipt-status");
 
-        var statusRow = new Div(receiptStatus, removeReceipt);
-        statusRow.getStyle().set("display", "flex").set("align-items", "center")
-                .set("gap", "var(--vaadin-gap-m)");
+        receiptStatusRow.setPadding(false);
+        receiptStatusRow.setSpacing("var(--vaadin-gap-m)");
+        receiptStatusRow.setAlignItems(FlexComponent.Alignment.CENTER);
 
-        var section = new Div(heading, receiptPreview, statusRow, upload);
-        section.getStyle().set("display", "flex").set("flex-direction", "column")
-                .set("gap", "var(--vaadin-gap-s)")
-                .set("margin-top", "var(--vaadin-gap-m)");
+        var section = new VerticalLayout(heading, receiptPreview, receiptStatusRow,
+                upload);
+        section.setPadding(false);
+        section.setSpacing("var(--vaadin-gap-s)");
         refreshReceiptStatus();
         return section;
     }
@@ -294,8 +318,10 @@ final class LineEditorDialog extends Dialog {
     private void refreshReceiptStatus() {
         String filename = effectiveFilename();
         boolean present = filename != null;
-        receiptStatus.setText(present ? "📎 " + filename : "No receipt attached.");
-        removeReceipt.setVisible(present);
+        // Empty state carries no status text at all — the Upload control already says
+        // it, and the design draws none.
+        receiptStatus.setText(present ? "📎 " + filename : "");
+        receiptStatusRow.setVisible(present);
         refreshReceiptPreview();
     }
 
