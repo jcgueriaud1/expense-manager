@@ -31,6 +31,7 @@ source and would go stale here.
 | [`report-detail-header.md`](report-detail-header.md) | composite | design | **drifted** |
 | [`expense-item-card.md`](expense-item-card.md) | composite | design | none |
 | [`expense-line-card.md`](expense-line-card.md) | composite | design | **drifted** |
+| [`line-editor-dialog.md`](line-editor-dialog.md) | composite | design | **drifted** |
 | [`travel-card.md`](travel-card.md) | composite | design | **drifted** |
 | [`totals-card.md`](totals-card.md) | composite | design | **drifted** |
 | [`status-callout.md`](status-callout.md) | composite | **unresolved** | unaudited |
@@ -136,6 +137,27 @@ a table, not that the right component was chosen for the design's intent.
 > CSS (correct, per ADR-0026 decision 2). The row is wrong against the design *and*
 > against the code, so it is `/figma-survey`'s to fix; editing it here would launder a
 > design-origin spec into a transcript.
+>
+> **The line-editor dialog frame (`358:3267`) was surveyed next**, and it added
+> `line-editor-dialog` — a component that had never had a file despite being one of the
+> app's oldest. It is **drifted** for a structural reason, not a token one: the design lays
+> the content out as a **two-column grid** with the VAT rate deliberately half width, where
+> the code stacks every field in one column at every viewport. Nine further rows differ,
+> including a `TextArea` where the code has a `TextField` and the total row's two figures,
+> which follow `totals-card`'s already-settled precedent rather than a fresh judgement.
+>
+> Two of that frame's rows went **against** the design and are settled rather than absent:
+> the Quantity **step buttons** are not built, because `setStepButtonsVisible` exists only
+> on `NumberField`/`IntegerField` and ADR-0023 makes quantity `numeric(19,2)` so a line can
+> read `12.5 km`; and the labels keep ADR-0023's information, moved from the label into the
+> helper-text slot the frame itself draws.
+>
+> One row is **open**, which is rarer here than settled: the frame's **Title Case** labels.
+> That is a global copy convention, so it was refused a per-component answer — the app keeps
+> sentence case and the question has its own ticket for a human decision. See
+> [`../foundations/typography.md`](../foundations/typography.md) § *Label case is undecided*.
+> The survey added **no new `--em-*` property**; every value on the frame resolved to a
+> token or to an already-settled off-scale one.
 
 ## Who writes these
 

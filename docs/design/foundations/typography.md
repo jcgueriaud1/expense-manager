@@ -23,6 +23,7 @@
 | Filenames and trip dates | 12, **primary** (`215:2265`, `116:4943`) | `.muted-xs`, secondary | primary — a filename is content | design | **settled** |
 | Section-heading role | one uppercase 12px style for all three headings | `.section-label` for two, `.status-history-heading` at 13 for the third | `.section-label` everywhere | design | **settled** |
 | Grand-total weight | **800** (Inter Extra Bold, `116:4998`) | 600 | `--aura-font-weight-semibold` = 600 (**−200**) | app | **settled** |
+| **Label case** | Title Case — `Expense Type`, `Unit Price`, `VAT Rate`, `Edit Expense` (`358:3267`) | sentence case throughout | sentence case **for now** | deferred | **open** — see [Label case is undecided](#label-case-is-undecided) |
 
 The whole font block was deleted rather than ported: 450/550/650 were tuned for Inter's
 variable-weight axis and are meaningless against Instrument Sans. The design's own
@@ -181,6 +182,29 @@ bold. 600 is used and the missing 100 accepted, consistent with the settled row 
 recording that the design's *specified* weights (500/600) are exactly the Aura
 defaults — the 700 comes from the drawn text, not from a variable, and the drawn text on
 this frame is already known to be unreliable (see the defect below).
+
+## Label case is undecided
+
+The line-editor frame (`358:3267`) draws every field label in **Title Case** —
+`Expense Type`, `Unit Price`, `VAT Rate`, and the dialog header `Edit Expense` — where the
+app has been sentence case since the first view. This is the only row in this file that is
+**open** rather than settled, and it is open on purpose: it is a global copy convention, so
+resolving it per-component is the one thing that cannot be right.
+
+The frame is not self-consistent evidence. `Receipt (optional)` is sentence case on the
+same frame, and `Quantity` and `Comment` are single words that cannot distinguish the two
+conventions. No other surveyed frame — `116:2499` (report list), `116:4444` (report
+detail), `156:5396` (reference tables) — establishes Title Case anywhere. So the drawn
+evidence is one frame's four labels against three frames' worth of sentence case, which is
+thin for a change that touches every label in the app.
+
+**The app keeps sentence case until a human decides**, and the decision has its own ticket
+rather than riding along with a per-view redesign. Taking Title Case in the line editor
+alone would make that dialog the app's single Title-Case surface, sitting directly over a
+sentence-case report detail — visibly worse than either convention applied consistently.
+
+A later survey should raise this again. An **open** row means unresolved, not resolved in
+the app's favour.
 
 ## Known design defect
 

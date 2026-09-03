@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import com.vaadin.expensemanager.base.ui.LucideIcon;
 import com.vaadin.expensemanager.base.ui.RowActionMenu;
 import com.vaadin.expensemanager.report.domain.GeneratedLineKind;
 import com.vaadin.expensemanager.report.domain.QuantityOverride;
@@ -21,8 +22,10 @@ import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.checkbox.Checkbox;
 import com.vaadin.flow.component.contextmenu.MenuItem;
 import com.vaadin.flow.component.datepicker.DatePicker;
+import com.vaadin.flow.component.combobox.ComboBox;
 import com.vaadin.flow.component.datetimepicker.DateTimePicker;
 import com.vaadin.flow.component.dialog.Dialog;
+import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.html.Anchor;
 import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.Image;
@@ -30,7 +33,9 @@ import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.icon.SvgIcon;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
+import com.vaadin.flow.component.textfield.BigDecimalField;
 import com.vaadin.flow.component.textfield.IntegerField;
+import com.vaadin.flow.component.upload.Upload;
 import jakarta.persistence.EntityManager;
 
 import org.junit.jupiter.api.Test;
@@ -148,9 +153,9 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
                 .selectItem("Parking/supplies/goods");
         findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
-        findBigDecimalField().withLabel("Unit price (gross, each)")
+        findBigDecimalField().withLabel("Unit price")
                 .setValue(new BigDecimal("100"));
-        findButton().withText("Save expense").click();
+        saveExpense();
 
         // Live total bar reflects the added line before the report is saved.
         assertThat(getCurrentView().getElement().getTextRecursively()).contains("€100.00");
@@ -173,14 +178,105 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         // Quantity starts at 1, so the line total is the unit price itself.
         assertThat(findBigDecimalField().withLabel("Quantity").getComponent().getValue())
                 .isEqualByComparingTo("1");
-        findBigDecimalField().withLabel("Unit price (gross, each)")
+        findBigDecimalField().withLabel("Unit price")
                 .setValue(new BigDecimal("12.50"));
         assertThat(findDialog().getComponent().getElement().getTextRecursively())
-                .contains("Line total").contains("€12.50");
+                .contains("Total").contains("€12.50");
 
         // Raising the quantity recomputes the total before anything is saved.
         findBigDecimalField().withLabel("Quantity").setValue(new BigDecimal("3"));
         assertThat(findDialog().getComponent().getElement().getTextRecursively()).contains("€37.50");
+    }
+
+    @Test
+    void lineEditorLaysItsFieldsOutAsTheDesignsTwoColumnGrid() {
+        // docs/design/components/line-editor-dialog.md § Layout. Everything spans
+        // both columns except unit price/quantity, which pair, and VAT rate, which
+        // is drawn half width with the cell beside it deliberately empty.
+        navigate(ReportDetailView.class);
+        findButton().withAriaLabel("Add expense").click();
+
+        var dialog = findDialog().getComponent();
+        assertThat(dialog.getWidth()).isEqualTo("26rem");
+
+        var form = $(FormLayout.class).single();
+        // ResponsiveStep exposes no getters, only toJson() — so compare the
+        // serialised steps against the two the spec prescribes.
+        assertThat(form.getResponsiveSteps())
+                .extracting(step -> step.toJson().toString())
+                .containsExactly(
+                        new FormLayout.ResponsiveStep("0", 1).toJson().toString(),
+                        new FormLayout.ResponsiveStep("24rem", 2).toJson().toString());
+        assertThat(form.getColumnSpacing()).isEqualTo("var(--em-section-gap)");
+        assertThat(form.getRowSpacing()).isEqualTo("var(--em-card-padding)");
+
+        assertThat(form.getColspan(comboBox("Expense type"))).isEqualTo(2);
+        assertThat(form.getColspan(bigDecimalField("Unit price"))).isEqualTo(1);
+        assertThat(form.getColspan(bigDecimalField("Quantity"))).isEqualTo(1);
+        assertThat(form.getColspan(comboBox("VAT rate"))).isEqualTo(1);
+        assertThat(form.getColspan(
+                findTextArea().withLabel("Comment").getComponent())).isEqualTo(2);
+        // The total row and the receipt block are grid children too, both full width.
+        assertThat(form.getColspan($(HorizontalLayout.class)
+                .withClassName("line-total-row").single())).isEqualTo(2);
+        assertThat(form.getColspan($(Upload.class).single().getParent().orElseThrow()))
+                .isEqualTo(2);
+    }
+
+    @Test
+    void lineEditorUsesTheDesignsFieldTypesAndCopy() {
+        // Delta items 4, 9, 10, 11 of #175, plus the component mapping: the frame
+        // hides the header close button, a third footer button and a checkbox.
+        navigate(ReportDetailView.class);
+        findButton().withAriaLabel("Add expense").click();
+
+        var comment = findTextArea().withLabel("Comment").getComponent();
+        assertThat(comment.getMinRows()).isEqualTo(2);
+        assertThat(comment.getMaxLength()).isEqualTo(500);
+
+        assertThat(bigDecimalField("Unit price").getHelperText()).isEqualTo("Gross, each");
+        assertThat(findDialog().getComponent().getElement().getTextRecursively())
+                .contains("Total").doesNotContain("Line total");
+
+        assertThat(findButton().withText("Save").inside(findDialog()).exists()).isTrue();
+        assertThat(findButton().withText("Save expense").exists()).isFalse();
+        assertThat(findCheckbox().inside(findDialog()).exists()).isFalse();
+    }
+
+    @Test
+    void lineEditorShowsNoReceiptStatusUntilOneIsAttached() {
+        // Delta item 12: the empty state carries no status text — the Upload control
+        // already says it, and the design draws none.
+        navigate(ReportDetailView.class);
+        findButton().withAriaLabel("Add expense").click();
+
+        assertThat(findDialog().getComponent().getElement().getTextRecursively())
+                .doesNotContain("No receipt attached");
+        assertThat(findButton().withText("Remove").exists()).isFalse();
+
+        findUpload().upload("taxi.jpg", "image/jpeg", jpegBytes());
+
+        assertThat(findDialog().getComponent().getElement().getTextRecursively())
+                .contains("taxi.jpg");
+        assertThat(findButton().withText("Remove").exists()).isTrue();
+    }
+
+    @Test
+    void lineEditorPutsTheUploadGlyphInTheDropLabelNotOnTheButton() {
+        // Delta item 13, and iconography.md's Lucide-only rule (#163): the drawn
+        // anatomy slots the glyph beside the drop label and leaves the button plain.
+        navigate(ReportDetailView.class);
+        findButton().withAriaLabel("Add expense").click();
+
+        var upload = $(Upload.class).single();
+        assertThat(((Button) upload.getUploadButton()).getText())
+                .isEqualTo("Upload receipt\u2026");
+        // Plain text: the label's Text node and nothing else — no icon slot.
+        assertThat(upload.getUploadButton().getChildren())
+                .noneMatch(SvgIcon.class::isInstance);
+        assertThat(upload.getDropLabelIcon()).isInstanceOf(SvgIcon.class);
+        assertThat(((SvgIcon) upload.getDropLabelIcon()).getSymbol())
+                .isEqualTo(LucideIcon.UPLOAD.glyph());
     }
 
     @Test
@@ -192,10 +288,10 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
                 .selectItem("Parking/supplies/goods");
         findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
-        findBigDecimalField().withLabel("Unit price (gross, each)")
+        findBigDecimalField().withLabel("Unit price")
                 .setValue(new BigDecimal("100"));
         findBigDecimalField().withLabel("Quantity").setValue(new BigDecimal("3"));
-        findButton().withText("Save expense").click();
+        saveExpense();
 
         // The card shows the qty × unit = gross breakdown and the live total bar
         // reflects the product, both before the report is saved.
@@ -230,11 +326,11 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
                 .selectItem("Parking/supplies/goods");
         findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
-        findBigDecimalField().withLabel("Unit price (gross, each)")
+        findBigDecimalField().withLabel("Unit price")
                 .setValue(new BigDecimal("100"));
         findBigDecimalField().withLabel("Quantity").setValue(BigDecimal.ZERO);
         // Always-enabled Save (ADR-0020): the click is allowed, the reason shows.
-        findButton().withText("Save expense").click();
+        saveExpense();
 
         assertThat(findDialog().getComponent().getElement().getTextRecursively())
                 .contains("Quantity must be greater than zero");
@@ -252,7 +348,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         assertThat(findBigDecimalField().withLabel("Quantity").getComponent().getValue())
                 .isEqualByComparingTo("1");
         findBigDecimalField().withLabel("Quantity").setValue(new BigDecimal("4"));
-        findButton().withText("Save expense").click();
+        saveExpense();
         findButton().withText("Save").click();
 
         var line = service.findMine(id).lines().getFirst();
@@ -269,10 +365,13 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findButton().withAriaLabel("Add expense").click();
         // Always-enabled Save (ADR-0020): clicking it with nothing filled must
         // not add a line — validation blocks it and the dialog stays open.
-        findButton().withText("Save expense").click();
+        saveExpense();
 
-        // Dialog is still open (validation blocked the save) …
-        assertThat(findButton().withText("Save expense").exists()).isTrue();
+        // Dialog is still open (validation blocked the save) and its Save is still
+        // enabled — never a disabled submit.
+        assertThat(findDialog().exists()).isTrue();
+        assertThat(findButton().withText("Save").inside(findDialog())
+                .getComponent().isEnabled()).isTrue();
         // … and no line was added: the empty state still shows, nothing persisted.
         assertThat(getCurrentView().getElement().getTextRecursively())
                 .contains("No expenses yet");
@@ -349,9 +448,9 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
                 .selectItem("Parking/supplies/goods");
         findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
-        findBigDecimalField().withLabel("Unit price (gross, each)")
+        findBigDecimalField().withLabel("Unit price")
                 .setValue(new BigDecimal("100"));
-        findButton().withText("Save expense").click();
+        saveExpense();
 
         findButton().withText("Submit for approval").click();
         findButton().withText("Submit report").click();
@@ -523,12 +622,12 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
                 .selectItem("Parking/supplies/goods");
         findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
-        findBigDecimalField().withLabel("Unit price (gross, each)")
+        findBigDecimalField().withLabel("Unit price")
                 .setValue(new BigDecimal("100"));
         // Drive the real UploadHandler: bytes are validated server-side by magic
         // bytes and buffered in memory (the browser mime is not trusted).
         findUpload().upload("taxi.jpg", "image/jpeg", jpegBytes());
-        findButton().withText("Save expense").click();
+        saveExpense();
 
         // The card reflects the buffered receipt before the report is even saved —
         // as an image thumbnail (its filename is the accessible name), matching how
@@ -555,12 +654,12 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
                 .selectItem("Parking/supplies/goods");
         findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
-        findBigDecimalField().withLabel("Unit price (gross, each)")
+        findBigDecimalField().withLabel("Unit price")
                 .setValue(new BigDecimal("100"));
         // A text file renamed to .jpg: magic-byte check rejects it at upload; the
         // control is never disabled, the reason is surfaced instead (ADR-0020).
         findUpload().upload("fake.jpg", "image/jpeg", "not an image".getBytes());
-        findButton().withText("Save expense").click();
+        saveExpense();
         findButton().withText("Save").click();
 
         // The line saved, but with no receipt — the rejected bytes were dropped.
@@ -622,7 +721,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
                 .selectItem("Parking/supplies/goods");
         findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
-        findBigDecimalField().withLabel("Unit price (gross, each)")
+        findBigDecimalField().withLabel("Unit price")
                 .setValue(new BigDecimal("100"));
         findUpload().upload("taxi.jpg", "image/jpeg", jpegBytes());
 
@@ -643,14 +742,14 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
                 .selectItem("Parking/supplies/goods");
         findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
-        findBigDecimalField().withLabel("Unit price (gross, each)")
+        findBigDecimalField().withLabel("Unit price")
                 .setValue(new BigDecimal("100"));
         findUpload().upload("taxi.jpg", "image/jpeg", jpegBytes());
-        findButton().withText("Save expense").click();
+        saveExpense();
 
         // Dialog is closed; the preview button now belongs to the line card, and it
         // renders before the report has ever been saved (no receipt id yet).
-        assertThat(findButton().withText("Save expense").exists()).isFalse();
+        assertThat(findDialog().exists()).isFalse();
         assertThat(findButton().withAriaLabel("Preview receipt: taxi.jpg").exists())
                 .isTrue();
         assertThat($(Image.class).exists()).isTrue();
@@ -2028,7 +2127,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         openLineCardEditor();
         findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
                 .selectItem("Accommodation");
-        findButton().withText("Save expense").click();
+        saveExpense();
 
         assertThat(triggerName($(RowActionMenu.class).single()))
                 .isEqualTo("Actions for Accommodation");
@@ -2124,9 +2223,9 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findComboBox(ExpenseTypeDto.class).withLabel("Expense type")
                 .selectItem(firstActiveType().name());
         findComboBox(VatRateDto.class).withLabel("VAT rate").selectItem("25.5 %");
-        findBigDecimalField().withLabel("Unit price (gross, each)")
+        findBigDecimalField().withLabel("Unit price")
                 .setValue(new BigDecimal(amount));
-        findButton().withText("Save expense").click();
+        saveExpense();
     }
 
     /** The .expense-row children of one section card, in order. */
@@ -2161,6 +2260,25 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
      */
     private void openLineCardEditor() {
         clickRowAction($(RowActionMenu.class).first(), "Edit");
+    }
+
+    /**
+     * Clicks the line editor's primary button. It reads {@code Save} as of the
+     * design's frame (358:3267), which is also the report's own save button, so it
+     * has to be located <em>inside</em> the dialog rather than by text alone.
+     */
+    private void saveExpense() {
+        findButton().withText("Save").inside(findDialog()).click();
+    }
+
+    /** The line editor's ComboBox with the given label. */
+    private ComboBox<?> comboBox(String label) {
+        return $(ComboBox.class).withLabel(label).single();
+    }
+
+    /** The line editor's BigDecimalField with the given label. */
+    private BigDecimalField bigDecimalField(String label) {
+        return findBigDecimalField().withLabel(label).getComponent();
     }
 
     /** The ⋮ trigger's accessible name, which must identify its row. */
