@@ -2902,3 +2902,40 @@ Deployment/Observability · UX-spec
   shape of silent failure and belong together. Worth raising with the Vaadin docs team:
   `VerticalLayout`'s `START` cross-axis default is fine, but nothing says it disables the
   commonest truncation recipe on the web.
+
+### F-081 — `FormLayout.setRowSpacing` is not a gap but a half-margin on every child, so a child that sets `margin: 0` silently halves the space around itself
+- Date: 2026-09-03
+- Area: Vaadin
+- Severity: Low
+- Task being attempted: issue #179's travel editor. The spec places two `Hr` rules as
+  colspan-2 rows of the `FormLayout` so that "the form's row gap supplies the 20px
+  clearance above and below; set none", and the ticket's proposed CSS wrote that intent
+  down literally as `.form-rule { …; margin: 0; }` — a reasonable reading of "no margin",
+  and one that also neutralises the UA's `hr { margin-block: 0.5em }`.
+- Expected vs actual: expected 20px between the purpose field and the rule, and 20px
+  between the rule and the `EXPENSES` eyebrow, since `setRowSpacing("var(--em-card-padding)")`
+  was set and reads like a grid `row-gap`. Actual, measured: **10px on both sides**.
+  Every other pair of neighbours measured 20.
+- Workaround used: delete the `margin: 0`. `FormLayout` implements row spacing as
+  `margin-block: calc(var(--vaadin-form-layout-row-spacing) / 2)` on every slotted
+  child — its own `#layout` is `display: flex` with `row-gap: normal` — so the 20 between
+  two fields is 10 + 10. A child that zeroes its own margin removes its half and sits 10
+  from *both* neighbours. Once the declaration goes, the slotted rule outranks the UA's
+  `hr` margin on its own, so the literal "set none" was right and the `margin: 0` was
+  the mistake.
+- Evidence: `getComputedStyle` on the form's children — every field `margin-top: 10px`
+  / `margin-bottom: 10px`, the `hr` `0px` / `0px`; `purpose.bottom = 316`, `hr.y = 326`,
+  `eyebrow.y = 337`. After the fix: 20 on both sides. `styles.css:.form-rule`.
+- Impact: the same shape as F-062 and F-072 — a valid declaration, no error, and a result
+  that is *plausible* rather than wrong, so a screenshot glance passes it. It only showed
+  because the survey had written the expected pixel arithmetic (249 → 269 → 289) into the
+  spec, which gave the browser probe a number to disagree with. Any component with a
+  margin reset in a shared class (`Hr`, a `Div` with a card class, a `Span` styled for a
+  heading) will do this inside every `FormLayout` that holds it.
+- Suggested Vaadin/product improvement: the Javadoc of `setRowSpacing` says "the row
+  spacing" and nothing about the mechanism. One sentence — "applied as half the value as
+  block margin on each child, so a child's own margin declaration replaces its share" —
+  is the whole fix. `row-gap` on the layout, which the auto-responsive mode may already
+  use, would make the question go away.
+- Owner / next step: fixed in #179; recorded in `docs/vaadin-gotchas.md` so the next
+  rule or heading dropped into a `FormLayout` does not re-learn it.

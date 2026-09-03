@@ -20,6 +20,7 @@ import com.vaadin.expensemanager.report.domain.GeneratedLineKind;
 import com.vaadin.expensemanager.report.domain.QuantityOverride;
 import com.vaadin.expensemanager.report.service.GeneratedLineView;
 import com.vaadin.expensemanager.report.service.TravelDto;
+import com.vaadin.expensemanager.report.ui.TravelFormModel.DailyAllowance;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.checkbox.Checkbox;
@@ -29,8 +30,13 @@ import com.vaadin.flow.component.datetimepicker.DateTimePicker.DateTimePickerI18
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.html.Div;
+import com.vaadin.flow.component.html.Hr;
 import com.vaadin.flow.component.html.Paragraph;
 import com.vaadin.flow.component.html.Span;
+import com.vaadin.flow.component.orderedlayout.FlexComponent;
+import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
+import com.vaadin.flow.component.orderedlayout.VerticalLayout;
+import com.vaadin.flow.component.radiobutton.RadioButtonGroup;
 import com.vaadin.flow.component.textfield.BigDecimalField;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.data.binder.Binder;
@@ -40,13 +46,21 @@ import static com.vaadin.expensemanager.report.ui.ReportViewSupport.generatedLin
 
 /**
  * The focused modal editor for one trip (glossary: Travel Calculator, Phase
- * 4.2/4.3) — the "Insert travel info" dialog.
+ * 4.2/4.3) — the "Add travel info" / "Edit travel info" dialog, built to
+ * {@code docs/design/components/travel-editor-dialog.md} (frame {@code 253:10597}).
  *
- * <p>Collects the <strong>domestic</strong> subset of trip inputs (departure /
- * return date & time, destinations, purpose, and the not-eligible / free-lunch /
- * charge-to-customer flags), then previews the Finnish domestic per-diem the app
- * computes server-side on <em>Continue</em> and commits the trip on <em>Save</em>.
+ * <p>Collects the trip inputs in two sections of one two-column grid —
+ * <em>Destinations</em> (departure / return date & time, destination country,
+ * destinations, purpose) and <em>Expenses</em> (charge-to-customer, kilometres,
+ * parking, the daily-allowance choice and the meal-allowance flag) — then draws the
+ * allowance lines the trip earns as rows of the form ending in {@code Trip total},
+ * recomputed server-side on every change, and commits the trip on <em>Save</em>.
  * The client sends only inputs — the money is always the server's (ADR-0006).
+ *
+ * <p>Eligibility is <strong>one</strong> choice with three answers: the
+ * {@code Daily allowance} radio group binds to {@link TravelFormModel#getDailyAllowance()},
+ * which maps onto the two domain flags — so {@code TravelDto} and the service are
+ * untouched by the form's shape.
  *
  * <p>Validation follows the project rule (ADR-0020): both actions stay
  * <strong>always enabled</strong>; a missing field or invalid trip (a domain rule —
@@ -88,7 +102,14 @@ final class TravelEditorDialog extends Dialog {
     private final Binder<TravelFormModel> binder = new Binder<>();
     private final TravelFormModel model = new TravelFormModel();
     private final ErrorSummary errorSummary = new ErrorSummary();
-    private final Div preview = new Div();
+
+    /**
+     * The earned-lines block, a colspan-2 row of the form — transparent rows of the
+     * grid rather than a box (travel-editor-dialog.md § The totals block). The rule
+     * above it is {@link #totalsRule}, shown and hidden with it.
+     */
+    private final Div tripTotals = new Div();
+    private final Hr totalsRule = formRule();
 
     private final TravelDto existing;
     private final UnaryOperator<TravelDto> costPreview;
@@ -108,9 +129,10 @@ final class TravelEditorDialog extends Dialog {
             Consumer<TravelDto> onSave) {
         this.existing = existing;
         this.costPreview = costPreview;
-        setHeaderTitle(existing == null ? "Insert travel info" : "Edit trip");
-        setWidth("32rem");
-        addClassName("travel-dialog");
+        // The add state is undrawn; the noun is the design's (#179 delta 11).
+        setHeaderTitle(existing == null ? "Add travel info" : "Edit travel info");
+        // 560 — the design's 556 rounded to the whole rem the line editor set.
+        setWidth("35rem");
 
         var departure = new DateTimePicker("Departure");
         departure.setStep(TRIP_STEP);
@@ -164,10 +186,15 @@ final class TravelEditorDialog extends Dialog {
         var purpose = new TextField("Travel purpose");
         purpose.setRequiredIndicatorVisible(true);
 
-        var notEligible = new Checkbox("Trip not eligible for daily allowance");
-        var freeLunch = new Checkbox("Free lunch provided?");
-        freeLunch.setHelperText(
-                "Halves the daily allowance — applies only when the trip earns one.");
+        // One choice with three answers, in place of the "not eligible" and "free
+        // lunch" checkboxes (travel-editor-dialog.md § Eligibility): the two flags
+        // are mutually exclusive (issue #93), and a radio group cannot be un-picked,
+        // so the default (eligible, no free lunch) has to be an option of its own.
+        // Vertical — Aura's default; three ~250px labels do not fit the row. The
+        // group label the frame omits is the accessibility floor.
+        var dailyAllowance = new RadioButtonGroup<DailyAllowance>("Daily allowance");
+        dailyAllowance.setItems(DailyAllowance.values());
+        dailyAllowance.setItemLabelGenerator(DailyAllowance::label);
         var chargeToCustomer = new Checkbox("Charge expenses from customer?");
 
         var kilometres = new BigDecimalField("Kilometre allowance (km)");
@@ -179,8 +206,8 @@ final class TravelEditorDialog extends Dialog {
         var parkingFees = new BigDecimalField("Parking fees (€)");
         parkingFees.setPlaceholder("e.g. 12.00");
 
-        preview.addClassName("travel-preview");
-        preview.setVisible(false);
+        tripTotals.addClassName("trip-totals");
+        setTotalsVisible(false);
 
         // The per-diem depends only on the two dates and the eligibility/free-lunch
         // flags, so preview it live as the user fills those in — no separate
@@ -190,9 +217,8 @@ final class TravelEditorDialog extends Dialog {
         // trip previews immediately on open.
         Runnable recompute = () -> refreshPreview(departure.getValue(),
                 returnAt.getValue(), country.getValue(), destinations.getValue(),
-                purpose.getValue(), notEligible.getValue(), freeLunch.getValue(),
-                chargeToCustomer.getValue(), kilometres.getValue(), payMeal.getValue(),
-                parkingFees.getValue());
+                purpose.getValue(), chosen(dailyAllowance), chargeToCustomer.getValue(),
+                kilometres.getValue(), payMeal.getValue(), parkingFees.getValue());
         // The available countries depend on the departure year, so refresh them
         // first, then recompute the preview (which reads the country).
         departure.addValueChangeListener(event -> {
@@ -202,29 +228,22 @@ final class TravelEditorDialog extends Dialog {
         returnAt.addValueChangeListener(event -> recompute.run());
         country.addValueChangeListener(event -> recompute.run());
         // Domain coupling (issue #93): a meal allowance (ateriakorvaus) is paid
-        // only when no per-diem applies, and the free-meal reduction exists only to
-        // halve a per-diem — so "Pay meal allowance" and "Free lunch" sit in
-        // mutually exclusive worlds either side of the eligibility flag (invariants
-        // payMeal ⟹ not-eligible, freeLunch ⟹ eligible). The checkboxes stay
-        // enabled (ADR-0020, no disabled inputs); clicking one auto-corrects the
-        // others. setValue is a no-op when unchanged, so these cascades converge.
-        notEligible.addValueChangeListener(event -> {
-            if (event.getValue()) {
-                freeLunch.setValue(false);   // no per-diem left to halve
-            } else {
+        // only when no per-diem applies — so "Pay meal allowance" and an eligible
+        // daily-allowance option sit in mutually exclusive worlds (invariant
+        // payMeal ⟹ not eligible). The free-lunch half of the old cascade is now
+        // structural: it is an option of the same radio group as "not eligible".
+        // Nothing is ever disabled (ADR-0020); picking one control auto-corrects the
+        // other. setValue is a no-op when unchanged, so the cascade converges.
+        dailyAllowance.addValueChangeListener(event -> {
+            if (event.getValue() != null && !event.getValue().notEligibleForAllowance()) {
                 payMeal.setValue(false);     // per-diem applies → no meal allowance
-            }
-            recompute.run();
-        });
-        freeLunch.addValueChangeListener(event -> {
-            if (event.getValue()) {
-                notEligible.setValue(false); // a free meal only halves a per-diem
             }
             recompute.run();
         });
         payMeal.addValueChangeListener(event -> {
             if (event.getValue()) {
-                notEligible.setValue(true);  // meal allowance only when no per-diem
+                // meal allowance only when no per-diem
+                dailyAllowance.setValue(DailyAllowance.NOT_ELIGIBLE);
             }
             recompute.run();
         });
@@ -246,10 +265,8 @@ final class TravelEditorDialog extends Dialog {
         binder.forField(purpose)
                 .asRequired("Travel purpose is required")
                 .bind(TravelFormModel::getPurpose, TravelFormModel::setPurpose);
-        binder.forField(notEligible).bind(TravelFormModel::isNotEligibleForAllowance,
-                TravelFormModel::setNotEligibleForAllowance);
-        binder.forField(freeLunch).bind(TravelFormModel::isFreeLunch,
-                TravelFormModel::setFreeLunch);
+        binder.forField(dailyAllowance).bind(TravelFormModel::getDailyAllowance,
+                TravelFormModel::setDailyAllowance);
         binder.forField(chargeToCustomer).bind(TravelFormModel::isChargeToCustomer,
                 TravelFormModel::setChargeToCustomer);
         binder.forField(kilometres).bind(TravelFormModel::getKilometres,
@@ -277,21 +294,36 @@ final class TravelEditorDialog extends Dialog {
         refreshCountries.run();
         binder.readBean(model);
 
-        var form = new FormLayout(departure, returnAt, country, destinations, purpose,
-                kilometres, parkingFees, notEligible, freeLunch, payMeal,
-                chargeToCustomer);
+        // The design's two-section grid (travel-editor-dialog.md § Layout): the same
+        // two-column grid and the same two gaps the line editor settled, so the two
+        // dialogs share one rhythm. The one-column step below 24rem is the app's —
+        // the frame draws no small-screen state, and two 242px fields do not
+        // survive a phone (ADR-0020). Eyebrows, rules and the totals are rows OF the
+        // grid, so its 20px row gap supplies every clearance the frame draws and
+        // none of them carries a margin.
+        var form = new FormLayout();
         form.setResponsiveSteps(new FormLayout.ResponsiveStep("0", 1),
                 new FormLayout.ResponsiveStep("24rem", 2));
-        form.setColspan(country, 2);
-        form.setColspan(destinations, 2);
-        form.setColspan(purpose, 2);
-        form.setColspan(notEligible, 2);
-        form.setColspan(freeLunch, 2);
-        form.setColspan(payMeal, 2);
-        form.setColspan(chargeToCustomer, 2);
-        add(errorSummary, form, preview);
+        form.setColumnSpacing("var(--em-section-gap)");
+        form.setRowSpacing("var(--em-card-padding)");
+        form.add(sectionLabel("Destinations"), 2);
+        form.add(departure, 1);
+        form.add(returnAt, 1);
+        form.add(country, 1);
+        form.add(destinations, 1);
+        form.add(purpose, 2);
+        form.add(formRule(), 2);
+        form.add(sectionLabel("Expenses"), 2);
+        form.add(chargeToCustomer, 2);
+        form.add(kilometres, 1);
+        form.add(parkingFees, 1);
+        form.add(dailyAllowance, 2);
+        form.add(payMeal, 2);
+        form.add(totalsRule, 2);
+        form.add(tripTotals, 2);
+        add(errorSummary, form);
 
-        var save = new Button("Save trip", event -> onSave(onSave));
+        var save = new Button("Save", event -> onSave(onSave));
         save.addThemeVariants(ButtonVariant.PRIMARY);
         var cancel = new Button("Cancel", event -> close());
         getFooter().add(cancel, save);
@@ -306,7 +338,7 @@ final class TravelEditorDialog extends Dialog {
     private void onSave(Consumer<TravelDto> onSave) {
         errorSummary.clear();
         if (!binder.writeBeanIfValid(model)) {
-            preview.setVisible(false);
+            setTotalsVisible(false);
             errorSummary.showValidationErrors(binder.validate());
             return;
         }
@@ -331,7 +363,7 @@ final class TravelEditorDialog extends Dialog {
             // An invalid trip (a domain rule — e.g. return before departure) lands in
             // the summary. A technical failure (e.g. no rate configured for the year)
             // propagates to the global UiErrorHandler as the generic dialog (issue #86).
-            preview.setVisible(false);
+            setTotalsVisible(false);
             errorSummary.show(ex.getMessage());
         }
     }
@@ -357,21 +389,30 @@ final class TravelEditorDialog extends Dialog {
      * range is invalid (Save surfaces any reason).
      */
     private void refreshPreview(LocalDateTime departure, LocalDateTime returnAt,
-            String country, String destinations, String purpose, boolean notEligible,
-            boolean freeLunch, boolean chargeToCustomer, BigDecimal kilometres,
-            boolean payMeal, BigDecimal parkingFees) {
+            String country, String destinations, String purpose,
+            DailyAllowance dailyAllowance, boolean chargeToCustomer,
+            BigDecimal kilometres, boolean payMeal, BigDecimal parkingFees) {
         if (departure == null || returnAt == null || country == null) {
-            preview.setVisible(false);
+            setTotalsVisible(false);
             return;
         }
         var input = TravelDto.of(existing == null ? null : existing.id(), departure,
-                returnAt, destinations, purpose, country, notEligible, freeLunch,
+                returnAt, destinations, purpose, country,
+                dailyAllowance.notEligibleForAllowance(), dailyAllowance.freeLunch(),
                 chargeToCustomer, kilometres, payMeal, parkingFees);
         try {
-            renderPreview(costPreview.apply(input));
+            renderTotals(costPreview.apply(input));
         } catch (IllegalArgumentException | IllegalStateException invalid) {
-            preview.setVisible(false);
+            setTotalsVisible(false);
         }
+    }
+
+    /**
+     * The radio group's value, defaulting to the full allowance — a group whose value
+     * the binder has not yet read is the untouched default, not "no answer".
+     */
+    private static DailyAllowance chosen(RadioButtonGroup<DailyAllowance> group) {
+        return group.getValue() == null ? DailyAllowance.FULL : group.getValue();
     }
 
     /**
@@ -390,57 +431,150 @@ final class TravelEditorDialog extends Dialog {
     }
 
     /**
-     * Shows the <em>calculated</em> trip outputs below the form: one line per non-zero
-     * allowance/expense (per-diem, kilometre, meal, parking) with its breakdown, plus
-     * a grand-total heading — or a "no allowances" note when the trip earns nothing
-     * (Phase 4.3). A kind carrying a Quantity Override gets an extra note saying so,
-     * so the user is not confused by the preview and the report showing different
-     * numbers (ADR-0024).
+     * Draws the <em>calculated</em> trip outputs as rows of the form: one row per
+     * non-zero allowance/expense (per-diem, kilometre, meal, parking) — label left,
+     * amount right, the breakdown ("120 km × €0.550/km") right-aligned under the
+     * amount — ending in the {@code Trip total} row; or the "no allowances" line in
+     * their place when the trip earns nothing (Phase 4.3). The rows are transparent,
+     * 20px apart with a rule between them, and reuse the totals card's text classes
+     * (travel-editor-dialog.md § The totals block, totals-card.md).
+     *
+     * <p>A kind carrying a Quantity Override gets a note saying so, so the user is not
+     * confused by this block and the report showing different numbers (ADR-0024).
      */
-    private void renderPreview(TravelDto trip) {
-        preview.removeAll();
+    private void renderTotals(TravelDto trip) {
+        tripTotals.removeAll();
         BigDecimal total = trip.generatedLines().stream()
                 .map(GeneratedLineView::amount)
                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
 
-        var heading = new Span(total.signum() == 0
-                ? "No allowances for this trip"
-                : "Trip total: " + formatEur(total));
-        heading.addClassName("travel-preview-amount");
-        preview.add(heading);
-
-        trip.generatedLines().forEach(line -> {
-            addPreviewLine(generatedLineLabel(line.kind()), line.amount(),
-                    line.comment());
-            overrideNote(line.kind()).ifPresent(this::addPreviewNote);
-        });
-        // An override on a kind the trip earns nothing for has no preview line to
-        // annotate, so it gets its own note — otherwise a suppressed line would
-        // vanish from the dialog without explanation.
+        trip.generatedLines().forEach(line -> tripTotals.add(totalsRow(
+                generatedLineLabel(line.kind()), line.amount(),
+                notesFor(line.kind(), line.amount(), line.comment()))));
+        // An override on a kind the trip earns nothing for has no row to annotate,
+        // so it gets its own note — otherwise a suppressed line would vanish from
+        // the dialog without explanation.
         existingOverrides().keySet().stream()
                 .filter(kind -> trip.generatedLine(kind).isEmpty())
                 .sorted()
                 .forEach(kind -> overrideNote(kind).ifPresent(note ->
-                        addPreviewNote(generatedLineLabel(kind) + " — " + note)));
-        preview.setVisible(true);
-    }
+                        tripTotals.add(note(generatedLineLabel(kind) + " — " + note))));
 
-    /** Adds one "label — amount / explanation" preview line. */
-    private void addPreviewLine(String label, BigDecimal amount, String explanation) {
-        var line = new Span(label + ": " + formatEur(amount));
-        line.addClassName("travel-preview-line");
-        preview.add(line);
-        if (explanation != null) {
-            addPreviewNote(explanation);
+        if (total.signum() == 0) {
+            var none = new Span("No allowances for this trip");
+            none.addClassName("totals-row-label");
+            tripTotals.add(none);
+        } else {
+            tripTotals.add(tripTotalRow(total));
         }
+        setTotalsVisible(true);
     }
 
-    /** Adds one muted note under the preview line above it. */
-    private void addPreviewNote(String text) {
+    /** The block and the rule above it show and hide together. */
+    private void setTotalsVisible(boolean visible) {
+        totalsRule.setVisible(visible);
+        tripTotals.setVisible(visible);
+    }
+
+    /** The line's breakdown, then the override note if one stands. */
+    private List<String> notesFor(GeneratedLineKind kind, BigDecimal amount,
+            String explanation) {
+        var notes = new ArrayList<String>();
+        breakdown(generatedLineLabel(kind), amount, explanation).ifPresent(notes::add);
+        overrideNote(kind).ifPresent(notes::add);
+        return notes;
+    }
+
+    /**
+     * The generated line's explanation as the row's <em>breakdown</em> — the frame's
+     * {@code 120 km × €0.550/km} under {@code €66.00}. The service composes the
+     * string for a persisted row that must be self-describing on its own
+     * ({@code "Kilometre allowance: 120 km × €0.550/km = €66.00"}, ADR-0024); here
+     * the label sits at the row's start and the amount at its end, so what they
+     * already say is trimmed, and an explanation that only restates the amount
+     * ({@code "Meal allowance: €13.50"}) is dropped — the frame draws none there. A
+     * prefix that adds something ({@code Foreign per-diem (Germany)}) stays.
+     */
+    private static Optional<String> breakdown(String label, BigDecimal amount,
+            String explanation) {
+        if (explanation == null) {
+            return Optional.empty();
+        }
+        String eur = formatEur(amount);
+        String text = explanation.strip();
+        if (text.endsWith(" = " + eur)) {
+            text = text.substring(0, text.length() - (" = " + eur).length());
+        }
+        int colon = text.indexOf(": ");
+        String figures = colon < 0 ? text : text.substring(colon + 2);
+        if (figures.isBlank() || figures.equals(eur)) {
+            return Optional.empty();
+        }
+        if (text.startsWith(label + ": ")) {
+            text = text.substring(label.length() + 2);
+        }
+        return Optional.of(text);
+    }
+
+    /**
+     * One earned-line row: the label (secondary) at the start, and at the end the
+     * amount with its notes right-aligned beneath it — the same label/value classes
+     * the report's totals card uses, so a figure reads the same in both places.
+     */
+    private static HorizontalLayout totalsRow(String label, BigDecimal amount,
+            List<String> notes) {
+        var name = new Span(label);
+        name.addClassName("totals-row-label");
+        var value = new Span(formatEur(amount));
+        value.addClassName("totals-row-value");
+
+        var figures = new VerticalLayout(value);
+        figures.setPadding(false);
+        figures.setSpacing(false);
+        figures.setWidth("auto");
+        figures.setAlignItems(FlexComponent.Alignment.END);
+        notes.forEach(text -> figures.add(note(text)));
+
+        var row = new HorizontalLayout(name, figures);
+        row.setWidthFull();
+        row.setPadding(false);
+        row.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
+        return row;
+    }
+
+    /** The last row — the total the trip earns, in the totals card's grand figure. */
+    private static HorizontalLayout tripTotalRow(BigDecimal total) {
+        var label = new Span("Trip total");
+        label.addClassName("totals-total-row");
+        var value = new Span(formatEur(total));
+        value.addClassName("totals-grand");
+        var row = new HorizontalLayout(label, value);
+        row.setWidthFull();
+        row.setPadding(false);
+        row.setAlignItems(FlexComponent.Alignment.BASELINE);
+        row.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
+        return row;
+    }
+
+    /** One muted note — a breakdown or an override explanation. */
+    private static Span note(String text) {
         var detail = new Span(text);
         detail.addClassName("muted");
-        detail.addClassName("muted-xs");
-        preview.add(detail);
+        return detail;
+    }
+
+    /** A section eyebrow — uppercased in CSS, never in the string (screen readers spell it). */
+    private static Span sectionLabel(String text) {
+        var label = new Span(text);
+        label.addClassName("section-label");
+        return label;
+    }
+
+    /** A hairline rule between the form's sections; the grid's row gap spaces it. */
+    private static Hr formRule() {
+        var rule = new Hr();
+        rule.addClassName("form-rule");
+        return rule;
     }
 
     /**

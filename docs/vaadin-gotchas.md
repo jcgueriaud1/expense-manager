@@ -62,3 +62,16 @@ it opens is invisible to a locator, while being perfectly reachable from Java
 
 Assert through the component's own API, or move the guarantee into a model you can test
 directly — and say out loud which half then rests on visual verification. See F-071.
+
+## FormLayout's row spacing is a half-margin on every child, not a gap
+
+`setRowSpacing("20px")` does not set a grid `row-gap`. The layout's own `#layout` is a
+flex container with `row-gap: normal`, and the spacing is applied as
+`margin-block: calc(var(--vaadin-form-layout-row-spacing) / 2)` on **every slotted
+child** — two neighbours add up to the 20.
+
+So a child whose own class declares `margin: 0` (an `Hr` rule, a `Div` carrying a card
+class, a heading `Span`) removes its half and sits **10** from both neighbours, with no
+error and a result plausible enough to pass a glance. Measured on the travel editor's
+section rules (F-081). Do not reset margins on a `FormLayout` child; the slotted rule
+already outranks the UA's `hr { margin-block: 0.5em }`, so "set none" means write nothing.

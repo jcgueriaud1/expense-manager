@@ -17,6 +17,7 @@ import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.VatRateDto;
 import com.vaadin.expensemanager.user.LocalUserSeeder;
 import com.vaadin.flow.component.Component;
+import com.vaadin.flow.component.HasLabel;
 import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.checkbox.Checkbox;
@@ -28,11 +29,13 @@ import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.html.Anchor;
 import com.vaadin.flow.component.html.Div;
+import com.vaadin.flow.component.html.Hr;
 import com.vaadin.flow.component.html.Image;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.icon.SvgIcon;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
+import com.vaadin.flow.component.radiobutton.RadioButtonGroupLocator;
 import com.vaadin.flow.component.textfield.BigDecimalField;
 import com.vaadin.flow.component.textfield.IntegerField;
 import com.vaadin.flow.component.upload.Upload;
@@ -783,9 +786,9 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         // step (11 h → one full day €54). The preview lives in the dialog overlay
         // (attached to the UI, not the view), so assert against the whole UI tree.
         assertThat(UI.getCurrent().getElement().getTextRecursively())
-                .contains("Per diem allowance (full day): €54.00");
+                .contains("Per diem allowance (full day)", "€54.00", "Trip total");
 
-        findButton().withText("Save trip").click();
+        saveTrip();
 
         // The trip card + the live "Per diem allowance" subtotal row appear before
         // the report is even saved.
@@ -820,9 +823,9 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
 
         // Costed against Germany's €71.00/day, not the Finnish €54.00.
         assertThat(UI.getCurrent().getElement().getTextRecursively())
-                .contains("Per diem allowance (full day): €71.00", "Germany");
+                .contains("Per diem allowance (full day)", "€71.00", "Germany");
 
-        findButton().withText("Save trip").click();
+        saveTrip();
         // The chosen country shows on the Trip & Allowance card ("destinations, country").
         assertThat(getCurrentView().getElement().getTextRecursively())
                 .contains("Berlin, Germany", "€71.00");
@@ -844,11 +847,11 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         findTextField().withLabel("Destinations").setValue("Helsinki");
         findTextField().withLabel("Travel purpose").setValue("Client visit");
         // Country left unchosen: Save surfaces a clear message and generates nothing.
-        findButton().withText("Save trip").click();
+        saveTrip();
 
         assertThat(UI.getCurrent().getElement().getTextRecursively())
                 .contains("Destination country is required");
-        assertThat(findButton().withText("Save trip").exists()).isTrue();
+        assertThat(findButton().withText("Save").inside(findDialog()).exists()).isTrue();
         assertThat(findSpan().withText("Per diem allowance").exists()).isFalse();
     }
 
@@ -875,11 +878,11 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         // The remaining outputs preview live in the dialog (120 km × €0.55 = €66.00,
         // etc.); no per-diem, since the trip is now not eligible for one.
         var previewText = UI.getCurrent().getElement().getTextRecursively();
-        assertThat(previewText).contains("Kilometre allowance: €66.00",
-                "Meal allowance: €13.50", "Parking: €12.00");
+        assertThat(previewText).contains("Kilometre allowance", "€66.00",
+                "Meal allowance", "€13.50", "Parking", "€12.00");
         assertThat(previewText).doesNotContain("Per diem allowance");
 
-        findButton().withText("Save trip").click();
+        saveTrip();
 
         // The two new tax-free subtotal rows are visible; parking is not a subtotal.
         assertThat(findSpan().withText("Kilometre allowance").exists()).isTrue();
@@ -931,7 +934,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         clickRowAction(TRIP, "Edit");
         findBigDecimalField().withLabel("Kilometre allowance (km)")
                 .setValue(new BigDecimal("120"));
-        findButton().withText("Save trip").click();
+        saveTrip();
 
         var shown = getCurrentView().getElement().getTextRecursively();
         assertThat(shown).contains("120 × €0.55 = €66.00")
@@ -993,8 +996,8 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         navigate(ReportDetailView.class, id);
 
         clickRowAction(TRIP, "Edit");                    // the trip row's menu
-        findCheckbox().withLabel("Free lunch provided?").click();
-        findButton().withText("Save trip").click();
+        dailyAllowance().selectItem("Halved, free lunch provided");
+        saveTrip();
 
         // Live per-diem halves to €27.00; a save regenerates the line.
         assertThat(getCurrentView().getElement().getTextRecursively()).contains("€27.00");
@@ -1048,7 +1051,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         // disappears, the full-day one stays, and the subtotal follows live.
         clickRowAction(TRIP, "Edit");
         findDateTimePicker().withLabel("Return").setValue(DEP.plusHours(24));
-        findButton().withText("Save trip").click();
+        saveTrip();
 
         var shown = getCurrentView().getElement().getTextRecursively();
         assertThat(shown).contains("Per diem allowance (full day)")
@@ -1493,7 +1496,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
 
         // A full retreat: the trip editor is still open on the user's edit, and behind
         // it the trip and its override are untouched (1 × €54.00 + €25.00 = €79.00).
-        assertThat(findButton().withText("Save trip").exists()).isTrue();
+        assertThat(findButton().withText("Save").inside(findDialog()).exists()).isTrue();
         var shown = getCurrentView().getElement().getTextRecursively();
         assertThat(shown).contains("Overridden",
                 "Reason: the Wednesday was personal", "€79.00");
@@ -1515,7 +1518,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         clickRowAction(TRIP, "Edit");
         findTextField().withLabel("Travel purpose").setValue("Client visit (Acme)");
         findTextField().withLabel("Destinations").setValue("Helsinki, Espoo");
-        findButton().withText("Save trip").click();
+        saveTrip();
 
         // Nothing the calculation can see changed, so nothing is asked and nothing lost.
         assertThat(findButton().withText("Clear and save trip").exists()).isFalse();
@@ -1588,7 +1591,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         // eligible, so the per-diem count is 0 either side and its override stands.
         clickRowAction(TRIP, "Edit");
         findCheckbox().withLabel("Pay meal allowance?").click();
-        findButton().withText("Save trip").click();
+        saveTrip();
 
         assertThat(dialogText(clearingConfirm()))
                 .contains("Meal allowance: calculated 1 → 0 meals.")
@@ -1660,7 +1663,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         clickRowAction(TRIP, "Edit");
 
         assertThat(tripPreviewText()).contains(
-                "Per diem allowance (full day): €108.00",
+                "Per diem allowance (full day)", "€108.00",
                 "Overridden: 1 day on the report (the Wednesday was personal)");
         // The report row behind still shows the effective figure — the two disagree by
         // design, which is exactly why the preview line is annotated.
@@ -1679,7 +1682,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         // The calculated preview still lists the partial day (the rules award it), and
         // the note says the report does not.
         assertThat(tripPreviewText()).contains(
-                "Per diem allowance (partial day): €25.00",
+                "Per diem allowance (partial day)", "€25.00",
                 "Overridden: no line on the report (the leftover was personal)");
     }
 
@@ -1708,7 +1711,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
 
     /** The trip editor's live allowance preview, as text. */
     private String tripPreviewText() {
-        return dialogText(openDialogSaying("Trip total:"));
+        return dialogText(openDialogSaying("Trip total"));
     }
 
     /**
@@ -1734,7 +1737,7 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
     private void editTripReturn(LocalDateTime returnAt) {
         clickRowAction(TRIP, "Edit");
         findDateTimePicker().withLabel("Return").setValue(returnAt);
-        findButton().withText("Save trip").click();
+        saveTrip();
     }
 
     /**
@@ -1759,74 +1762,253 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
                 zero, zero, zero, zero));
     }
 
-    // --- Meal-allowance / eligibility checkbox coupling (issue #93) ---
+    // --- Daily allowance: one radio group, three answers (issue #93, #179) ---
     //
-    // A meal allowance is paid only when no per-diem applies, and the free-meal
-    // reduction only halves a per-diem — so "Pay meal allowance", "Free lunch" and
-    // "not eligible" must stay consistent: payMeal ⟹ not-eligible, freeLunch ⟹
-    // eligible. The dialog auto-corrects the checkboxes to hold that invariant.
+    // The "not eligible" and "free lunch" checkboxes are one RadioButtonGroup now —
+    // travel-editor-dialog.md § Eligibility — bound in the form layer to the same two
+    // booleans the checkboxes wrote, so the saved trip is what it always was. A meal
+    // allowance is still paid only when no per-diem applies, so "Pay meal allowance"
+    // and the group keep their cascade (payMeal ⟹ Not eligible); nothing is disabled.
 
     @Test
-    void checkingPayMealAllowanceMarksTheTripNotEligibleAndClearsFreeLunch() {
+    void theDailyAllowanceGroupOpensOnFullByDefaultAndSavesBothFlagsFalse() {
         navigate(ReportDetailView.class);
         findButton().withAriaLabel("Add travel").click();
-        // Start eligible, with a free lunch selected.
-        findCheckbox().withLabel("Free lunch provided?").click();
-        assertThat(checkboxValue("Free lunch provided?")).isTrue();
 
-        findCheckbox().withLabel("Pay meal allowance?").click();
+        var group = dailyAllowance();
+        assertThat(group.getComponent().getLabel()).isEqualTo("Daily allowance");
+        assertThat(group.getSelected()).isEqualTo(TravelFormModel.DailyAllowance.FULL);
+        assertThat(group.getComponent().getListDataView().getItems()
+                .map(TravelFormModel.DailyAllowance::label))
+                .containsExactly("Full daily allowance", "Halved, free lunch provided",
+                        "Not eligible");
+        // Vertical is Aura's default; the horizontal variant the frame draws is not set.
+        assertThat(group.getComponent().getThemeNames()).isEmpty();
+        // The two checkboxes it replaces are gone; the two that stay are these.
+        assertThat(findCheckbox().inside(findDialog()).components())
+                .extracting(Checkbox::getLabel)
+                .containsExactly("Charge expenses from customer?", "Pay meal allowance?");
 
-        // Meal allowance needs "no per-diem": not-eligible is auto-checked and the
-        // now-meaningless free lunch is cleared.
+        fillMinimalTrip();
+        saveTrip();
+        findButton().withText("Save").click();
+
+        var trip = service.findMine(service.listMine().getFirst().id()).travels().getFirst();
+        assertThat(trip.notEligibleForAllowance()).isFalse();
+        assertThat(trip.freeLunch()).isFalse();
+    }
+
+    @Test
+    void choosingHalvedSavesEligibleWithAFreeLunch() {
+        navigate(ReportDetailView.class);
+        findButton().withAriaLabel("Add travel").click();
+        fillMinimalTrip();
+
+        dailyAllowance().selectItem("Halved, free lunch provided");
+        // The per-diem previews halved: €54 → €27.
+        assertThat(tripPreviewText()).contains("€27.00");
+        saveTrip();
+        findButton().withText("Save").click();
+
+        var trip = service.findMine(service.listMine().getFirst().id()).travels().getFirst();
+        assertThat(trip.notEligibleForAllowance()).isFalse();
+        assertThat(trip.freeLunch()).isTrue();
+    }
+
+    @Test
+    void choosingNotEligibleSavesNotEligibleWithoutAFreeLunch() {
+        navigate(ReportDetailView.class);
+        findButton().withAriaLabel("Add travel").click();
+        fillMinimalTrip();
+
+        dailyAllowance().selectItem("Not eligible");
+        // Nothing earned: the no-allowances line stands in for the rows, and there is
+        // no Trip total row to end on.
+        assertThat(dialogText(openDialogSaying("No allowances for this trip")))
+                .doesNotContain("Per diem allowance", "Trip total");
+        saveTrip();
+        findButton().withText("Save").click();
+
+        var trip = service.findMine(service.listMine().getFirst().id()).travels().getFirst();
+        assertThat(trip.notEligibleForAllowance()).isTrue();
+        assertThat(trip.freeLunch()).isFalse();
+    }
+
+    @Test
+    void editingATripReadsItsFlagsBackIntoTheGroup() {
+        // freeLunch=true → Halved; notEligible=true → Not eligible — the mapping read
+        // in the other direction, so an edit opens on what was saved.
+        var zero = BigDecimal.ZERO.setScale(2);
+        var halved = TravelDto.domestic(null, DEP, DEP.plusHours(11), "Helsinki",
+                "Client visit", false, true, false, zero, false, zero);
+        var id = service.create(new ReportDetailDto(null, LocalDate.of(2026, 7, 10),
+                "seed", ReportStatus.DRAFT, 0L, List.of(), List.of(halved), zero, zero,
+                zero, zero, zero, zero));
+        navigate(ReportDetailView.class, id);
+        clickRowAction(TRIP, "Edit");
+        assertThat(dailyAllowance().getSelected())
+                .isEqualTo(TravelFormModel.DailyAllowance.HALVED);
+        findButton().withText("Cancel").inside(findDialog()).click();
+
+        var mealId = seedReportWithMealTravel(LocalDate.of(2026, 7, 10), DEP,
+                DEP.plusHours(11));
+        navigate(ReportDetailView.class, mealId);
+        clickRowAction(TRIP, "Edit");
+        assertThat(dailyAllowance().getSelected())
+                .isEqualTo(TravelFormModel.DailyAllowance.NOT_ELIGIBLE);
         assertThat(checkboxValue("Pay meal allowance?")).isTrue();
-        assertThat(checkboxValue("Trip not eligible for daily allowance")).isTrue();
-        assertThat(checkboxValue("Free lunch provided?")).isFalse();
     }
 
     @Test
-    void unselectingNotEligibleClearsPayMealAllowance() {
+    void checkingPayMealAllowanceSelectsNotEligible() {
         navigate(ReportDetailView.class);
         findButton().withAriaLabel("Add travel").click();
-        // Pay-meal turned it on; turning not-eligible back off must clear pay-meal,
-        // since a meal allowance can't stand without "no per-diem".
+        dailyAllowance().selectItem("Halved, free lunch provided");
+
         findCheckbox().withLabel("Pay meal allowance?").click();
-        assertThat(checkboxValue("Trip not eligible for daily allowance")).isTrue();
 
-        findCheckbox().withLabel("Trip not eligible for daily allowance").click();
-
-        assertThat(checkboxValue("Trip not eligible for daily allowance")).isFalse();
-        assertThat(checkboxValue("Pay meal allowance?")).isFalse();
+        // Meal allowance needs "no per-diem": the group moves to Not eligible, which
+        // by construction drops the free lunch too.
+        assertThat(checkboxValue("Pay meal allowance?")).isTrue();
+        assertThat(dailyAllowance().getSelected())
+                .isEqualTo(TravelFormModel.DailyAllowance.NOT_ELIGIBLE);
     }
 
     @Test
-    void checkingFreeLunchClearsNotEligibleAndPayMealAllowance() {
+    void selectingFullClearsPayMealAllowance() {
         navigate(ReportDetailView.class);
         findButton().withAriaLabel("Add travel").click();
-        // Get into the not-eligible + pay-meal world first.
         findCheckbox().withLabel("Pay meal allowance?").click();
-        assertThat(checkboxValue("Trip not eligible for daily allowance")).isTrue();
+        assertThat(dailyAllowance().getSelected())
+                .isEqualTo(TravelFormModel.DailyAllowance.NOT_ELIGIBLE);
 
-        // A free lunch only halves a per-diem → the trip must become eligible again,
-        // which in turn clears the meal allowance.
-        findCheckbox().withLabel("Free lunch provided?").click();
+        dailyAllowance().selectItem("Full daily allowance");
 
-        assertThat(checkboxValue("Free lunch provided?")).isTrue();
-        assertThat(checkboxValue("Trip not eligible for daily allowance")).isFalse();
+        // A per-diem applies again, so the meal allowance can't stand.
         assertThat(checkboxValue("Pay meal allowance?")).isFalse();
+        assertThat(dailyAllowance().getSelected())
+                .isEqualTo(TravelFormModel.DailyAllowance.FULL);
     }
 
     @Test
-    void checkingNotEligibleClearsFreeLunch() {
+    void selectingHalvedClearsPayMealAllowance() {
         navigate(ReportDetailView.class);
         findButton().withAriaLabel("Add travel").click();
-        findCheckbox().withLabel("Free lunch provided?").click();
-        assertThat(checkboxValue("Free lunch provided?")).isTrue();
+        findCheckbox().withLabel("Pay meal allowance?").click();
 
-        // No per-diem to halve once not eligible → free lunch is cleared.
-        findCheckbox().withLabel("Trip not eligible for daily allowance").click();
+        dailyAllowance().selectItem("Halved, free lunch provided");
 
-        assertThat(checkboxValue("Trip not eligible for daily allowance")).isTrue();
-        assertThat(checkboxValue("Free lunch provided?")).isFalse();
+        assertThat(checkboxValue("Pay meal allowance?")).isFalse();
+        assertThat(dailyAllowance().getSelected())
+                .isEqualTo(TravelFormModel.DailyAllowance.HALVED);
+    }
+
+    @Test
+    void travelEditorLaysItsFieldsOutAsTheDesignsTwoSectionGrid() {
+        // travel-editor-dialog.md § Layout — #179 delta items 1–4, 7, 13: one
+        // two-column grid with the line editor's gaps, two eyebrows and two rules as
+        // colspan-2 rows, the design's field order, and the totals as the last row.
+        navigate(ReportDetailView.class);
+        findButton().withAriaLabel("Add travel").click();
+
+        var dialog = findDialog().getComponent();
+        assertThat(dialog.getWidth()).isEqualTo("35rem");
+        assertThat(dialog.getHeaderTitle()).isEqualTo("Add travel info");
+
+        var form = $(FormLayout.class).single();
+        assertThat(form.getResponsiveSteps())
+                .extracting(step -> step.toJson().toString())
+                .containsExactly(
+                        new FormLayout.ResponsiveStep("0", 1).toJson().toString(),
+                        new FormLayout.ResponsiveStep("24rem", 2).toJson().toString());
+        assertThat(form.getColumnSpacing()).isEqualTo("var(--em-section-gap)");
+        assertThat(form.getRowSpacing()).isEqualTo("var(--em-card-padding)");
+
+        // The design's order, read off the grid's children. Eyebrows are Spans with
+        // the .section-label role, rules are Hr.form-rule, the totals a Div.trip-totals.
+        var children = form.getChildren().toList();
+        assertThat(children).extracting(ReportDetailViewUiTest::gridCell).containsExactly(
+                "eyebrow:Destinations", "DateTimePicker:Departure", "DateTimePicker:Return",
+                "ComboBox:Destination country", "TextField:Destinations",
+                "TextField:Travel purpose", "rule", "eyebrow:Expenses",
+                "Checkbox:Charge expenses from customer?",
+                "BigDecimalField:Kilometre allowance (km)",
+                "BigDecimalField:Parking fees (€)", "RadioButtonGroup:Daily allowance",
+                "Checkbox:Pay meal allowance?", "rule", "totals");
+        assertThat(children).extracting(form::getColspan)
+                .containsExactly(2, 1, 1, 1, 1, 2, 2, 2, 2, 1, 1, 2, 2, 2, 2);
+        // The rules carry no margin of their own — the grid's row gap spaces them.
+        assertThat(children.get(6).getStyle().get("margin")).isNull();
+
+        // Until the dates are complete the totals and the rule above them hide.
+        assertThat(children.get(13).isVisible()).isFalse();
+        assertThat(children.get(14).isVisible()).isFalse();
+        fillMinimalTrip();
+        assertThat(children.get(13).isVisible()).isTrue();
+        assertThat(children.get(14).isVisible()).isTrue();
+        // Label and figure are separate spans in the totals card's classes; Trip
+        // total is the LAST row, and the block paints no surface of its own.
+        var totals = (Div) children.get(14);
+        var rows = totals.getChildren().toList();
+        assertThat(rows.getLast().getElement().getTextRecursively())
+                .isEqualTo("Trip total€54.00");
+        assertThat(findSpan().withText("Trip total").getComponent().getClassNames())
+                .contains("totals-total-row");
+        assertThat(findSpan().withText("€54.00").inside(findDialog()).components())
+                .anySatisfy(span -> assertThat(span.getClassNames()).contains("totals-grand"));
+        assertThat(totals.getClassNames()).contains("trip-totals")
+                .doesNotContain("travel-preview");
+
+        // Footer: Cancel and a primary "Save" — no "Save trip", no close button.
+        assertThat(findButton().withText("Save").inside(findDialog()).exists()).isTrue();
+        assertThat(findButton().withText("Save trip").exists()).isFalse();
+        assertThat(dialog.isCloseOnEsc()).isTrue();
+    }
+
+    @Test
+    void travelEditorTitlesTheEditStateEditTravelInfo() {
+        var id = seedReportWithTravel(LocalDate.of(2026, 7, 10), DEP, DEP.plusHours(11));
+        navigate(ReportDetailView.class, id);
+        clickRowAction(TRIP, "Edit");
+        assertThat(findDialog().getComponent().getHeaderTitle())
+                .isEqualTo("Edit travel info");
+    }
+
+    /** "kind:label" for a field, or the grid row's role for a non-field child. */
+    private static String gridCell(Component child) {
+        if (child instanceof Span span && span.hasClassName("section-label")) {
+            return "eyebrow:" + span.getText();
+        }
+        if (child instanceof Hr hr && hr.hasClassName("form-rule")) {
+            return "rule";
+        }
+        if (child instanceof Div div && div.hasClassName("trip-totals")) {
+            return "totals";
+        }
+        return child.getClass().getSimpleName() + ":"
+                + ((HasLabel) child).getLabel();
+    }
+
+    /** The open trip editor's {@code Daily allowance} radio group. */
+    private RadioButtonGroupLocator<TravelFormModel.DailyAllowance> dailyAllowance() {
+        return findRadioButtonGroup(TravelFormModel.DailyAllowance.class)
+                .withLabel("Daily allowance");
+    }
+
+    /** Clicks the trip editor's primary — "Save", scoped to the dialog because the
+     *  report behind it has a Save of its own. */
+    private void saveTrip() {
+        findButton().withText("Save").inside(findDialog()).click();
+    }
+
+    /** Dates, country, destinations and purpose for an 11-hour domestic trip. */
+    private void fillMinimalTrip() {
+        findDateTimePicker().withLabel("Departure").setValue(DEP);
+        findDateTimePicker().withLabel("Return").setValue(DEP.plusHours(11));
+        findComboBox(String.class).withLabel("Destination country")
+                .selectItem("Finland (domestic)");
+        findTextField().withLabel("Destinations").setValue("Helsinki");
+        findTextField().withLabel("Travel purpose").setValue("Client visit");
     }
 
     /** The current value of the dialog checkbox carrying the given label. */
@@ -1891,13 +2073,13 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
                 .getComponent();
         ret.setValue(DEP);
 
-        findButton().withText("Save trip").click();
+        saveTrip();
 
         var text = UI.getCurrent().getElement().getTextRecursively();
         assertThat(text).contains("Return must be after the departure");
         assertThat(text).doesNotContain("Something went wrong");
         // The dialog stays open and the trip is not committed.
-        assertThat(findButton().withText("Save trip").exists()).isTrue();
+        assertThat(findButton().withText("Save").inside(findDialog()).exists()).isTrue();
         assertThat(findSpan().withText("Per diem allowance").exists()).isFalse();
     }
 
@@ -1911,12 +2093,12 @@ class ReportDetailViewUiTest extends AbstractReportViewUiTest {
         navigate(ReportDetailView.class);
 
         findButton().withAriaLabel("Add travel").click();
-        findButton().withText("Save trip").click();
+        saveTrip();
 
         // The dialog overlay carries the reasons and stays open; nothing generated.
         assertThat(UI.getCurrent().getElement().getTextRecursively()).contains(
                 "Departure date & time is required", "Destinations are required");
-        assertThat(findButton().withText("Save trip").exists()).isTrue();
+        assertThat(findButton().withText("Save").inside(findDialog()).exists()).isTrue();
         assertThat(findSpan().withText("Per diem allowance").exists()).isFalse();
     }
 
