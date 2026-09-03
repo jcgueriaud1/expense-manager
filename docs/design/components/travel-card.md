@@ -38,7 +38,7 @@ a row. The name is kept because the role — a trip and its allowances — has n
 | Generated row | `.expense-row` + `.travel-line-row` | `padding-inline-start: 40px`, no glyph |
 | Line label + badge | `.travel-line-heading` | wraps |
 | Suppressed row | `.travel-line-removed` | a kind dropped by a zero override (#132) |
-| Per-diem preview | `.travel-preview`, `.travel-preview-amount` | inside `TravelEditorDialog` |
+| Per-diem preview | `.travel-preview`, `.travel-preview-amount` | inside `TravelEditorDialog` — superseded by [`travel-editor-dialog.md`](travel-editor-dialog.md) |
 
 The trip's date range and its allowance rows' attachment filenames both render at
 `--vaadin-text-color`, not the secondary colour — the design's decision, recorded in
@@ -76,9 +76,11 @@ anywhere on this frame. The tint is withdrawn: same intent, the design's means
 (ADR-0025).
 
 `.travel-card-icon`'s `--aura-accent-color` goes with it — the trip glyph inherits the
-row's text colour like every other glyph. `.travel-preview` **keeps** its accent surface:
-it is inside `TravelEditorDialog`, which the design does not draw, so it is out of this
-frame's authority.
+row's text colour like every other glyph. `.travel-preview` was allowed to **keep** its
+accent surface here because this frame does not draw `TravelEditorDialog`. **Superseded:**
+frame `253:10597` does draw it, and paints no accent — the preview's surface is withdrawn
+too, and its rows are now specified in
+[`travel-editor-dialog.md`](travel-editor-dialog.md).
 
 ## API
 

@@ -78,6 +78,7 @@ Every decision row carries one:
 | Which reference route the Reference Tables pill points at when a user can reach only some of the three — it is `/vat-rates` unconditionally, and all three are ADMIN-only, so the case cannot occur yet | the shell issue |
 | Row actions behind a `⋮` menu on `VatRateView` / `ExpenseTypeView`, where reorder is boundary-disabled | the reference-view issues |
 | Whether the 20/24/28 display ramp should be design tokens rather than `--em-*` properties | the designer |
+| **Label case** — Title Case (drawn on `358:3267` and `253:10597`) or the app's sentence case; a global copy convention, refused a per-component answer twice | the label-case ticket |
 | Whether `report-card`'s title should follow `--em-font-size-title` to 40px, split off its own property, or take the new `--em-font-size-detail-title` (24) — a record title, on the same argument the report detail's took | the report-list issue |
 
 ## Lifecycle

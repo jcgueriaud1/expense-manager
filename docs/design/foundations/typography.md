@@ -193,7 +193,10 @@ resolving it per-component is the one thing that cannot be right.
 
 The frame is not self-consistent evidence. `Receipt (optional)` is sentence case on the
 same frame, and `Quantity` and `Comment` are single words that cannot distinguish the two
-conventions. No other surveyed frame — `116:2499` (report list), `116:4444` (report
+conventions. The travel-editor frame (`253:10597`) is split the same way: `Edit Travel
+Info`, `Destination Country`, `Travel Purpose`, `Kilometre Allowance (km)`, `Parking Fees
+(€)` and `Trip Total` are Title Case, while `Free lunch provided`, `Trip not eligible for
+daily allowance` and both checkbox labels on the same frame are sentence case. No other surveyed frame — `116:2499` (report list), `116:4444` (report
 detail), `156:5396` (reference tables) — establishes Title Case anywhere. So the drawn
 evidence is one frame's four labels against three frames' worth of sentence case, which is
 thin for a change that touches every label in the app.
