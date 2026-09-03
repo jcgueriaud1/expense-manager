@@ -11,6 +11,7 @@ import com.vaadin.flow.component.html.Anchor;
 import com.vaadin.flow.component.html.AnchorTarget;
 import com.vaadin.flow.component.html.AttachmentType;
 import com.vaadin.flow.component.html.Image;
+import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.server.streams.DownloadHandler;
 
 /**
@@ -44,15 +45,54 @@ final class ReceiptPreview {
      */
     static Component forReceipt(String filename, String contentType,
             Supplier<DownloadHandler> handlerFactory) {
-        Component affordance = isImage(contentType)
-                ? imageThumbnail(filename, handlerFactory)
+        return isImage(contentType) ? imageThumbnail(filename, handlerFactory)
                 : openLink(filename, handlerFactory);
-        // On an editable report the whole line card is clickable to open the
-        // editor; keep a click on the preview (zoom / open) from also bubbling up
-        // and opening that editor — mirroring how the trash button is isolated.
-        affordance.getElement().executeJs(
-                "this.addEventListener('click', e => e.stopPropagation())");
-        return affordance;
+    }
+
+    /**
+     * The <strong>chip</strong> form: a paperclip and the filename, which is what the
+     * report-detail design draws for an attachment
+     * ({@code docs/design/components/expense-line-card.md}).
+     *
+     * <p>Only the resting presentation changes — activating the chip opens the same
+     * enlarge dialog an image thumbnail did, or the same new-tab PDF view, so
+     * ADR-0021's read affordance is intact behind it. The filename renders at
+     * {@code --vaadin-text-color} rather than the secondary colour every other
+     * sub-line uses, which is the design's call and deliberate: a receipt's filename
+     * is the thing the user came to check.
+     *
+     * <p>Used on a row, where a thumbnail no longer fits; the dialogs keep
+     * {@link #forReceipt}, whose 56px thumbnail is the editing affordance.
+     */
+    static Component chip(String filename, String contentType,
+            Supplier<DownloadHandler> handlerFactory) {
+        if (isImage(contentType)) {
+            var button = new Button(filename,
+                    event -> openEnlargeDialog(filename, handlerFactory));
+            button.setIcon(LucideIcon.PAPERCLIP.create(LucideIcon.SIZE_S));
+            button.addThemeVariants(ButtonVariant.TERTIARY);
+            button.setAriaLabel("Preview receipt: " + filename);
+            button.addClassName("expense-row-attachment");
+            return button;
+        }
+        var anchor = new Anchor(handlerFactory.get(), AttachmentType.INLINE, filename);
+        anchor.setTarget(AnchorTarget.BLANK);
+        anchor.getElement().setAttribute("aria-label", "Open receipt: " + filename);
+        anchor.addComponentAsFirst(LucideIcon.PAPERCLIP.create(LucideIcon.SIZE_S));
+        anchor.addClassName("expense-row-attachment");
+        return anchor;
+    }
+
+    /**
+     * The chip for an attachment whose bytes are not in hand — a buffered receipt on
+     * a line reopened from a not-yet-saved report. It names the file and is
+     * deliberately <em>not</em> activatable: there is nothing to stream yet.
+     */
+    static Component inertChip(String filename) {
+        var chip = new Span(filename);
+        chip.addComponentAsFirst(LucideIcon.PAPERCLIP.create(LucideIcon.SIZE_S));
+        chip.addClassNames("expense-row-attachment", "expense-row-attachment--inert");
+        return chip;
     }
 
     private static boolean isImage(String contentType) {

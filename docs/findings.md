@@ -2546,6 +2546,20 @@ Deployment/Observability · UX-spec
 - Owner / next step: settled for #147; raised with the designer in the survey follow-up
   issue alongside the "CLOSEd" casing typo, the "need you attention" wording, and the
   20/24/28 display ramp.
+- **Second instance, 2026-09-02** — frame `116:4444` (report detail), surveyed for #172.
+  The same failure mode, and this time the mock is arithmetically checkable, which makes it
+  a better example than the original: every one of five rows repeats
+  `net €79.68 · VAT €20.32 (25.5 %)` against five different amounts (those two figures sum
+  to €100.00, which is no row and not the total), the string appears on the **per-diem**
+  row where a statutory tax-free allowance can carry no VAT at all, and the grand total is
+  €5468.00 where the rows sum to €5602.00 — short by exactly the €134.00 parking line.
+  That last one is the trap: an exact match is precisely what makes a mock look
+  authoritative, and "the total excludes a trip's parking fee" is a plausible *domain rule*
+  rather than an obvious typo. It is not one — the app counts parking, it is VAT-bearing at
+  the parking type's rate — but a survey that took the arithmetic as spec would have
+  changed `currentGrandTotal()`. Raised as a question rather than a defect in #173, because
+  only the designer can say which it was. The rule above holds unchanged: **copy and
+  structure are specification, row content is illustration** — and now, so are the sums.
 
 ### F-074 — The browserless locator's `atIndex` is 1-based, so the idiomatic Java `atIndex(0)` throws
 - Date: 2026-08-28
@@ -2738,3 +2752,153 @@ Deployment/Observability · UX-spec
   transcript. Note that the same shape applies to `row-action-menu.md`, whose "No property
   is overridden" line turned out to be right for a different reason than it implies: Aura
   needed a variant (`TERTIARY`) and a chevron suppressed, neither of which is a property.
+
+### F-078 — A `drifted` spec can only say "these values differ", so a design that re-cuts a component reads as two stale tokens
+
+- Date: 2026-09-02
+- Area: Design toolchain (`figma-survey` spec format)
+- Severity: Medium
+- Task being attempted: surveying frame `116:4444` (report detail) for #172, against four
+  component specs that had carried `Implementation: drifted` since #144.
+- Expected vs actual: expected to reconcile a handful of token values. All four files —
+  `expense-line-card`, `travel-card`, `totals-card`, `status-history` — carried an
+  *identical* two-row Divergence table: radius 12 vs 15, padding 20 vs 16, with the note
+  "tokens for the design's values exist and are deliberately unreferenced until per-view
+  work consumes them". Read on its own, each file says the component is two custom
+  properties away from conforming. In fact the design had **re-cut the structure**: one card
+  per *section* holding the lines as rows separated by rules, where every one of those specs
+  describes one bordered card per line. `expense-line-card` was not a drifted card. It was
+  no longer a card.
+- Why the format hides it: `drifted` and its Divergence table are shaped as
+  *property* comparisons — a two-column "Design | Code" grid of values. There is no row
+  shape that can say "the Anatomy section is describing the wrong thing", and the *Anatomy*
+  and *Tokens used* sections carry no status of their own, so they read as current whatever
+  the Divergence table says. Worse, the four identical tables made the drift look like one
+  known, bounded, deferred decision (adopt `--em-card-radius`/`--em-card-padding`) rather
+  than four files needing rewriting.
+- Cost: the risk is entirely on the *next* reader, not on this survey. An implementer
+  picking up any one of those files — or an agent asked to "close the card-radius drift" —
+  would have written the two declarations, seen them match the design's values, and shipped
+  one-card-per-line with correct tokens. Nothing in the file, the build or a test would
+  have contradicted them. The structural change is only visible by re-reading the frame,
+  which is the one thing a spec exists to make unnecessary.
+- Workaround used: rewrote the four files rather than amending them, added
+  `expense-item-card` for the section card, and said so explicitly in the
+  `components/README.md` note — "four were rewritten rather than amended" — so the churn is
+  legible as a re-cut and not as five separate edits.
+- Suggested improvement: give the Divergence section a **kind**, not just rows. Something
+  as small as a leading line — `Kind: values` vs `Kind: structure` — would separate "adopt
+  two tokens" from "this anatomy is superseded", and a structural divergence should
+  additionally invalidate the *Anatomy* and *Tokens used* sections rather than leaving them
+  to be read as current. Same underlying gap as F-077: the format is good at values and has
+  no vocabulary for "the shape moved".
+- Owner / next step: a `figma-survey` change, not made here — altering the spec format
+  while writing a spec into it is how a contract becomes a transcript (the same reason
+  F-077 was left alone). #172 carries the rewrites.
+
+### F-079 — A colour hashed from a display name satisfies the invariant its spec states and fails the one it exists for
+
+- Date: 2026-09-02
+- Area: UX-spec
+- Severity: Medium
+- Task being attempted: surveying frame `116:4444`, which replaces the report detail's
+  per-line colour swatch with a per-expense-type icon — so the survey had to establish what
+  the swatch was for before withdrawing it.
+- Expected vs actual: `ReportViewSupport.categoryColor` hashes `String.hashCode()` of the
+  expense type's *name* modulo six Aura palette hues, and
+  `expense-line-card.md` documented it as "hashes the expense type name onto the six
+  saturated palette hues **so a type reads the same colour throughout a report**". That
+  stated property is true and always was. The property the dot actually exists for — that
+  two types are told apart — fails badly. Computed against the nine seeded types:
+
+  | Hue | Types |
+  |---|---|
+  | `--aura-red` | Travel allowance, Taxi/transport, Accommodation, **Other** |
+  | `--aura-green` | Parking/supplies/goods, Meal allowance |
+  | `--aura-blue` | Restaurant/meals |
+  | `--aura-yellow` | Publications |
+  | `--aura-orange` | Kilometre allowance |
+  | `--aura-purple` | *unreachable* |
+
+  Four of nine collide, including the three most common lines on a travel report, on the
+  app's own rejected/error hue; one of six hues is never produced at all.
+- Why it survived review, a spec and an audit: the invariant everyone checked — stability —
+  is the one a hash trivially gives you. `String.hashCode()` is specified in the JLS, so
+  the colour is stable across restarts and JVMs, and the spec, the javadoc and the code all
+  say so. **Distinctness was never written down anywhere**, so nothing tested it, nothing
+  reviewed it, and nine types over six hues never looked like a number worth checking. It
+  is also invisible in the small: a two-line report shows two dots, which are usually
+  different. It only reads as broken on a realistic report, which is exactly the report a
+  screenshot review does not use.
+- A second, quieter defect: the colour is derived from the display **name**, so it is stored
+  nowhere and an admin renaming an expense type silently changes its colour everywhere,
+  including on historical reports.
+- Impact: visual only. ADR-0020's "never colour alone" rule means the type name always
+  renders as text beside the dot, so nothing was unreadable and no accessibility floor was
+  crossed — which is also why it went unnoticed for so long. The cost is that a deliberate
+  affordance was decoration that did not work.
+- Resolution: the design withdraws the dot in favour of a per-type glyph, and #172 takes the
+  glyph from a new `ExpenseType.icon` column rather than a view-side name→glyph map — the
+  map was cheaper and was rejected for carrying this same rename fragility. `.category-dot`,
+  `categoryColor` and `CATEGORY_COLORS` are deleted, and no colour replaces them.
+- Suggested improvement: for this project, **state the property that matters, not the one
+  that is easy** — "the same type reads the same colour" is a stability claim and says
+  nothing about legibility; "two types in one report are visually distinct" is the claim,
+  and it is falsifiable against the seeded reference data in a plain unit test. More
+  generally: a hash onto N buckets needs a collision check against real cardinality at the
+  moment it is written, because the failure is silent, data-dependent, and invisible at the
+  sizes a developer looks at.
+- Owner / next step: closed by #172. Logged because the *shape* — a documented invariant
+  that holds while the actual purpose fails, in decoration that no test covers — is the
+  reusable lesson, not the dot.
+
+### F-080 — `text-overflow: ellipsis` is inert inside a `VerticalLayout`, and the failure is a page-wide horizontal scroll that a green browserless suite cannot see
+- Date: 2026-09-02
+- Area: Vaadin
+- Severity: Medium
+- Task being attempted: issue #172's report-detail header. The design draws the report
+  title as one 24px line (`241:10575` is 769×34 for a 44-character string), and the app
+  renders `additionalInformation` there — a `TextArea`-backed field capped at 2000
+  characters. So it has to truncate.
+- Expected vs actual: expected the textbook three declarations —
+  `overflow: hidden; text-overflow: ellipsis; white-space: nowrap` — on the title `Span`
+  to ellipse it against the header's width. Actual: the `Span` rendered **3332px wide**
+  and took the whole document to `scrollWidth: 3709` against a 1440 viewport. Every card
+  below it stayed 836px, so the page looked correct and simply scrolled sideways for
+  2269px of nothing.
+- Workaround used: `max-width: 100%` **and** `min-width: 0` on the title, plus
+  `min-width: 0` on both flex ancestors. Two separate mechanisms had to be released:
+  - the `Span` is a flex item of a `VerticalLayout`, whose default cross-axis alignment is
+    `START` (`setDefaultHorizontalComponentAlignment`), so the item is sized to its
+    **content** on the horizontal axis and has no width limit at all — `overflow: hidden`
+    has nothing to clip against. `max-width: 100%` is what supplies the box;
+  - a flex item's default `min-width` is `auto`, which for `nowrap` text is the whole
+    string's width, so even with a `max-width` it refuses to shrink to it. `min-width: 0`
+    is what allows it.
+  `styles.css:.report-detail-title`, `.report-detail-title-group`,
+  `.report-detail-title-column`; `ReportDetailView.headerRow()`.
+- Evidence: measured in the browser, not reasoned — the flex chain reported
+  `SPAN.report-detail-title` at width 3332 with `min-width: auto` inside a
+  `VAADIN-VERTICAL-LAYOUT` at 836. After the fix: 697 and `scrollWidth: 1425`.
+- Impact: **the 95-test browserless suite was green the entire time the page was 2.5×
+  too wide.** That is the finding. A browserless test asserts the component tree, and the
+  tree was right: the `Span` was present, carried the correct class, and held the correct
+  text. Nothing in the fast layer can express "and it is 3332px wide", so the only thing
+  that caught this was opening the page — which is exactly the boundary
+  `implement-use-case` step 3 draws, met in its sharpest form. Note also that the bug was
+  invisible on a *short* title: report 21 with a blank `additionalInformation` renders the
+  "Expense report" fallback and looks perfect, so the failure is data-dependent as well as
+  test-invisible.
+- Suggested Vaadin/product improvement: `VerticalLayout`'s `START` cross-axis default is a
+  reasonable choice and should not change. But it is the reason the single most common
+  truncation recipe on the web does not work inside Vaadin's most common layout, and
+  nothing says so. One sentence in the ordered-layout docs — "items are sized to their
+  content horizontally; a truncating child needs `max-width: 100%` and `min-width: 0`" —
+  would cover it. A `setWidthFull()` on the child is the other cure and is worth naming in
+  the same sentence, since it is the fix a Flow developer would reach for first.
+- Owner / next step: fixed in #172. The general rule, both mechanisms and the
+  `scrollWidth <= innerWidth` assertion are now in `docs/theming-layouts.md` § *Flex
+  sizing*, deliberately placed beside § *Inherited properties* — the two are the same
+  shape of silent failure and belong together. Worth raising with the Vaadin docs team:
+  `VerticalLayout`'s `START` cross-axis default is fine, but nothing says it disables the
+  commonest truncation recipe on the web.

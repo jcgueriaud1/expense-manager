@@ -53,6 +53,16 @@ public class RowActionMenu extends MenuBar {
         // near-black; that divergence is settled there and reported in #160.
         addThemeVariants(MenuBarVariant.TERTIARY);
         trigger = addItem(LucideIcon.ELLIPSIS_VERTICAL.create());
+        setRowLabel(rowLabel);
+    }
+
+    /**
+     * Renames the trigger for a row whose subject can change while the row is on
+     * screen — a report-detail expense row keeps its component and re-reads its
+     * expense type when the editor changes it, so the accessible name has to follow
+     * or it goes quietly stale.
+     */
+    public void setRowLabel(String rowLabel) {
         trigger.getElement().setAttribute("aria-label", "Actions for " + rowLabel);
     }
 

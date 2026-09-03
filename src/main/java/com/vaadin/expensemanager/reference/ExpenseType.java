@@ -16,7 +16,8 @@ import jakarta.persistence.Table;
  * Admin-editable expense-type reference config (ADR-0018, Phase 2.1).
  *
  * <p>Classifies an expense line: a {@code name}, a display {@code order}, an
- * {@code active} flag, and a <strong>required</strong> {@code defaultVatRate} FK
+ * {@code active} flag, an optional {@code icon} (the Lucide glyph its rows draw,
+ * ADR-0026), and a <strong>required</strong> {@code defaultVatRate} FK
  * — the rate a new line pre-fills when this type is chosen (the line may still
  * override it, Phase 2.3). Seeded via Flyway (V3).
  *
@@ -41,6 +42,23 @@ public class ExpenseType extends AuditedEntity implements Ordered {
 
     @Column(name = "active", nullable = false)
     private boolean active = true;
+
+    /**
+     * The Lucide glyph a line of this type renders beside its name (ADR-0026,
+     * V15) — the upstream glyph name, which is also the {@code <symbol>} id in the
+     * vendored sprite and {@code LucideIcon.glyph()}.
+     *
+     * <p><strong>Nullable.</strong> A type an admin adds before choosing a glyph is
+     * a valid type, and its rows render with no glyph rather than a wrong one.
+     * Nothing rests on it: the type name always renders as text beside it
+     * (ADR-0020).
+     *
+     * <p>It is persisted here rather than mapped from the name in the view because a
+     * name→glyph map carries exactly the rename fragility of the hashed colour dot
+     * it replaced.
+     */
+    @Column(name = "icon")
+    private String icon;
 
     /**
      * The rate a new line defaults to for this type (ADR-0018). Required (NOT
@@ -87,6 +105,14 @@ public class ExpenseType extends AuditedEntity implements Ordered {
 
     public void setActive(boolean active) {
         this.active = active;
+    }
+
+    public String getIcon() {
+        return icon;
+    }
+
+    public void setIcon(String icon) {
+        this.icon = icon;
     }
 
     public VatRate getDefaultVatRate() {

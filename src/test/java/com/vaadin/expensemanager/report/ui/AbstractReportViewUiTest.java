@@ -77,8 +77,8 @@ abstract class AbstractReportViewUiTest extends SpringBrowserlessTest
     protected Long seedReportWithLine(LocalDate date, String amount) {
         var type = referenceData.activeExpenseTypes().getFirst();
         var rate = referenceData.activeVatRates().getFirst();
-        var line = ExpenseLineDto.of(null, type.id(), type.name(), rate.id(),
-                rate.value(), new BigDecimal(amount), null);
+        var line = ExpenseLineDto.of(null, type.id(), type.name(), type.icon(),
+                rate.id(), rate.value(), new BigDecimal(amount), null);
         var zero = BigDecimal.ZERO.setScale(2);
         return service.create(new ReportDetailDto(null, date, "seed",
                 ReportStatus.DRAFT, 0L, List.of(line), zero, zero, zero));
@@ -172,8 +172,8 @@ abstract class AbstractReportViewUiTest extends SpringBrowserlessTest
             String filename, byte[] bytes) {
         var type = referenceData.activeExpenseTypes().getFirst();
         var rate = referenceData.activeVatRates().getFirst();
-        var line = ExpenseLineDto.of(null, type.id(), type.name(), rate.id(),
-                rate.value(), new BigDecimal(amount), null);
+        var line = ExpenseLineDto.of(null, type.id(), type.name(), type.icon(),
+                rate.id(), rate.value(), new BigDecimal(amount), null);
         var zero = BigDecimal.ZERO.setScale(2);
         return service.create(new ReportDetailDto(null, date, "seed",
                 ReportStatus.DRAFT, 0L, List.of(line), zero, zero, zero),

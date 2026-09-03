@@ -12,6 +12,7 @@ import com.vaadin.expensemanager.approval.service.ApprovalService;
 import com.vaadin.expensemanager.base.DomainRuleException;
 import com.vaadin.expensemanager.base.ui.ErrorSummary;
 import com.vaadin.expensemanager.base.ui.LucideIcon;
+import com.vaadin.expensemanager.base.ui.RowActionMenu;
 import com.vaadin.expensemanager.reference.ExpenseTypeDto;
 import com.vaadin.expensemanager.reference.ReferenceDataService;
 import com.vaadin.expensemanager.reference.VatRateDto;
@@ -144,7 +145,7 @@ public class ReportDetailView extends VerticalLayout
     /** Header title: the note, or a generic label. */
     private final Span headerName = new Span();
     private final DatePicker reportDate = new DatePicker("Report date");
-    private final TextArea additionalInformation = new TextArea("Additional information");
+    private final TextArea additionalInformation = new TextArea("Additional Info");
     private final Span netDisplay = new Span();
     private final Span vatDisplay = new Span();
     private final Span perDiemDisplay = new Span();
@@ -155,9 +156,13 @@ public class ReportDetailView extends VerticalLayout
     private final Button submit = new Button("Submit for approval");
     private final Button approve = new Button("Approve");
     private final Button reject = new Button("Reject");
-    private final Button addLine = new Button("Add expense", LucideIcon.PLUS.create());
-    private final Button addTravel =
-            new Button("Insert travel info", LucideIcon.PLANE.create());
+    /**
+     * Both section actions read "Add", as the design labels them, so the page
+     * carries two controls with the same visible name — which is why each carries
+     * an {@code aria-label} naming its section (set below, ADR-0020).
+     */
+    private final Button addLine = new Button("Add", LucideIcon.PLUS.create());
+    private final Button addTravel = new Button("Add", LucideIcon.PLUS.create());
     private final Button delete = new Button("Delete");
     private final Binder<ReportFormModel> binder = new Binder<>();
     private final ReportFormModel model = new ReportFormModel();
@@ -211,8 +216,10 @@ public class ReportDetailView extends VerticalLayout
         this.approvalService = approvalService;
         this.currentUserProvider = currentUserProvider;
         setPadding(true);
-        setSpacing(true);
-        setMaxWidth("46rem");
+        // The design's 40px rhythm between the detail's blocks. The view no longer
+        // caps itself at 46rem: the shell owns the 900px column the design draws
+        // (app-shell.md), and a second cap inside it narrowed every card.
+        setSpacing("var(--em-section-gap)");
         addClassName("report-detail");
 
         statusCallout.setWidthFull();
@@ -227,6 +234,9 @@ public class ReportDetailView extends VerticalLayout
                 .setBadInputErrorMessage("Enter a valid date"));
         additionalInformation.setMaxLength(2000);
         additionalInformation.setWidthFull();
+        // The design draws the field three rows tall at rest. setMinRows keeps the
+        // auto-growth (two rows is the component's own floor) and only raises it.
+        additionalInformation.setMinRows(3);
 
         binder.forField(reportDate)
                 .asRequired("Report date is required")
@@ -253,23 +263,34 @@ public class ReportDetailView extends VerticalLayout
         delete.addClickListener(event -> confirmDelete());
         addLine.addThemeVariants(ButtonVariant.TERTIARY);
         addLine.addClickListener(event -> addLine());
+        addLine.getElement().setAttribute("aria-label", "Add expense");
         addTravel.addThemeVariants(ButtonVariant.TERTIARY);
         addTravel.addClickListener(event -> addTravel());
+        addTravel.getElement().setAttribute("aria-label", "Add travel");
 
-        // Submit is the full-width forward action; Save keeps working, Delete is
-        // the quiet destructive one — a footer action bar (the mockup's footer).
+        // Right-aligned, with no rule above it — the design draws neither a
+        // full-width forward action nor a separator (totals-card.md). Submit keeps
+        // its PRIMARY emphasis, which is what marks it as the forward action now
+        // that its width no longer does.
         var actions = new HorizontalLayout(save, submit, approve, reject, delete);
         actions.setWidthFull();
         actions.setAlignItems(FlexComponent.Alignment.CENTER);
-        actions.expand(submit);
+        actions.setJustifyContentMode(FlexComponent.JustifyContentMode.END);
         actions.addClassName("detail-actions");
 
         statusHistory.setWidthFull();
         statusHistory.setVisible(false);
         statusHistory.addClassName("status-history");
 
-        add(headerRow(), errorSummary, statusCallout, reportDate,
-                additionalInformation, travelsSection(), linesSection(), totalsCard(),
+        // The two report-level fields are one block on the design's rhythm rather
+        // than two sections 40px apart.
+        var fields = new VerticalLayout(reportDate, additionalInformation);
+        fields.setPadding(false);
+        fields.setSpacing("var(--vaadin-gap-m)");
+        fields.setWidthFull();
+
+        add(headerRow(), errorSummary, statusCallout, fields,
+                travelsSection(), linesSection(), totalsCard(),
                 statusHistory, actions);
     }
 
@@ -734,10 +755,20 @@ public class ReportDetailView extends VerticalLayout
         }
     }
 
+    /**
+     * The detail header (docs/design/components/report-detail-header.md): the back
+     * link, the report's name, and its status pill.
+     *
+     * <p>The back glyph is 24 rather than the {@link LucideIcon} default 20 — the
+     * design draws it as a bare 24px glyph — and it stays a {@code Button} rather
+     * than becoming an {@code Anchor} so it keeps an accessible name and a focus
+     * ring. Two gaps, so two rows: {@code --em-section-gap} between the back link
+     * and the title group, {@code --vaadin-gap-l} between the title and the pill.
+     */
     private HorizontalLayout headerRow() {
         // Back returns to the approval queue in review mode, else the owner's list.
-        var back = new Button(LucideIcon.ARROW_LEFT.create(), event -> getUI()
-                .ifPresent(ui -> {
+        var back = new Button(LucideIcon.ARROW_LEFT.create(LucideIcon.SIZE_L),
+                event -> getUI().ifPresent(ui -> {
                     if (reviewMode) {
                         ui.navigate(APPROVAL_QUEUE_PATH);
                     } else {
@@ -752,11 +783,26 @@ public class ReportDetailView extends VerticalLayout
         var titleColumn = new VerticalLayout(headerId, headerName);
         titleColumn.setPadding(false);
         titleColumn.setSpacing(false);
+        // Both classes carry `min-width: 0` and nothing else. The title truncates,
+        // and a flex item's default `min-width: auto` is the whole string's width —
+        // so without releasing every ancestor the Span grows past the shell's column
+        // and takes the page into a horizontal scroll instead of ellipsing.
+        titleColumn.addClassName("report-detail-title-column");
 
-        var header = new HorizontalLayout(back, titleColumn, statusBadgeSlot);
+        var titleGroup = new HorizontalLayout(titleColumn, statusBadgeSlot);
+        titleGroup.addClassName("report-detail-title-group");
+        titleGroup.setWidthFull();
+        titleGroup.setPadding(false);
+        titleGroup.setSpacing("var(--vaadin-gap-l)");
+        titleGroup.setAlignItems(FlexComponent.Alignment.CENTER);
+        titleGroup.expand(titleColumn);
+
+        var header = new HorizontalLayout(back, titleGroup);
         header.setWidthFull();
+        header.setPadding(false);
+        header.setSpacing("var(--em-section-gap)");
         header.setAlignItems(FlexComponent.Alignment.CENTER);
-        header.expand(titleColumn);
+        header.expand(titleGroup);
         return header;
     }
 
@@ -830,30 +876,38 @@ public class ReportDetailView extends VerticalLayout
             statusHistory.setVisible(false);
             return;
         }
+        // One box holding every entry, its entries separated by rules — the same
+        // shape as a section card, and the same change: the app used to build one
+        // bordered box per entry (status-history.md). The heading is the shared
+        // .section-label role, uppercased in CSS and not in the string, because a
+        // screen reader spells out an all-caps one.
         var heading = new Span("Status history");
-        heading.addClassName("status-history-heading");
-        statusHistory.add(heading);
-        history.forEach(change -> statusHistory.add(statusHistoryEntry(change)));
+        heading.addClassName("section-label");
+        var box = new Div();
+        box.addClassName("status-history-box");
+        box.setWidthFull();
+        history.forEach(change -> box.add(statusHistoryEntry(change)));
+        statusHistory.add(heading, box);
         statusHistory.setVisible(true);
     }
 
-    /** One status-history row: the transition label, actor and time, then any comment. */
+    /** One status-history entry: the transition label, actor and time, then any comment. */
     private static Component statusHistoryEntry(StatusChangeDto change) {
         var label = new Span(ReportViewSupport.statusLabel(change.toStatus()));
         label.addClassName("status-history-label");
         var meta = new Span("by " + change.actorName() + " · "
                 + ReportViewSupport.formatTimestamp(change.changedAt()));
         meta.addClassName("muted-xs");
-        var row = new VerticalLayout(label, meta);
-        row.setPadding(false);
-        row.setSpacing(false);
-        row.addClassName("status-history-entry");
+        var entry = new VerticalLayout(label, meta);
+        entry.setPadding(false);
+        entry.setSpacing(false);
+        entry.addClassName("status-history-entry");
         if (change.comment() != null && !change.comment().isBlank()) {
             var comment = new Span(change.comment());
             comment.addClassName("status-history-comment");
-            row.add(comment);
+            entry.add(comment);
         }
-        return row;
+        return entry;
     }
 
     /**
@@ -880,9 +934,14 @@ public class ReportDetailView extends VerticalLayout
                 this::currentKilometre);
         var mealRow = allowanceRow("Meal allowance", mealDisplay, this::currentMeal);
 
+        // "Total to reimburse", not the design's bare "Total": with five possible
+        // rows above it, the longer label names which figure it is — "Total" alone
+        // reads as the total of the column, which it is not (the allowances are in
+        // neither Net nor VAT).
         var totalLabel = new Span("Total to reimburse");
         var totalRow = new HorizontalLayout(totalLabel, grossDisplay);
         totalRow.setWidthFull();
+        totalRow.setPadding(false);
         totalRow.setAlignItems(FlexComponent.Alignment.BASELINE);
         totalRow.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
         totalRow.addClassName("totals-total-row");
@@ -903,221 +962,325 @@ public class ReportDetailView extends VerticalLayout
         return row;
     }
 
-    /** One secondary "label … value" row in the totals card. */
+    /**
+     * One "label … value" subtotal row in the totals card. Only the <em>label</em>
+     * is secondary: the design puts the figure in the primary colour a step up in
+     * size, because the figure is the content (totals-card.md).
+     */
     private static HorizontalLayout breakdownRow(String label, Span value) {
         var name = new Span(label);
+        name.addClassName("totals-row-label");
+        value.addClassName("totals-row-value");
         var row = new HorizontalLayout(name, value);
         row.setWidthFull();
+        row.setPadding(false);
+        row.setAlignItems(FlexComponent.Alignment.BASELINE);
         row.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
         row.addClassName("totals-row");
         return row;
     }
 
     /**
-     * The trips section (Phase 4.2/4.3): the Trip & Allowance cards above the
-     * "Insert travel info" action. Both the cards' Edit/Remove affordances and the
-     * action are hidden on a read-only report (the {@link #addTravel} visibility is
-     * toggled in {@link #load}; the card factory reads {@link #editable}).
+     * The Travel Info section (docs/design/components/expense-item-card.md,
+     * travel-card.md): a {@code .section-label} heading with its Add action, over
+     * <strong>one</strong> card holding every trip row and, indented under each, the
+     * allowance rows that trip generated.
+     *
+     * <p>That is one signal to <em>many</em> components per trip, which is why the
+     * card is filled by an effect rather than {@code bindChildren} — the latter maps
+     * one entry to one component. The effect reads every trip's value, so it re-runs
+     * when any of them is re-costed, a receipt is attached, or an override lands.
      */
     private Div travelsSection() {
-        var cardList = new VerticalLayout();
-        cardList.setPadding(false);
-        cardList.setSpacing("var(--vaadin-gap-m)");
-        cardList.setWidthFull();
-        cardList.bindChildren(travels, this::travelCard);
+        var card = new Div();
+        card.addClassNames("expense-item-card", "expense-item-card--travel");
+        card.setWidthFull();
+        Signal.effect(card, () -> {
+            card.removeAll();
+            travels.get().forEach(entry -> {
+                TravelDto trip = entry.get();
+                card.add(travelRow(entry, trip));
+                trip.generatedLines()
+                        .forEach(line -> card.add(generatedLineRow(entry, line)));
+                suppressedKinds(trip)
+                        .forEach(kind -> card.add(suppressedLineRow(entry, kind)));
+            });
+        });
+        // A section with no rows renders no card, rather than an empty box.
+        card.bindVisible(Signal.computed(() -> !travels.get().isEmpty()));
 
-        var section = new Div(cardList, addTravel);
+        var section = sectionWrapper("Travel info", addTravel, card);
+        // …and a read-only report with no trip renders no section at all: a heading
+        // over nothing, beside an Add the report cannot offer (ADR-0020).
+        section.bindVisible(Signal.computed(
+                () -> !travels.get().isEmpty() || editableSignal.get()));
+        return section;
+    }
+
+    /**
+     * One titled section: the {@code .section-label} heading with its Add action at
+     * the right, over the single card holding the section's rows.
+     *
+     * <p>The heading string is sentence case and the CSS uppercases it — a screen
+     * reader spells out an all-caps string.
+     */
+    private static Div sectionWrapper(String label, Button add, Component card) {
+        var heading = new Span(label);
+        heading.addClassName("section-label");
+        var headingRow = new HorizontalLayout(heading, add);
+        headingRow.setWidthFull();
+        headingRow.setPadding(false);
+        headingRow.setSpacing("var(--vaadin-gap-m)");
+        headingRow.setAlignItems(FlexComponent.Alignment.CENTER);
+        headingRow.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
+
+        var section = new Div(headingRow, card);
+        section.addClassName("report-section");
         section.setWidthFull();
         return section;
     }
 
-    /** One "Trip & Allowance" card — trip info only (no amounts), with Edit. */
-    private Component travelCard(ValueSignal<TravelDto> entry) {
-        var title = new Span();
-        title.bindText(entry.map(t -> t.purpose() == null || t.purpose().isBlank()
-                ? "Trip" : t.purpose()));
-        title.addClassName("line-name");
-        var where = new Span();
-        where.bindText(entry.map(ReportDetailView::tripWhere));
-        where.addClassName("muted");
-        var when = new Span();
-        when.bindText(entry.map(t -> ReportViewSupport.formatTripRange(
-                t.departureAt(), t.returnAt())));
-        when.addClassName("muted-xs");
-        var texts = new VerticalLayout(title, where, when);
-        texts.setPadding(false);
-        texts.setSpacing(false);
-
-        var icon = LucideIcon.PLANE.create();
-        icon.addClassName("travel-card-icon");
-
-        var body = new HorizontalLayout(icon, texts);
-        body.setWidthFull();
-        body.setAlignItems(FlexComponent.Alignment.CENTER);
-        body.expand(texts);
-
-        var card = new HorizontalLayout(body);
-        card.setWidthFull();
-        card.setAlignItems(FlexComponent.Alignment.CENTER);
-        card.expand(body);
-        card.addClassName("line-card");
-        card.addClassName("travel-card");
-        if (editable) {
-            var edit = new Button("Edit", event -> openTravelEditor(entry));
-            edit.addThemeVariants(ButtonVariant.TERTIARY);
-            var trash = new Button(LucideIcon.TRASH_2.create(), event -> {
-                pendingTravelReceipts.keySet().removeIf(k -> k.travel().equals(entry));
-                travels.remove(entry);
-            });
-            trash.addThemeVariants(ButtonVariant.TERTIARY, ButtonVariant.ERROR);
-            trash.getElement().setAttribute("aria-label", "Remove trip");
-            card.add(edit, trash);
+    /**
+     * One row of a section card (docs/design/components/expense-line-card.md): its
+     * glyph and text on the left, its figures on the right, its actions behind the
+     * ⋮ at the far right.
+     *
+     * <p>The row carries no fill, border, radius or shadow of its own — the card
+     * supplies all four, and the rule and 20px inset that separate it from the row
+     * above come from the card too. It is also <strong>not clickable</strong>: the
+     * menu is the only route to a row's actions.
+     *
+     * @param right   the figures column, or {@code null} for a row that has no
+     *                amount — which is a trip, since a trip is not itself a cost
+     * @param actions the ⋮ menu, or {@code null} on a read-only report, where a row
+     *                renders no menu rather than a disabled trigger
+     */
+    private static HorizontalLayout expenseRow(Component left, Component right,
+            Component actions, String... extraClasses) {
+        var row = new HorizontalLayout(left);
+        row.setWidthFull();
+        row.setPadding(false);
+        row.setSpacing("var(--vaadin-gap-m)");
+        row.setAlignItems(FlexComponent.Alignment.CENTER);
+        row.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
+        row.addClassName("expense-row");
+        row.addClassNames(extraClasses);
+        row.expand(left);
+        if (right != null) {
+            row.add(right);
         }
-
-        // The trip's generated lines (per-diem, kilometre, meal, parking) as
-        // read-only rows nested under it; each can carry a receipt (Phase 4.3). The
-        // list rebuilds whenever the trip is re-costed or a receipt is attached.
-        var generatedList = new Div();
-        generatedList.addClassName("travel-lines");
-        generatedList.setWidthFull();
-        Signal.effect(generatedList, () -> {
-            TravelDto trip = entry.get();
-            generatedList.removeAll();
-            trip.generatedLines()
-                    .forEach(line -> generatedList.add(generatedLineRow(entry, line)));
-            suppressedKinds(trip)
-                    .forEach(kind -> generatedList.add(suppressedLineRow(entry, kind)));
-        });
-
-        var group = new VerticalLayout(card, generatedList);
-        group.setPadding(false);
-        group.setSpacing(false);
-        group.setWidthFull();
-        group.addClassName("travel-group");
-        return group;
+        if (actions != null) {
+            row.add(actions);
+        }
+        return row;
     }
 
     /**
-     * The card preview for a line's effective receipt. A persisted receipt streams
-     * from the DB by id; a buffered (not-yet-saved) upload streams from its
-     * in-memory bytes so the thumbnail shows the moment the receipt is attached,
-     * not only after the report is saved (issue #89). Only when neither is in hand
-     * — a buffered attachment whose bytes aren't available here (e.g. a line
-     * reopened from a not-yet-saved report) — does it fall back to a filename chip.
+     * A row's left group: the expense-type glyph and the text column beside it.
+     *
+     * @param glyph the 20px Lucide glyph, or {@code null} for a trip's generated
+     *              allowance row — the design gives those no glyph, and the indent
+     *              is its whole expression of the nesting
      */
-    private Component receiptCardPreview(Long receiptId, String filename,
+    private static HorizontalLayout rowLeft(Component glyph, Component text) {
+        var left = new HorizontalLayout();
+        left.addClassName("expense-row-left");
+        left.setPadding(false);
+        left.setSpacing("var(--em-card-padding)");
+        left.setAlignItems(FlexComponent.Alignment.CENTER);
+        if (glyph != null) {
+            left.add(glyph);
+        }
+        left.add(text);
+        left.expand(text);
+        return left;
+    }
+
+    /** A row's text column — name, subtitle, and any attachment chips. */
+    private static VerticalLayout rowText() {
+        var text = new VerticalLayout();
+        text.addClassName("expense-row-text");
+        text.setPadding(false);
+        text.setSpacing("var(--vaadin-gap-s)");
+        return text;
+    }
+
+    /** A row's right-hand figures column — amount, quantity, net/VAT. */
+    private static VerticalLayout rowRight() {
+        var right = new VerticalLayout();
+        right.addClassName("expense-row-right");
+        right.setPadding(false);
+        right.setSpacing("var(--vaadin-gap-s)");
+        right.setAlignItems(FlexComponent.Alignment.END);
+        // Not the layout's default 100%: the left group is the one that expands.
+        right.setWidth("auto");
+        return right;
+    }
+
+    /** The wrapping container one row's attachment chips sit in. */
+    private static Div attachments(Component... chips) {
+        var box = new Div(chips);
+        box.addClassName("expense-row-attachments");
+        return box;
+    }
+
+    /**
+     * A trip as one row (docs/design/components/travel-card.md): its plane glyph,
+     * purpose, where and when.
+     *
+     * <p><strong>No amount</strong> — a trip is not itself a cost; its money is in
+     * the allowance rows below it. Its date range renders at the primary colour
+     * rather than the secondary one every other sub-line uses, which is the design's
+     * deliberate call (expense-line-card.md § <em>The filename is content</em>).
+     *
+     * <p>The accent tint the trip used to carry is withdrawn: the design distinguishes
+     * a trip by giving the <em>card</em> a border and a stronger shadow, on the same
+     * surface fill, and paints no accent anywhere on this frame. Same intent, the
+     * design's means (ADR-0025). The glyph inherits the row's text colour with it.
+     */
+    private Component travelRow(ValueSignal<TravelDto> entry, TravelDto trip) {
+        var name = new Span(trip.purpose() == null || trip.purpose().isBlank()
+                ? "Trip" : trip.purpose());
+        name.addClassName("expense-row-name");
+        var where = new Span(tripWhere(trip));
+        where.addClassName("muted-xs");
+        var when = new Span(ReportViewSupport.formatTripRange(
+                trip.departureAt(), trip.returnAt()));
+        when.addClassName("expense-row-detail");
+
+        var text = rowText();
+        text.add(name, where, when);
+
+        var glyph = LucideIcon.PLANE.create();
+        glyph.addClassName("expense-row-icon");
+
+        RowActionMenu actions = null;
+        if (editable) {
+            actions = new RowActionMenu(name.getText())
+                    .addAction("Edit", () -> openTravelEditor(entry))
+                    .addAction("Remove", () -> {
+                        pendingTravelReceipts.keySet()
+                                .removeIf(key -> key.travel().equals(entry));
+                        travels.remove(entry);
+                    });
+        }
+        return expenseRow(rowLeft(glyph, text), null, actions, "travel-row");
+    }
+
+    /**
+     * A row's attachment: the design's paperclip-and-filename chip, with ADR-0021's
+     * read affordance intact behind it — activating it opens the same enlarge dialog
+     * an image thumbnail did, or streams the PDF into a new tab.
+     *
+     * <p>A persisted receipt streams from the DB by id; a buffered (not-yet-saved)
+     * upload streams from its in-memory bytes, so the chip is live the moment the
+     * receipt is attached and not only after the report is saved (issue #89). Only
+     * when neither is in hand — a buffered attachment whose bytes aren't available
+     * here — does it fall back to an inert chip that names the file.
+     *
+     * <p>It is built the same way on a read-only report: a submitted report's
+     * receipts stay viewable even though its rows carry no ⋮ menu (ADR-0021).
+     */
+    private Component attachmentChip(Long receiptId, String filename,
             String contentType, ReceiptUpload buffered) {
         if (receiptId != null) {
             Long id = receiptId;
-            return ReceiptPreview.forReceipt(filename, contentType,
+            return ReceiptPreview.chip(filename, contentType,
                     () -> service.receiptDownload(id));
         }
         if (buffered != null && buffered.data() != null) {
             byte[] data = buffered.data();
-            return ReceiptPreview.forReceipt(filename, contentType,
+            return ReceiptPreview.chip(filename, contentType,
                     () -> DownloadHandler.fromInputStream(event ->
                             new DownloadResponse(new ByteArrayInputStream(data),
                                     filename, contentType, data.length)).inline());
         }
-        var chip = new Span("📎 " + filename);
-        chip.addClassName("muted-xs");
-        return chip;
+        return ReceiptPreview.inertChip(filename);
     }
 
     /**
-     * One read-only generated-line row nested under a trip: its label, computed
-     * amount, and read-only explanation, plus the receipt it carries and (while
-     * editable) an attach/edit-receipt affordance (Phase 4.3).
+     * One read-only generated-line row, indented under its trip: its label, computed
+     * amount, read-only explanation, and the receipt it carries (Phase 4.3). It has
+     * <strong>no glyph</strong> — the indent is the design's whole expression of
+     * "this line belongs to the trip above" (travel-card.md).
      *
      * <p>A line whose count the user corrected (glossary: Quantity Override,
      * ADR-0024) reads differently: an "Overridden" badge beside the label, the reason
      * given, and the statutory baseline the calculator produced, in place of the
      * composed comment — which restates all three and would only repeat the row. The
      * amount and the {@code qty × unit} breakdown are already the effective ones.
+     *
+     * <p>The net/VAT sub-line shows only on a <strong>VAT-bearing</strong> generated
+     * line, which is parking alone. The design draws the same
+     * {@code net … · VAT … (25.5 %)} string on every generated row <em>including</em>
+     * the per-diem one — a 25.5 % split on a statutory tax-free allowance, beside an
+     * amount matching neither figure. That is mock text repeated down the column, not
+     * a specification; reported to the designer in #173.
      */
     private Component generatedLineRow(ValueSignal<TravelDto> entry,
             GeneratedLineView line) {
-        var name = new Span(ReportViewSupport.generatedLineLabel(line.kind()));
-        name.addClassName("line-name");
+        String label = ReportViewSupport.generatedLineLabel(line.kind());
+        var name = new Span(label);
+        name.addClassName("expense-row-name");
         var heading = new HorizontalLayout(name);
         heading.setPadding(false);
         heading.setSpacing("var(--vaadin-gap-s)");
         heading.setAlignItems(FlexComponent.Alignment.CENTER);
         heading.addClassName("travel-line-heading");
-        var texts = new VerticalLayout(heading);
-        texts.setPadding(false);
-        texts.setSpacing(false);
+
+        var text = rowText();
+        text.add(heading);
         if (line.isOverridden()) {
             // Text, never colour alone (ADR-0020) — the badge carries its own label.
             var badge = new Badge("Overridden");
             badge.addThemeVariants(BadgeVariant.SMALL, BadgeVariant.WARNING);
             heading.add(badge);
-            texts.add(mutedXs("Reason: " + line.overrideReason()));
-            calculatedBaseline(line).ifPresent(baseline -> texts.add(mutedXs(baseline)));
-        } else {
-            texts.add(mutedXs(line.comment() == null ? "" : line.comment()));
+            text.add(mutedXs("Reason: " + line.overrideReason()));
+            calculatedBaseline(line).ifPresent(baseline -> text.add(mutedXs(baseline)));
+        } else if (line.comment() != null && !line.comment().isBlank()) {
+            text.add(mutedXs(line.comment()));
+        }
+        if (line.hasReceipt()) {
+            text.add(attachments(attachmentChip(line.receiptId(), line.receiptFilename(),
+                    line.receiptContentType(), pendingTravelReceipts
+                            .get(new TravelReceiptKey(entry, line.kind())))));
         }
 
         var amount = new Span(formatEur(line.amount()));
-        amount.addClassName("line-amount");
-        var receipt = new Div();
-        receipt.addClassName("line-receipt");
-        if (line.hasReceipt()) {
-            receipt.add(receiptCardPreview(line.receiptId(), line.receiptFilename(),
-                    line.receiptContentType(),
-                    pendingTravelReceipts.get(new TravelReceiptKey(entry, line.kind()))));
-        }
-        var amounts = new VerticalLayout(amount);
+        amount.addClassName("expense-row-amount");
+        var right = rowRight();
+        right.add(amount);
         // The km line is a multiple, so it reads "12.5 × €0.55 = €6.88" like a
-        // multi-unit manual card; the flat kinds are quantity 1 and show nothing
+        // multi-unit manual row; the flat kinds are quantity 1 and show nothing
         // extra (ADR-0023).
         if (line.showsQuantity()) {
-            var quantity = new Span(quantityBreakdown(line.quantity(), line.unitPrice()));
-            quantity.addClassName("muted-xs");
-            amounts.add(quantity);
+            right.add(mutedXs(quantityBreakdown(line.quantity(), line.unitPrice())));
         }
-        amounts.add(receipt);
-        amounts.setPadding(false);
-        amounts.setSpacing(false);
-        amounts.setAlignItems(FlexComponent.Alignment.END);
+        if (!line.isTaxFreeAllowance()) {
+            right.add(mutedXs(vatSplit(line.unitPrice(), line.quantity(),
+                    line.vatRatePercent())));
+        }
 
-        var body = new HorizontalLayout(texts, amounts);
-        body.setWidthFull();
-        body.setAlignItems(FlexComponent.Alignment.CENTER);
-        body.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
-        body.expand(texts);
-
-        var row = new HorizontalLayout(body);
-        row.setWidthFull();
-        row.setAlignItems(FlexComponent.Alignment.CENTER);
-        row.expand(body);
-        row.addClassName("line-card");
-        row.addClassName("travel-line-row");
+        RowActionMenu actions = null;
         if (editable) {
-            var attach = new Button(line.hasReceipt() ? "Receipt" : "Add receipt",
-                    LucideIcon.PAPERCLIP.create());
-            attach.addThemeVariants(ButtonVariant.TERTIARY, ButtonVariant.SMALL);
-            attach.addClickListener(event -> openTravelLineReceipt(entry, line));
-            attach.getElement().setAttribute("aria-label",
-                    (line.hasReceipt() ? "Edit receipt: " : "Add receipt: ")
-                            + ReportViewSupport.generatedLineLabel(line.kind()));
-            var actions = new HorizontalLayout(attach);
-            actions.setPadding(false);
-            actions.setSpacing("var(--vaadin-gap-xs)");
-            actions.setAlignItems(FlexComponent.Alignment.CENTER);
-            actions.addClassName("travel-line-actions");
+            actions = new RowActionMenu(label);
+            actions.addAction(line.hasReceipt() ? "Edit receipt" : "Add receipt",
+                    () -> openTravelLineReceipt(entry, line));
             // Only the per-diem and meal kinds are correctable: the kilometre
             // distance and the parking fee are trip inputs with a single home, so
             // those numbers are changed on the trip (ADR-0024).
             if (line.kind().isOverridable()) {
-                actions.add(overrideAction(entry, line));
+                actions.addAction(line.isOverridden() ? "Edit override" : "Override",
+                        () -> new GeneratedLineOverrideDialog(line,
+                                override -> applyOverride(entry, line.kind(), override))
+                                .open());
                 if (line.isOverridden()) {
-                    actions.add(resetAction(entry, line.kind()));
+                    actions.addAction("Reset to calculated",
+                            () -> applyOverride(entry, line.kind(), null));
                 }
             }
-            row.add(actions);
         }
-        return row;
+        return expenseRow(rowLeft(null, text), right, actions, "travel-line-row");
     }
 
     /**
@@ -1150,8 +1313,9 @@ public class ReportDetailView extends VerticalLayout
      */
     private Component suppressedLineRow(ValueSignal<TravelDto> entry,
             GeneratedLineKind kind) {
-        var name = new Span(ReportViewSupport.generatedLineLabel(kind));
-        name.addClassName("line-name");
+        String label = ReportViewSupport.generatedLineLabel(kind);
+        var name = new Span(label);
+        name.addClassName("expense-row-name");
         // Text, never colour alone (ADR-0020) — the badge carries its own label.
         // Grey, like the Draft pill, and by the same route: BadgeVariant.CONTRAST is
         // Lumo-only and silently does nothing under Aura, which left this badge the
@@ -1167,59 +1331,24 @@ public class ReportDetailView extends VerticalLayout
         heading.setAlignItems(FlexComponent.Alignment.CENTER);
         heading.addClassName("travel-line-heading");
 
-        var texts = new VerticalLayout(heading);
-        texts.setPadding(false);
-        texts.setSpacing(false);
+        var text = rowText();
+        text.add(heading);
         var override = entry.peek().quantityOverrides().get(kind);
-        texts.add(mutedXs("Removed from the report. Reason: " + override.reason()));
+        text.add(mutedXs("Removed from the report. Reason: " + override.reason()));
 
-        var body = new HorizontalLayout(texts);
-        body.setWidthFull();
-        body.setAlignItems(FlexComponent.Alignment.CENTER);
-        body.expand(texts);
-
-        var row = new HorizontalLayout(body);
-        row.setWidthFull();
-        row.setAlignItems(FlexComponent.Alignment.CENTER);
-        row.expand(body);
-        row.addClassName("line-card");
-        row.addClassName("travel-line-row");
-        row.addClassName("travel-line-removed");
+        RowActionMenu actions = null;
         if (editable) {
-            var actions = new HorizontalLayout(resetAction(entry, kind));
-            actions.setPadding(false);
-            actions.setSpacing("var(--vaadin-gap-xs)");
-            actions.setAlignItems(FlexComponent.Alignment.CENTER);
-            actions.addClassName("travel-line-actions");
-            row.add(actions);
+            actions = new RowActionMenu(label)
+                    .addAction("Reset to calculated",
+                            () -> applyOverride(entry, kind, null));
         }
-        return row;
-    }
-
-    /** Opens the Quantity Override editor for one generated line (ADR-0024). */
-    private Button overrideAction(ValueSignal<TravelDto> entry, GeneratedLineView line) {
-        var button = new Button(line.isOverridden() ? "Edit override" : "Override");
-        button.addThemeVariants(ButtonVariant.TERTIARY, ButtonVariant.SMALL);
-        button.addClickListener(event -> new GeneratedLineOverrideDialog(line,
-                override -> applyOverride(entry, line.kind(), override)).open());
-        button.getElement().setAttribute("aria-label",
-                (line.isOverridden() ? "Edit override: " : "Override count: ")
-                        + ReportViewSupport.generatedLineLabel(line.kind()));
-        return button;
-    }
-
-    /**
-     * Removes the kind's override outright, returning it to the statutory figure —
-     * without touching the trip (ADR-0024, "Reset to calculated"). On a suppressed kind
-     * this is what brings the line back, at its calculated count.
-     */
-    private Button resetAction(ValueSignal<TravelDto> entry, GeneratedLineKind kind) {
-        var button = new Button("Reset to calculated");
-        button.addThemeVariants(ButtonVariant.TERTIARY, ButtonVariant.SMALL);
-        button.addClickListener(event -> applyOverride(entry, kind, null));
-        button.getElement().setAttribute("aria-label", "Reset to calculated: "
-                + ReportViewSupport.generatedLineLabel(kind));
-        return button;
+        // No right-hand column at all. The dashed border that used to say "this is
+        // not a line that counts" has gone with the box, and what replaces it is
+        // three textual signals: the grey Removed badge, the reason, and the absence
+        // of any amount — which is also the truth, since the row contributes nothing
+        // to the per-diem subtotal or the report total (ADR-0020).
+        return expenseRow(rowLeft(null, text), null, actions,
+                "travel-line-row", "travel-line-removed");
     }
 
     /**
@@ -1346,6 +1475,11 @@ public class ReportDetailView extends VerticalLayout
                 : destinations + ", " + trip.country();
     }
 
+    /**
+     * The Expenses section (docs/design/components/expense-item-card.md): a
+     * {@code .section-label} heading with its Add action, over <strong>one</strong>
+     * card holding every expense line as a row.
+     */
     private Div linesSection() {
         var emptyState = new Span("No expenses yet — add your first.");
         emptyState.addClassName("muted");
@@ -1356,53 +1490,75 @@ public class ReportDetailView extends VerticalLayout
         emptyState.bindVisible(Signal.computed(
                 () -> lines.get().isEmpty() && editableSignal.get()));
 
-        var cardList = new VerticalLayout();
-        cardList.setPadding(false);
-        cardList.setSpacing("var(--vaadin-gap-m)");
-        cardList.setWidthFull();
-        cardList.bindChildren(lines, this::card);
+        var card = new Div();
+        card.addClassName("expense-item-card");
+        card.setWidthFull();
+        card.bindChildren(lines, this::expenseLineRow);
+        // A section with no rows renders no card, rather than an empty box.
+        card.bindVisible(Signal.computed(() -> !lines.get().isEmpty()));
 
-        var section = new Div(emptyState, cardList, addLine);
-        section.setWidthFull();
+        var body = new Div(emptyState, card);
+        body.setWidthFull();
+        var section = sectionWrapper("Expenses", addLine, body);
+        section.bindVisible(Signal.computed(
+                () -> !lines.get().isEmpty() || editableSignal.get()));
         return section;
     }
 
-    /** One receipt-style card for a working line; clickable to edit when editable. */
-    private Component card(ValueSignal<ExpenseLineDto> entry) {
+    /**
+     * One expense line as a row inside the Expenses card
+     * (docs/design/components/expense-line-card.md).
+     *
+     * <p>The row is <strong>not clickable</strong>. The ⋮ menu is the only route to
+     * editing, and the whole-row click-to-edit is withdrawn along with the card the
+     * row used to be. That costs a click on the largest target on the screen, and it
+     * is the design's call under ADR-0025 rather than a neutral one.
+     */
+    private Component expenseLineRow(ValueSignal<ExpenseLineDto> entry) {
         var name = new Span();
-        name.bindText(entry.map(dto -> dto.expenseTypeName() == null
-                ? "New expense" : dto.expenseTypeName()));
-        name.addClassName("line-name");
+        name.bindText(entry.map(ReportDetailView::rowLabelOf));
+        name.addClassName("expense-row-name");
         var subtitle = new Span();
         subtitle.bindText(entry.map(ReportDetailView::subtitleOf));
-        subtitle.addClassName("muted");
-        // Receipt read affordance (ADR-0021): a saved image shows a thumbnail
-        // that enlarges in a dialog, a saved PDF an "open" link — both streaming
-        // the bytes on demand via the owner-scoped DownloadHandler, so a submitted
-        // (read-only) report can still view its receipt. A buffered (not-yet-saved)
-        // attachment previews straight from its in-memory bytes, so the thumbnail
-        // appears the moment the receipt is attached rather than only after the
-        // report is saved (issue #89).
-        var receipt = new Div();
-        receipt.addClassName("line-receipt");
-        Signal.effect(receipt, () -> {
+        subtitle.addClassName("muted-xs");
+
+        // Receipt read affordance (ADR-0021), now in the design's chip form: a
+        // paperclip and the filename, which opens the enlarge dialog or streams the
+        // PDF. Rebuilt by an effect so a buffered (not-yet-saved) attachment shows
+        // the moment it is attached rather than only after the first save (#89).
+        var chips = new Div();
+        chips.addClassName("expense-row-attachments");
+        Signal.effect(chips, () -> {
             ExpenseLineDto dto = entry.get();
-            receipt.removeAll();
-            if (!dto.hasReceipt()) {
-                return;
+            chips.removeAll();
+            if (dto.hasReceipt()) {
+                chips.add(attachmentChip(dto.receiptId(), dto.receiptFilename(),
+                        dto.receiptContentType(), pendingReceipts.get(entry)));
             }
-            receipt.add(receiptCardPreview(dto.receiptId(), dto.receiptFilename(),
-                    dto.receiptContentType(), pendingReceipts.get(entry)));
         });
-        var texts = new VerticalLayout(name, subtitle, receipt);
-        texts.setPadding(false);
-        texts.setSpacing(false);
+
+        var text = rowText();
+        text.add(name, subtitle, chips);
+
+        // The expense type's own persisted glyph (ADR-0026), re-read when the line's
+        // type changes in the editor. It replaces .category-dot, whose colour was
+        // hashed off the type NAME — so it was stored nowhere, changed silently on a
+        // rename, and collided four of the nine seeded types onto --aura-red, the
+        // app's own rejected/error hue. A type with no glyph chosen renders none;
+        // the type name always renders as text beside it (ADR-0020).
+        var glyph = new Span();
+        glyph.addClassName("expense-row-icon");
+        Signal.effect(glyph, () -> {
+            glyph.removeAll();
+            LucideIcon.ofGlyph(entry.get().expenseTypeIcon())
+                    .ifPresent(icon -> glyph.add(icon.create()));
+        });
 
         var gross = new Span();
         gross.bindText(entry.map(dto -> formatEur(grossOf(dto))));
-        gross.addClassName("line-amount");
+        gross.addClassName("expense-row-amount");
         // qty × unit = gross, shown only for a multi-unit line (ADR-0023); a
-        // quantity-1 card carries no extra row and reads exactly as before.
+        // quantity-1 row carries no extra line and reads exactly as before.
         var quantity = new Span();
         quantity.bindText(entry.map(ReportDetailView::quantityBreakdownOf));
         quantity.bindVisible(entry.map(ReportDetailView::showsQuantity));
@@ -1410,46 +1566,30 @@ public class ReportDetailView extends VerticalLayout
         var breakdown = new Span();
         breakdown.bindText(entry.map(ReportDetailView::breakdownOf));
         breakdown.addClassName("muted-xs");
-        var amounts = new VerticalLayout(gross, quantity, breakdown);
-        amounts.setPadding(false);
-        amounts.setSpacing(false);
-        amounts.setAlignItems(FlexComponent.Alignment.END);
+        var right = rowRight();
+        right.add(gross, quantity, breakdown);
 
-        // A small colour swatch per expense type (the mockup's category dot). The
-        // dynamic colour is fed to the .category-dot class as a CSS custom
-        // property, recomputed if the line's type changes in the editor.
-        var dot = new Div();
-        dot.addClassName("category-dot");
-        Signal.effect(dot, () -> dot.getStyle().set("--category-color",
-                ReportViewSupport.categoryColor(entry.get().expenseTypeName())));
-
-        var body = new HorizontalLayout(dot, texts, amounts);
-        body.setWidthFull();
-        body.setAlignItems(FlexComponent.Alignment.CENTER);
-        body.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
-        body.expand(texts);
+        RowActionMenu actions = null;
         if (editable) {
-            body.addClassName("clickable");
-            body.addClickListener(event -> openEditor(entry));
+            var menu = new RowActionMenu(rowLabelOf(entry.peek()));
+            menu.addAction("Edit", () -> openEditor(entry))
+                    .addAction("Remove", () -> {
+                        pendingReceipts.remove(entry);
+                        lines.remove(entry);
+                    });
+            // The trigger's accessible name is the row's subject, and the editor can
+            // change that under it — so it follows the signal instead of being frozen
+            // at build time, which is what "Actions for New expense" would stay as.
+            Signal.effect(menu, () -> menu.setRowLabel(rowLabelOf(entry.get())));
+            actions = menu;
         }
+        return expenseRow(rowLeft(glyph, text), right, actions);
+    }
 
-        var card = new HorizontalLayout(body);
-        card.setWidthFull();
-        card.setAlignItems(FlexComponent.Alignment.CENTER);
-        card.expand(body);
-        card.addClassName("line-card");
-        // Trash lives outside the clickable body, so removing a line never also
-        // opens the editor (no click-propagation hack needed).
-        if (editable) {
-            var trash = new Button(LucideIcon.TRASH_2.create(), event -> {
-                pendingReceipts.remove(entry);
-                lines.remove(entry);
-            });
-            trash.addThemeVariants(ButtonVariant.TERTIARY, ButtonVariant.ERROR);
-            trash.getElement().setAttribute("aria-label", "Remove line");
-            card.add(trash);
-        }
-        return card;
+    /** What a manual expense row is — its name, and its ⋮ trigger's accessible name. */
+    private static String rowLabelOf(ExpenseLineDto dto) {
+        return dto.expenseTypeName() == null || dto.expenseTypeName().isBlank()
+                ? "New expense" : dto.expenseTypeName();
     }
 
     /**
@@ -1548,10 +1688,20 @@ public class ReportDetailView extends VerticalLayout
                 || dto.vatRatePercent() == null) {
             return "";
         }
-        var totals = LineAmounts.ofLine(dto.amount(), dto.quantity(),
-                dto.vatRatePercent());
+        return vatSplit(dto.amount(), dto.quantity(), dto.vatRatePercent());
+    }
+
+    /**
+     * The {@code net €79.68 · VAT €20.32 (25.5 %)} sub-line, shared by the manual
+     * rows and the one VAT-bearing generated line (parking) so the two read
+     * identically. A tax-free allowance never gets one — see
+     * {@link #generatedLineRow}.
+     */
+    private static String vatSplit(BigDecimal unitPrice, BigDecimal quantity,
+            BigDecimal vatRatePercent) {
+        var totals = LineAmounts.ofLine(unitPrice, quantity, vatRatePercent);
         return "net " + formatEur(totals.net()) + " · VAT " + formatEur(totals.vat())
-                + " (" + formatPercent(dto.vatRatePercent()) + ")";
+                + " (" + formatPercent(vatRatePercent) + ")";
     }
 
     private void clearErrors() {

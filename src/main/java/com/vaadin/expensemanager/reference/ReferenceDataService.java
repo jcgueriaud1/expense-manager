@@ -124,18 +124,22 @@ public class ReferenceDataService {
 
     @RolesAllowed("ADMIN")
     @Transactional
-    public ExpenseTypeDto createExpenseType(String name, Long defaultVatRateId) {
+    public ExpenseTypeDto createExpenseType(String name, Long defaultVatRateId,
+            String icon) {
         var type = new ExpenseType(requireName(name), nextExpenseTypeOrder(),
                 requireVatRate(defaultVatRateId));
+        type.setIcon(blankToNull(icon));
         return toDto(expenseTypeRepository.save(type));
     }
 
     @RolesAllowed("ADMIN")
     @Transactional
-    public ExpenseTypeDto updateExpenseType(Long id, String name, Long defaultVatRateId) {
+    public ExpenseTypeDto updateExpenseType(Long id, String name, Long defaultVatRateId,
+            String icon) {
         var type = requireExpenseType(id);
         type.setName(requireName(name));
         type.setDefaultVatRate(requireVatRate(defaultVatRateId));
+        type.setIcon(blankToNull(icon));
         return toDto(type);
     }
 
@@ -172,6 +176,14 @@ public class ReferenceDataService {
     private ExpenseType requireExpenseType(Long id) {
         return expenseTypeRepository.findById(id).orElseThrow(
                 () -> new IllegalArgumentException("No expense type with id " + id));
+    }
+
+    /**
+     * An optional string normalised to {@code null} when absent, so "no glyph
+     * chosen" has one representation in the column rather than two.
+     */
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 
     private static String requireName(String name) {
@@ -223,6 +235,6 @@ public class ReferenceDataService {
     private static ExpenseTypeDto toDto(ExpenseType t) {
         var rate = t.getDefaultVatRate();
         return new ExpenseTypeDto(t.getId(), t.getName(), t.getDisplayOrder(), t.isActive(),
-                rate.getId(), rate.getValue());
+                rate.getId(), rate.getValue(), t.getIcon());
     }
 }

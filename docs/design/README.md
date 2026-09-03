@@ -71,11 +71,14 @@ Every decision row carries one:
 | App shell — top header bar, gradient, nav widths (220/250), page inset (80px) | #146 |
 | Per-view spacing against the new token scale | one issue per view |
 | Report card hover — invisible on actionable cards; the design draws no hover state | the report-list redesign |
-| `--em-font-size-total` / `--em-font-size-metric` decided but not yet in `aura-theme.css` | whoever applies the theme next |
-| Whether `report-card`'s title should follow `--em-font-size-title` to 40px, or split off its own property | the report-list issue |
+| `--em-font-size-detail-title: 24px` decided but not yet in `aura-theme.css` | the report-detail redesign issue |
+| `ExpenseType.icon` — the column the report-detail rows' glyphs read from | the report-detail redesign issue |
+| Whether the design specifies a **status callout** at all — frame `116:4444` draws a `DRAFT`, the one status the app hides it on, so it settles nothing | needs a frame drawing `REJECTED` |
+| Whether a report gains a **title** field. Ruled out of scope by the report-detail survey, so the header renders `additionalInformation` twice | closed, not deferred — reopen only with the designer |
 | Which reference route the Reference Tables pill points at when a user can reach only some of the three — it is `/vat-rates` unconditionally, and all three are ADMIN-only, so the case cannot occur yet | the shell issue |
 | Row actions behind a `⋮` menu on `VatRateView` / `ExpenseTypeView`, where reorder is boundary-disabled | the reference-view issues |
 | Whether the 20/24/28 display ramp should be design tokens rather than `--em-*` properties | the designer |
+| Whether `report-card`'s title should follow `--em-font-size-title` to 40px, split off its own property, or take the new `--em-font-size-detail-title` (24) — a record title, on the same argument the report detail's took | the report-list issue |
 
 ## Lifecycle
 

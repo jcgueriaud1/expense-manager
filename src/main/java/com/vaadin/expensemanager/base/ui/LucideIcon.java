@@ -125,4 +125,27 @@ public enum LucideIcon {
         icon.setSize(size);
         return icon;
     }
+
+    /**
+     * The constant for a stored {@linkplain #glyph() glyph name}, or empty when the
+     * name is absent or names no glyph in this set.
+     *
+     * <p>This is the door for glyph names that live in the <em>database</em> —
+     * today {@code ExpenseType.icon} (ADR-0026). It returns an {@link Optional}
+     * rather than throwing because the stored value is admin-editable data, and a
+     * type whose glyph was renamed out of the sprite by an upgrade must render
+     * without a glyph, not break the report it appears on. Nothing rests on the
+     * glyph: every row names its type in text beside it (ADR-0020).
+     */
+    public static java.util.Optional<LucideIcon> ofGlyph(String glyph) {
+        if (glyph == null || glyph.isBlank()) {
+            return java.util.Optional.empty();
+        }
+        for (LucideIcon icon : values()) {
+            if (icon.glyph.equals(glyph)) {
+                return java.util.Optional.of(icon);
+            }
+        }
+        return java.util.Optional.empty();
+    }
 }

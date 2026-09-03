@@ -354,7 +354,7 @@ final class LineEditorDialog extends Dialog {
         var type = model.getExpenseType();
         var rate = model.getVatRate();
         var base = ExpenseLineDto.of(existing == null ? null : existing.id(),
-                type.id(), type.name(), rate.id(), rate.value(),
+                type.id(), type.name(), type.icon(), rate.id(), rate.value(),
                 model.getAmount(), model.getQuantity(), model.getComment());
         onSave.accept(withReceiptSummary(base), receiptCommand());
         close();
@@ -400,7 +400,8 @@ final class LineEditorDialog extends Dialog {
                 && items.stream().noneMatch(t -> t.id().equals(existing.expenseTypeId()))) {
             items.add(new ExpenseTypeDto(existing.expenseTypeId(),
                     existing.expenseTypeName() + " (inactive)", Integer.MAX_VALUE,
-                    false, existing.vatRateId(), existing.vatRatePercent()));
+                    false, existing.vatRateId(), existing.vatRatePercent(),
+                    existing.expenseTypeIcon()));
         }
         return items;
     }

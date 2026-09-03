@@ -24,16 +24,6 @@ import com.vaadin.flow.component.badge.BadgeVariant;
  */
 public final class ReportViewSupport {
 
-    /**
-     * Aura palette colours cycled through to give each expense type a stable
-     * colour dot on the detail line cards (the mockup's category swatch). Chosen
-     * from the documented saturated palette so both colour schemes stay legible.
-     */
-    private static final String[] CATEGORY_COLORS = {
-            "--aura-blue", "--aura-green", "--aura-orange",
-            "--aura-purple", "--aura-red", "--aura-yellow"
-    };
-
     private ReportViewSupport() {
     }
 
@@ -71,19 +61,6 @@ public final class ReportViewSupport {
             case DRAFT -> badge.addClassName("aura-accent-neutral");
         }
         return badge;
-    }
-
-    /**
-     * A stable Aura palette colour for an expense type's swatch dot, derived from
-     * its name so the same type always reads the same colour within a report.
-     * Falls back to a neutral border colour for a not-yet-chosen type.
-     */
-    static String categoryColor(String expenseTypeName) {
-        if (expenseTypeName == null || expenseTypeName.isBlank()) {
-            return "var(--vaadin-border-color)";
-        }
-        int index = Math.floorMod(expenseTypeName.hashCode(), CATEGORY_COLORS.length);
-        return "var(" + CATEGORY_COLORS[index] + ")";
     }
 
     /**

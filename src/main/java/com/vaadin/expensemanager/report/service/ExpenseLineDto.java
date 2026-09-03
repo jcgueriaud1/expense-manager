@@ -8,8 +8,11 @@ import java.math.BigDecimal;
  *
  * <p>Carries the reference-data <em>ids</em> that drive persistence
  * ({@link #expenseTypeId}, {@link #vatRateId}) plus flattened display fields
- * ({@link #expenseTypeName}, {@link #vatRatePercent}) so the receipt cards render
- * without ever dereferencing a JPA association. Gross/net/VAT are not carried —
+ * ({@link #expenseTypeName}, {@link #expenseTypeIcon}, {@link #vatRatePercent}) so
+ * the rows render without ever dereferencing a JPA association. The icon is
+ * flattened for the same reason the name is, and it matters more here: a line filed
+ * under a since-<em>deactivated</em> type still renders its glyph, where a lookup
+ * against the active types would silently lose it. Gross/net/VAT are not carried —
  * the UI derives them live from {@link #amount} × {@link #quantity} +
  * {@link #vatRatePercent} via the shared domain helper
  * ({@code LineAmounts.ofLine}), so an unsaved edit and a persisted line use the
@@ -33,6 +36,8 @@ import java.math.BigDecimal;
  * @param id                 persistent line id, or {@code null} for a new line
  * @param expenseTypeId      chosen expense type id (required to be valid on save)
  * @param expenseTypeName    expense type name, for display
+ * @param expenseTypeIcon    the type's Lucide glyph name, for the row's glyph, or
+ *                           {@code null} if the type has none (ADR-0026)
  * @param vatRateId          chosen VAT rate id (required to be valid on save)
  * @param vatRatePercent     VAT rate as a percent, e.g. {@code 25.50}, for display
  *                           and live derivation
@@ -46,9 +51,9 @@ import java.math.BigDecimal;
  * @param receiptSizeBytes   attached receipt's byte length, or {@code null} if none
  */
 public record ExpenseLineDto(Long id, Long expenseTypeId, String expenseTypeName,
-        Long vatRateId, BigDecimal vatRatePercent, BigDecimal amount,
-        BigDecimal quantity, String comment, Long receiptId, String receiptFilename,
-        String receiptContentType, Long receiptSizeBytes) {
+        String expenseTypeIcon, Long vatRateId, BigDecimal vatRatePercent,
+        BigDecimal amount, BigDecimal quantity, String comment, Long receiptId,
+        String receiptFilename, String receiptContentType, Long receiptSizeBytes) {
 
     /**
      * A single-unit line with no receipt — quantity {@code 1}, so the unit price
@@ -56,26 +61,27 @@ public record ExpenseLineDto(Long id, Long expenseTypeId, String expenseTypeName
      * the editor before an upload is buffered).
      */
     public static ExpenseLineDto of(Long id, Long expenseTypeId, String expenseTypeName,
-            Long vatRateId, BigDecimal vatRatePercent, BigDecimal amount,
-            String comment) {
-        return of(id, expenseTypeId, expenseTypeName, vatRateId, vatRatePercent,
-                amount, BigDecimal.ONE, comment);
+            String expenseTypeIcon, Long vatRateId, BigDecimal vatRatePercent,
+            BigDecimal amount, String comment) {
+        return of(id, expenseTypeId, expenseTypeName, expenseTypeIcon, vatRateId,
+                vatRatePercent, amount, BigDecimal.ONE, comment);
     }
 
     /** A line with an explicit quantity and no receipt (ADR-0023). */
     public static ExpenseLineDto of(Long id, Long expenseTypeId, String expenseTypeName,
-            Long vatRateId, BigDecimal vatRatePercent, BigDecimal amount,
-            BigDecimal quantity, String comment) {
-        return new ExpenseLineDto(id, expenseTypeId, expenseTypeName, vatRateId,
-                vatRatePercent, amount, quantity, comment, null, null, null, null);
+            String expenseTypeIcon, Long vatRateId, BigDecimal vatRatePercent,
+            BigDecimal amount, BigDecimal quantity, String comment) {
+        return new ExpenseLineDto(id, expenseTypeId, expenseTypeName, expenseTypeIcon,
+                vatRateId, vatRatePercent, amount, quantity, comment, null, null, null,
+                null);
     }
 
     /** This line with its receipt summary fields replaced (load path / optimistic). */
     public ExpenseLineDto withReceipt(Long receiptId, String receiptFilename,
             String receiptContentType, Long receiptSizeBytes) {
-        return new ExpenseLineDto(id, expenseTypeId, expenseTypeName, vatRateId,
-                vatRatePercent, amount, quantity, comment, receiptId, receiptFilename,
-                receiptContentType, receiptSizeBytes);
+        return new ExpenseLineDto(id, expenseTypeId, expenseTypeName, expenseTypeIcon,
+                vatRateId, vatRatePercent, amount, quantity, comment, receiptId,
+                receiptFilename, receiptContentType, receiptSizeBytes);
     }
 
     /** This line with any receipt summary cleared (optimistic removal). */

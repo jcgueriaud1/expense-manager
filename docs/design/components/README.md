@@ -28,6 +28,8 @@ source and would go stale here.
 | [`report-card.md`](report-card.md) | composite | design | unaudited |
 | [`metric-card.md`](metric-card.md) | composite | design | none |
 | [`report-list-section.md`](report-list-section.md) | composite | design | unaudited |
+| [`report-detail-header.md`](report-detail-header.md) | composite | design | **drifted** |
+| [`expense-item-card.md`](expense-item-card.md) | composite | design | none |
 | [`expense-line-card.md`](expense-line-card.md) | composite | design | **drifted** |
 | [`travel-card.md`](travel-card.md) | composite | design | **drifted** |
 | [`totals-card.md`](totals-card.md) | composite | design | **drifted** |
@@ -101,6 +103,31 @@ a table, not that the right component was chosen for the design's intent.
 > what that move is and is not: `unaudited` says the code exists and nobody has compared
 > it to the spec, which is the honest reading after a change audits its own work. It is
 > **not** a step towards `conforms` — that value is an audit's to give.
+>
+> **The report-detail frame (`116:4444`) was surveyed for the report-detail redesign**,
+> and it re-cut the line list rather than restyling it. The design now draws **one card per
+> section** with the lines as rows inside it, where the previous frame drew one card per
+> line. That inverts what four of these files described, so four were rewritten rather than
+> amended — `expense-line-card` (now a row, not a card), `travel-card` (a trip row plus
+> indented allowance rows, and the accent tint withdrawn), `totals-card` and
+> `status-history` — and two were added: `expense-item-card` for the section card, and
+> `report-detail-header`, which had never had a file.
+>
+> `expense-item-card` is `none` on purpose: nothing in the app builds a section card yet.
+> Every other row on that frame stays **drifted** — the code implements the *previous*
+> revision of its spec, which is a structural difference and not a token mismatch. Each
+> carries a Divergence table naming it, and all of them are owned by the one redesign
+> issue.
+>
+> Three decisions on that frame went to the **app**, and are settled rather than absent:
+> the "Report #12" eyebrow the design does not draw (the id is a user's only handle on a
+> report), the grey Draft pill against a solid accent one, and the three tax-free allowance
+> subtotal rows the design omits. Two went to the domain: `ExpenseType` gains an `icon`
+> column, and the design's editable report **title** was ruled **out of scope** — so the
+> header keeps rendering `additionalInformation` twice, as a known infidelity.
+>
+> `status-callout` is *still* `unresolved`, and the frame did not help: it draws a `DRAFT`
+> report, the one status on which the app hides the callout too. Its own file now says so.
 >
 > **One design-origin row needs a survey, not an edit.** `report-list-section`'s *Anatomy*
 > names the chevron as `VaadinIcon.CHEVRON_UP`, an API that #163 removed from the app and

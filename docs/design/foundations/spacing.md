@@ -52,8 +52,27 @@ Full standard in [`../../theming-layouts.md`](../../theming-layouts.md). The sho
 |---|---|---|---|
 | 20px | cards, totals, status box, actions (46 occurrences) | `l` 16 / `xl` 24 | `--em-card-padding: 20px` |
 | 40px | `content-wrap`, `report-header`, `expense-left` (6) | `xl` 24 — top of the scale | `--em-section-gap: 40px` |
-| 10px | intra-row groups (28 content nodes) | `s` 8 / `m` 12 | accept `s` = 8px (**−2px**) |
+| 10px | intra-row groups (28 content nodes, plus 24 more on `116:4444`) | `s` 8 / `m` 12 | accept `s` = 8px (**−2px**) |
+| 5px | paperclip → filename, report detail (6) | `xs` 4 | accept `xs` = 4px (**−1px**) |
 | 80px, 15px | page inset, nav links | — | deferred to #146 |
 
 20px is the single most common off-scale value in the design and is 4px from either
-neighbour, so it gets a property. 10px is 2px off and cosmetic, so it takes the token.
+neighbour, so it gets a property. 10px is 2px off and cosmetic, so it takes the token, and
+5px goes the same way at 1px off.
+
+The report-detail frame (`116:4444`) added no new off-scale value — it reuses 10, 20 and 40
+throughout, which is the strongest evidence so far that the three are the design's real
+rhythm rather than per-frame accidents. Two of its uses stretch a property past its name,
+deliberately:
+
+- **`--em-card-padding` (20) as a gap**, between a row's glyph and its text and between
+  attachment chips. Already what this table records the property for ("card padding and
+  card gap").
+- **`--em-section-gap` (40) as a horizontal indent**, on an allowance row nested under its
+  trip, and as the gap between the back link and the title. Both are the same 40px design
+  value; minting a second property for the same number is the parallel scale `--em-*` is
+  bounded against.
+
+One rhythm on the frame is *not* 20: the totals card separates its rows by `--vaadin-gap-m`
+(12) where the section cards use 20. Measured on `116:4987`, not assumed — a card holding
+figures is tighter than one holding rows.

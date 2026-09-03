@@ -40,6 +40,7 @@ The complete list — everything else is Aura stock.
 | `--em-section-gap` | `40px` | off-scale: beyond `gap-xl` 24 |
 | `--em-font-size-title` | `40px` | off-scale: beyond `font-size-xl` 18. **Was 24px** — re-decided by the reference-table survey and changed in place by **#169**; see [`../foundations/typography.md`](../foundations/typography.md) |
 | `--em-font-size-section` | `30px` | off-scale: beyond `font-size-xl` 18 — in-page section headings. Declared by **#169** |
+| `--em-font-size-detail-title` | `24px` | off-scale: beyond `font-size-xl` 18 — a **record's** own title, as against `--em-font-size-title`'s page heading. Decided by the report-detail survey and declared by **#172**, the first issue to use it |
 | `--em-font-size-total` | `20px` | off-scale: beyond `font-size-xl` 18 — the report card's total |
 | `--em-font-size-metric` | `28px` | off-scale: beyond `font-size-xl` 18 — the metric card's figure |
 | `--em-header-color` | `#f16c4e` | the shell bar's brand coral; bound to no design variable, and no Aura hue is near it |
@@ -74,6 +75,14 @@ token*.
 trusting the reasoning above — which is the whole point of a value that moves silently.
 Neither was re-surveyed, so neither was *fixed*; both simply now render at 40, and
 splitting them off their own properties stays the report-list and shell issues' call.
+
+`--em-font-size-detail-title` is the newest row, and it went through the same
+decided-but-undeclared gap the paragraph below describes: the report-detail survey settled
+it and **#172 declared it**, in the same change that first `var()`s on it. It is named for
+its role rather than its size on purpose — the whole reason `--em-font-size-title` moved
+two card titles it was never surveyed for is that a size-shaped name invited sharing. See
+[`../foundations/typography.md`](../foundations/typography.md) § *A record title is not a
+page heading*.
 
 `--em-font-size-total` and `--em-font-size-metric` were decided by the report-list survey
 and declared by **#162**, the first issue to use them — a survey writes no CSS, so the two
@@ -114,14 +123,15 @@ only** — there is no bare `--vaadin-padding` / `--vaadin-gap` (F-030).
 | `-m` | 12 | section padding, preview padding |
 | `-l` | 16 | card padding |
 | `-xl` | 24 | — |
-| `--em-card-padding` | 20 | design's card padding and gap |
-| `--em-section-gap` | 40 | design's inter-section gap |
+| `--em-card-padding` | 20 | design's card padding and gap — including a row's glyph gap and the gap between attachment chips |
+| `--em-section-gap` | 40 | design's inter-section gap — and, on the report detail, the nested allowance row's indent and the back-link gap |
 
 ## Typography
 
 | Token | Size | Line height | When |
 |---|---|---|---|
 | `--em-font-size-title` | 40 | — | page headings, report card titles |
+| `--em-font-size-detail-title` | 24 | — | a record's own title — the report detail's header |
 | `--em-font-size-section` | 30 | — | in-page section headings |
 | `--em-font-size-metric` | 28 | — | metric card figures |
 | `--em-font-size-total` | 20 | — | report card totals |
