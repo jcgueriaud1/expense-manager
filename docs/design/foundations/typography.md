@@ -97,7 +97,7 @@ Two consumers move by 16px:
 
 | Consumer | Was | Becomes |
 |---|---|---|
-| `report-card` title ([`../components/report-card.md`](../components/report-card.md)) | 24 | 40 |
+| `report-card` title ([`../components/report-card.md`](../components/report-card.md)) | 24 | 40 — **since split off** to `--em-font-size-detail-title`, back at 24 |
 | app shell's small-screen greeting ([`../components/app-shell.md`](../components/app-shell.md)) | 24 | 40 |
 
 **The consumer list above was one row longer, and that row was wrong.** It claimed "every
@@ -116,12 +116,13 @@ twice the size of the heading above them. Both views are visibly hierarchy-inver
 It is still not this issue's call to fix — see the note below — but it is no longer the
 mild "grows with the page heading" the table implied.
 
-A **report card title is not a page heading** and almost certainly should not follow this
-token to 40px — it shares `--em-font-size-title` today only because both happened to be
-24. Splitting them is a real decision and it belongs to the report-list issue, not to this
-survey; until it is taken, that card's title grows with the page heading. The app shell's
-50px greeting also now sits only 10px above the page heading it was drawn to tower over.
-Both go back to the designer with the frames.
+A **report card title is not a page heading** and should not follow this token to 40px —
+it shared `--em-font-size-title` only because both happened to be 24. **Decided:** the card
+title is a record's own title and sits on `--em-font-size-detail-title` (24), the design's
+value on frame `116:2499` — see [`../components/report-card.md`](../components/report-card.md)
+§ *Title size*. The approval and review-history cards share the class and moved with it.
+The app shell's 50px greeting still sits only 10px above the page heading it was drawn to
+tower over; that one goes back to the designer with the frames.
 
 ### A record title is not a page heading
 
@@ -147,10 +148,11 @@ step, which had no property until now. It is named for its role rather than its 
 become a general-purpose 24 — which is how `--em-font-size-title` came to be shared by a
 page heading and two card titles in the first place.
 
-**It does not resolve `report-card`.** That title is still on `--em-font-size-title` at
-40px and still hierarchy-inverted, and it may well want this same 24px value. Deciding
-that is the report-list issue's, exactly as this file already says; borrowing the new
-property pre-emptively would repeat the mistake it was minted to avoid.
+**It did not resolve `report-card` at the time**, and this file deferred that title to the
+report-list issue rather than borrow the new property pre-emptively. That decision has since
+been taken: the card title is the same record's name in list context, so it now sits on
+`--em-font-size-detail-title` too — one property, one role, two consumers. See
+[`../components/report-card.md`](../components/report-card.md) § *Title size*.
 
 ### The display ramp
 
