@@ -62,7 +62,7 @@ rejected report gets it; the dot and the second entry are absent otherwise.
 | Background, both variants | `--aura-surface-color` |
 | Shadow, actionable | `--aura-shadow-xs` |
 | Border, closed | `1px solid var(--vaadin-border-color-secondary)` |
-| Title | `--em-font-size-title` (24), `--aura-font-weight-semibold` |
+| Title | `--em-font-size-detail-title` (24), `--aura-font-weight-semibold` |
 | Title colour, actionable | `--vaadin-text-color` |
 | Title colour, closed | `--vaadin-text-color-secondary` |
 | Title row padding-bottom | `--vaadin-padding-s` (8) |
@@ -80,6 +80,23 @@ rejected report gets it; the dot and the second entry are absent otherwise.
 A `RouterLink` is not a Vaadin layout, so this component's `display: flex`,
 `flex-direction` and `gap` legitimately live in CSS rather than in Java — the exception
 that [`../../theming-layouts.md`](../../theming-layouts.md) allows.
+
+### Title size
+
+The title is on **`--em-font-size-detail-title`**, not `--em-font-size-title`. The design
+draws it at 24px (`I88:12941;36:714`, Public Sans Bold, single line, ellipsis), and this
+spec always said 24 — but it named `--em-font-size-title`, which *was* 24 when the spec
+was written and became **40** when the reference-table survey re-decided the page heading
+(#169). The card title moved with it, unsurveyed, and rendered at more than twice the size
+of the 18px page heading above it. [`../foundations/typography.md`](../foundations/typography.md)
+recorded the split as the report-list issue's decision to take; this is that decision.
+
+`-detail-title` is the right property, not a third 24: it is named for the role "a record's
+own title", and the card title *is* the record's own title — the same
+`additionalInformation` the detail header renders, laid out the same way (one line of
+record data, truncated, beside a status badge). It also keeps the 24/20 title-over-total
+pairing the display ramp was minted for. The approval and review-history cards reuse
+`.report-card-title` and follow.
 
 The trip dates use the **primary** text colour, not secondary, even at 12px. That is the
 design's choice and it is deliberate enough to be drawn consistently across all four
@@ -151,7 +168,7 @@ close:
 | What | Now | Design |
 |---|---|---|
 | Trips | absent | one row per trip, with route and date range |
-| Title size | `--aura-font-size-m` (14) | `--em-font-size-title` (24) |
+| Title size | `--aura-font-size-m` (14) | 24 — `--em-font-size-detail-title` |
 | Padding / radius | `--vaadin-padding-l` (16) / `--vaadin-radius-l` (15) | `--em-card-padding` (20) / `--em-card-radius` (12) |
 | Total size | unset | `--em-font-size-total` (20) |
 | Footer date | `reportDate` | `createdAt`, labelled "Created on" |

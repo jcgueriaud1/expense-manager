@@ -67,15 +67,17 @@ html {
    * -title was 24px until #169. The design draws its page heading at 24 on the
    * report-list frame and at 40 on the reference-table frames — same role, same
    * token, two values — and typography.md re-decided it as 40. That reflows every
-   * page heading in the app, and two consumers move with it that arguably should
-   * not: report-card's title and the shell's small-screen greeting share this
-   * property only because all three happened to be 24. Splitting them is the
-   * report-list issue's and the shell issue's call, not this one's.
+   * page heading in the app, and two consumers moved with it that arguably should
+   * not: report-card's title and the shell's small-screen greeting shared this
+   * property only because all three happened to be 24. The card title has since
+   * been split off onto -detail-title (it is a record's name, drawn at 24); the
+   * shell greeting is still the shell issue's call.
    */
   --em-font-size-title: 40px;   /* beyond --aura-font-size-xl 18, the top of the scale */
   --em-font-size-section: 30px; /* beyond --aura-font-size-xl 18 — in-page section headings */
   /*
-   * A *record's* own title, not a page heading — the report detail's report name.
+   * A *record's* own title, not a page heading — the report's name, on the detail
+   * header and on the list's report cards alike.
    * Named for the role rather than the size on purpose: --em-font-size-title moved
    * two card titles it was never surveyed for precisely because a size-shaped name
    * invited sharing. 24 is also the display ramp's middle step (20 / 24 / 28).

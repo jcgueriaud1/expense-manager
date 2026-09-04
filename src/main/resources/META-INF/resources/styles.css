@@ -162,7 +162,15 @@
 .report-card:hover { border-color: var(--aura-accent-color); }
 .report-card-title {
     font-weight: var(--aura-font-weight-semibold);
-    font-size: var(--em-font-size-title);
+    /*
+     * A RECORD's own title — the report's name — not a page heading, so it sits on
+     * --em-font-size-detail-title (24, the design's value on frame 116:2499) and
+     * not on --em-font-size-title. It used to share -title when both were 24; when
+     * #169 moved -title to 40 the card title went with it and rendered at more than
+     * twice the size of the 18px page heading above it. docs/design/components/
+     * report-card.md § Title size.
+     */
+    font-size: var(--em-font-size-detail-title);
     /*
      * Aura sets line-height on body as a LENGTH (--aura-line-height-m, 20px), so
      * it inherits unchanged into this 24px title: a 20px line box around a 24px

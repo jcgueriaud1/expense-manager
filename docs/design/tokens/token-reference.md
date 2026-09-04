@@ -73,8 +73,10 @@ token*.
 
 **#169 made that change and re-checked both consumers in the browser** rather than
 trusting the reasoning above — which is the whole point of a value that moves silently.
-Neither was re-surveyed, so neither was *fixed*; both simply now render at 40, and
-splitting them off their own properties stays the report-list and shell issues' call.
+Neither was re-surveyed, so neither was *fixed*; both simply rendered at 40. The report
+card's title has since been split off onto `--em-font-size-detail-title` (see
+[`../components/report-card.md`](../components/report-card.md) § *Title size*); the shell
+greeting stays the shell issue's call.
 
 `--em-font-size-detail-title` is the newest row, and it went through the same
 decided-but-undeclared gap the paragraph below describes: the report-detail survey settled
@@ -130,8 +132,8 @@ only** — there is no bare `--vaadin-padding` / `--vaadin-gap` (F-030).
 
 | Token | Size | Line height | When |
 |---|---|---|---|
-| `--em-font-size-title` | 40 | — | page headings, report card titles |
-| `--em-font-size-detail-title` | 24 | — | a record's own title — the report detail's header |
+| `--em-font-size-title` | 40 | — | page headings |
+| `--em-font-size-detail-title` | 24 | — | a record's own title — the report detail's header and the report card's title |
 | `--em-font-size-section` | 30 | — | in-page section headings |
 | `--em-font-size-metric` | 28 | — | metric card figures |
 | `--em-font-size-total` | 20 | — | report card totals |
