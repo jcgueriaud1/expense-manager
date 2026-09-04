@@ -623,7 +623,45 @@
     }
 }
 
-/* The computed per-diem preview inside the trip dialog. */
+/*
+ * The trip editor's earned lines — docs/design/components/travel-editor-dialog.md
+ * § The totals block. Rows OF the form, not a box: no surface, padding, border or
+ * radius. The rows sit --em-card-padding (20) apart with a rule BETWEEN them and
+ * none above the first, because the form's own .form-rule already sits there. The
+ * text classes are the totals card's (.totals-row-label, .totals-row-value,
+ * .totals-total-row, .totals-grand) and the breakdown line is .muted.
+ */
+.trip-totals {
+    display: flex;
+    flex-direction: column;
+    gap: var(--em-card-padding);
+}
+.trip-totals > * + * {
+    border-block-start: 1px solid var(--vaadin-border-color-secondary);
+    padding-block-start: var(--em-card-padding);
+}
+/*
+ * The hairline between a form's sections (travel-editor-dialog.md). Placed as a
+ * colspan-2 row of the FormLayout so the form's row spacing gives it 20 above and
+ * 20 below, and it sets NO margin of its own — not even `margin: 0`. FormLayout's
+ * row spacing is not a grid gap: it is a `margin-block` of HALF the spacing on
+ * every slotted child, so two neighbours add up to the 20. A child that zeroes its
+ * margin removes its half and sits 10 from both neighbours (F-081). The UA's
+ * `hr { margin-block: 0.5em }` never applies either — the FormLayout's slotted rule
+ * outranks it. `border: 0` first clears the UA's inset border; only the top edge is
+ * drawn.
+ */
+.form-rule {
+    border: 0;
+    border-block-start: 1px solid var(--vaadin-border-color-secondary);
+}
+
+/*
+ * The accent-tinted figure box. Withdrawn from the trip editor by frame 253:10597
+ * (travel-editor-dialog.md) — GeneratedLineOverrideDialog and TravelLineReceiptDialog
+ * still use it for their "Calculated: …" / amount summary, so it stays until a
+ * survey draws those two.
+ */
 .travel-preview {
     display: flex;
     flex-direction: column;

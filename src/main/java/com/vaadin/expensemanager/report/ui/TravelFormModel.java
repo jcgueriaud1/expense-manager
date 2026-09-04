@@ -12,8 +12,54 @@ import java.time.LocalDateTime;
  * dialog focused on wiring. Holds the trip <em>inputs</em> only — including the
  * kilometres / pay-meal / parking-fee inputs; the resulting amounts are
  * server-computed and never bound to a field (the client sends inputs, never money).
+ *
+ * <p>The eligibility flags are two booleans here and in {@code TravelDto}, but
+ * <em>one</em> choice in the form (travel-editor-dialog.md): the {@code Daily
+ * allowance} radio group binds to {@link #getDailyAllowance()}, which reads and
+ * writes both flags. The domain never sees the enum.
  */
 final class TravelFormModel {
+
+    /**
+     * The one answer the {@code Daily allowance} radio group takes, and its mapping
+     * onto the two domain flags (issue #93: a free lunch only <em>halves</em> a
+     * per-diem the trip is eligible for, so the two flags are mutually exclusive
+     * and two options could not express the default).
+     */
+    enum DailyAllowance {
+        /** Eligible, no free lunch — the default. {@code false / false}. */
+        FULL("Full daily allowance"),
+        /** Eligible, free lunch provided. {@code notEligible=false, freeLunch=true}. */
+        HALVED("Halved, free lunch provided"),
+        /** Not eligible. {@code notEligible=true, freeLunch=false}. */
+        NOT_ELIGIBLE("Not eligible");
+
+        private final String label;
+
+        DailyAllowance(String label) {
+            this.label = label;
+        }
+
+        String label() {
+            return label;
+        }
+
+        /** The one option the two flags describe. */
+        static DailyAllowance of(boolean notEligibleForAllowance, boolean freeLunch) {
+            if (notEligibleForAllowance) {
+                return NOT_ELIGIBLE;
+            }
+            return freeLunch ? HALVED : FULL;
+        }
+
+        boolean notEligibleForAllowance() {
+            return this == NOT_ELIGIBLE;
+        }
+
+        boolean freeLunch() {
+            return this == HALVED;
+        }
+    }
 
     private LocalDateTime departureAt;
     private LocalDateTime returnAt;
@@ -81,6 +127,18 @@ final class TravelFormModel {
 
     void setFreeLunch(boolean freeLunch) {
         this.freeLunch = freeLunch;
+    }
+
+    /** The radio group's view of the two eligibility flags. */
+    DailyAllowance getDailyAllowance() {
+        return DailyAllowance.of(notEligibleForAllowance, freeLunch);
+    }
+
+    /** Writes both eligibility flags from the one option chosen. */
+    void setDailyAllowance(DailyAllowance dailyAllowance) {
+        var option = dailyAllowance == null ? DailyAllowance.FULL : dailyAllowance;
+        this.notEligibleForAllowance = option.notEligibleForAllowance();
+        this.freeLunch = option.freeLunch();
     }
 
     boolean isChargeToCustomer() {
